@@ -33,6 +33,12 @@ ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 [ -n "$REGION" ]  || { echo "❌ issuer URL 에서 region 추출 실패: $ISSUER"; exit 1; }
 [ -n "$ACCOUNT" ] || { echo "❌ 계정번호 확인 실패 (aws sts)"; exit 1; }
 
+# RDS 관리형 master 시크릿 이름(rds!cluster-<uuid>). ESO 가 이걸 직접 읽게 해서
+# master 비번 드리프트를 원천 차단(manage_master_user_password=true → RDS 가 로테이션).
+# ARN 형식: ...:secret:rds!cluster-<uuid>-<6char> → 뒤 -<6char> 버전접미사만 제거.
+MASTER_ARN=$(cd "$TF_DIR" && terraform output -raw aurora_master_user_secret_arn 2>/dev/null || true)
+RDS_SECRET=$(printf '%s' "$MASTER_ARN" | sed -n 's#.*:secret:\(rds!cluster-[0-9a-f-]*\)-[A-Za-z0-9]\{6\}$#\1#p')
+
 echo "→ 배포 EC2 공인 IP 확인 중..."
 EC2_IP=$(curl -s https://checkip.amazonaws.com)
 [ -n "$EC2_IP" ] || { echo "❌ EC2 공인 IP 확인 실패"; exit 1; }
@@ -53,6 +59,7 @@ cat <<SUMMARY
   COGNITO_REGION       : $REGION    (issuer URL 에서)
   adminBootstrap email : $EMAIL
   inbound-cidrs        : $CIDRS   (EC2 $EC2_IP + PC $PC_IP)
+  masterPasswordRemoteKey : ${RDS_SECRET:-(없음 — /db:master_password 유지)}
   + placeholder 정리   : 123456789012 → $ACCOUNT, ap-northeast-2 → $REGION
                          chat-agent(미사용) ARN/버킷 → 빈 값
 SUMMARY
@@ -81,7 +88,22 @@ else
   awk -v c="$CIDRS" '/^  annotations:$/&&!d{print;print "    alb.ingress.kubernetes.io/inbound-cidrs: \"" c "\"";d=1;next}{print}' "$V" > "$V.tmp" && mv "$V.tmp" "$V"
 fi
 
+# ---- master 비번 드리프트 차단: ESO 가 RDS 관리형 시크릿을 직접 읽게 ----
+# manage_master_user_password=true 환경에선 RDS 가 master 비번을 로테이션하므로,
+# terraform 이 apply 시점에 /db 로 복사한 정적 값은 로테이션 한 번에 어긋난다
+# (migration 이 "password for role postgres_admin is wrong" 로 죽음). remoteKey 를
+# rds!cluster-<uuid> 로 두면 ESO 가 로테이션 시크릿에서 직접 읽어 항상 최신이다.
+# (dev values 엔 이 줄이 없어 base 의 "" 를 상속 → database.external 에 삽입.)
+if [ -n "$RDS_SECRET" ]; then
+  if grep -q 'masterPasswordRemoteKey:' "$V"; then
+    sed -i 's#\(masterPasswordRemoteKey: \).*#\1"'"$RDS_SECRET"'"#' "$V"
+    sed -i 's#\(masterPasswordRemoteProperty: \).*#\1"password"#' "$V"
+  else
+    awk -v k="$RDS_SECRET" '/^    passwordSecretName: "llm-gateway-db"/{print; print "    masterPasswordRemoteKey: \"" k "\""; print "    masterPasswordRemoteProperty: \"password\""; next}{print}' "$V" > "$V.tmp" && mv "$V.tmp" "$V"
+  fi
+fi
+
 echo
 echo "✅ 완료. 반영된 줄:"
-grep -n 'COGNITO_USER_POOL_ID:\|^    COGNITO_REGION:\|inbound-cidrs:' "$V"
+grep -n 'COGNITO_USER_POOL_ID:\|^    COGNITO_REGION:\|inbound-cidrs:\|masterPasswordRemoteKey:' "$V"
 grep -n -A1 '^    emails:$' "$V" | tail -1
