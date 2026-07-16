@@ -70,10 +70,10 @@ redis:
 
 aws:
   region: "ap-northeast-2"
-  bedrockAllowedModels:
-    - anthropic.claude-opus-4-20250514-v1:0
-    - anthropic.claude-sonnet-4-20250514-v1:0
-    - anthropic.claude-haiku-4-5-20251001-v1:0
+  # 코드가 읽지 않는 값(configmap 이 BEDROCK_ALLOWED_MODELS 로 내보내지만 소비처 없음).
+  # 실제 모델 제어는 DB model_aliases + IAM bedrock_allowed_model_arns(tfvars).
+  # 옛 서울 모델 목록이 혼란을 줘서 비움. 훅 자체는 base values 에 남겨둠.
+  bedrockAllowedModels: []
   allowedStsRegions:
     - "ap-northeast-2"
   allowedIamRoles:
