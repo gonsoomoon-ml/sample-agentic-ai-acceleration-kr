@@ -28,8 +28,10 @@ echo "→ terraform output 읽는 중 ($TF_DIR)..."
 POOL_ID=$(cd "$TF_DIR" && terraform output -raw cognito_user_pool_id)
 ISSUER=$(cd "$TF_DIR"  && terraform output -raw cognito_issuer_url)
 REGION=$(printf '%s' "$ISSUER" | sed -n 's#https://cognito-idp\.\([^.]*\)\.amazonaws\.com/.*#\1#p')
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 [ -n "$POOL_ID" ] || { echo "❌ cognito_user_pool_id 를 못 읽음 (terraform apply 완료?)"; exit 1; }
 [ -n "$REGION" ]  || { echo "❌ issuer URL 에서 region 추출 실패: $ISSUER"; exit 1; }
+[ -n "$ACCOUNT" ] || { echo "❌ 계정번호 확인 실패 (aws sts)"; exit 1; }
 
 echo "→ 배포 EC2 공인 IP 확인 중..."
 EC2_IP=$(curl -s https://checkip.amazonaws.com)
@@ -51,11 +53,25 @@ cat <<SUMMARY
   COGNITO_REGION       : $REGION    (issuer URL 에서)
   adminBootstrap email : $EMAIL
   inbound-cidrs        : $CIDRS   (EC2 $EC2_IP + PC $PC_IP)
+  + placeholder 정리   : 123456789012 → $ACCOUNT, ap-northeast-2 → $REGION
+                         chat-agent(미사용) ARN/버킷 → 빈 값
 SUMMARY
 read -rp "진행할까요? (y/N) " ok
 [ "$ok" = y ] || [ "$ok" = Y ] || { echo "취소됨 — 파일 안 건드림"; exit 0; }
 
-# ---- 치환 ----
+# ---- chat-agent 값 비우기 (먼저: 이래야 아래 전역치환이 '진짜 같은 가짜 ARN' 을 안 만든다) ----
+# admin-chat-agent 는 별도 배포(§0 out-of-scope). ARN 이 비면 chat 엔드포인트가
+# 503 "not configured" 로 깔끔히 꺼진다(chat_agent.py:332). non-empty placeholder 는
+# 그 경로를 건너뛰고 없는 ARN 으로 호출을 시도해 지저분한 AWS 에러를 낸다.
+sed -i 's#\(AGENTCORE_RUNTIME_ARN: \).*#\1""#' "$V"
+sed -i 's#\(CHAT_STAGING_BUCKET: \).*#\1""#' "$V"
+
+# ---- placeholder 계정·리전 정리 (미관: 자동주입 값이 파일에도 실제값으로 보이게) ----
+# web search 의 us-east-1 은 다른 토큰이라 안 건드려짐. 자동주입되는 값들도 여기서
+# 실제값이 되지만 install-eks.sh 의 --set 값과 동일(역할명·registry 가 결정적)이라 무해.
+sed -i "s/123456789012/$ACCOUNT/g; s/ap-northeast-2/$REGION/g" "$V"
+
+# ---- org 값 치환 ----
 sed -i 's#\(COGNITO_USER_POOL_ID: \).*#\1"'"$POOL_ID"'"#' "$V"
 sed -i 's#\(^    COGNITO_REGION: \).*#\1"'"$REGION"'"#' "$V"
 awk -v e="$EMAIL" '/^    emails:$/{print;f=1;next} f&&/^      - /{print "      - \"" e "\"";f=0;next}{print}' "$V" > "$V.tmp" && mv "$V.tmp" "$V"
