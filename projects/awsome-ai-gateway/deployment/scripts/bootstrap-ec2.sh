@@ -21,10 +21,26 @@ log()  { printf '\033[1;34m[bootstrap]\033[0m %s\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # ---- 0. 기본 apt 패키지 -------------------------------------------------------
-log "apt 패키지 (unzip jq git tmux docker.io) 설치"
+# docker-buildx 필수: apt 의 docker.io 는 buildx 플러그인을 안 깔아 legacy builder
+# 가 기본이 되는데, 일부 Dockerfile 의 optional-glob(`COPY foo.cr[t] ...`, 파일
+# 없으면 skip)이 legacy 에서 "no source files were specified" 로 하드 실패한다
+# (§3-5 이미지 빌드에서 gateway-proxy·admin-api·migration 3개가 죽음). buildx 를
+# 깔아야 `docker build` 가 BuildKit 백엔드를 쓴다(daemon.json 설정만으로는 부족).
+log "apt 패키지 (unzip jq git tmux docker.io docker-buildx) 설치"
 sudo apt-get update -y
-sudo apt-get install -y unzip jq git tmux docker.io ca-certificates gnupg lsb-release wget curl
+sudo apt-get install -y unzip jq git tmux docker.io docker-buildx ca-certificates gnupg lsb-release wget curl
 sudo usermod -aG docker "$USER" || true   # 재로그인 후 그룹 반영
+
+# BuildKit 을 데몬 기본으로도 명시(buildx 와 함께). (멱등)
+if [ "$(sudo cat /etc/docker/daemon.json 2>/dev/null | jq -r '.features.buildkit' 2>/dev/null)" != "true" ]; then
+  log "Docker BuildKit 활성화 (/etc/docker/daemon.json)"
+  sudo mkdir -p /etc/docker
+  existing=$(sudo cat /etc/docker/daemon.json 2>/dev/null || echo '{}')
+  echo "$existing" | jq '.features.buildkit = true' | sudo tee /etc/docker/daemon.json >/dev/null
+  sudo systemctl restart docker || true
+else
+  log "Docker BuildKit 이미 활성 — 건너뜀"
+fi
 
 # ---- 1. psql (PostgreSQL client, PG_MAJOR) — PGDG 레포 ------------------------
 # 배포판 기본 postgresql-client 는 릴리스마다 다르므로(22.04=14 등), Aurora 16 에
