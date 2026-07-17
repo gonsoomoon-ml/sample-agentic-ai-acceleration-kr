@@ -46,10 +46,24 @@ EC2_IP=$(curl -s https://checkip.amazonaws.com)
 # ---- 프롬프트 (사람만 아는 값) ----
 read -rp "운영자 이메일 (§3-8 Cognito 사용자와 동일해야 함): " EMAIL
 [ -n "$EMAIL" ] || { echo "❌ 이메일이 비었다"; exit 1; }
-echo "  (관리자 PC 브라우저에서 https://checkip.amazonaws.com 열어 나온 값)"
+# ⚠️ 브라우저와 터미널의 출구 IP 가 다를 수 있다 — 사내 프록시(PAC)를 쓰면 브라우저(admin-ui)는
+#    프록시 IP 로, curl/gateway-cli 는 VPN IP 로 나간다. 하나만 열면 다른 쪽이 조용히 타임아웃난다.
+#    (실제로 겪음: Chrome 52.94.x.x vs curl 72.21.x.x) → 콤마로 여러 개 받는다.
+echo "  (관리자 PC 에서 https://checkip.amazonaws.com 확인 — 브라우저와 터미널을 각각)"
+echo "   ⚠️ 사내 프록시를 쓰면 둘이 다르다. 다르면 콤마로 둘 다: 1.2.3.4,5.6.7.8"
+echo "   IP 가 자주 바뀌면 대역도 가능: 203.0.113.0/24  (프리픽스 있으면 그대로 사용)"
 read -rp "관리자 PC 공인 IP: " PC_IP
 [ -n "$PC_IP" ] || { echo "❌ IP 가 비었다"; exit 1; }
-CIDRS="${EC2_IP}/32,${PC_IP}/32"
+CIDRS="${EC2_IP}/32"
+IFS=',' read -ra _PC_IPS <<< "$PC_IP"
+for _ip in "${_PC_IPS[@]}"; do
+    _ip="$(printf '%s' "$_ip" | tr -d '[:space:]')"
+    [ -n "$_ip" ] || continue
+    case "$_ip" in
+        */*) CIDRS="$CIDRS,$_ip" ;;      # 이미 CIDR (예: 203.0.113.0/24)
+        *)   CIDRS="$CIDRS,$_ip/32" ;;   # 맨 IP → /32
+    esac
+done
 
 # ---- 요약 후 확인 ----
 cat <<SUMMARY
