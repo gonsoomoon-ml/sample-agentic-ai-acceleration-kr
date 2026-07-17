@@ -83,11 +83,14 @@ def write_gateway_settings(
     api_key_helper_path: str,
     otel_endpoint: str | None = None,
     otel_auth_token: str | None = None,
+    oidc_issuer_url: str | None = None,
+    oidc_client_id: str | None = None,
 ) -> Path:
     """Write gateway managed settings file.
 
     gateway_url:   Gateway proxy URL (ANTHROPIC_BASE_URL — for Claude Code API calls)
     admin_api_url: Admin API URL (GATEWAY_CLI_GATEWAY_URL — for api-key-helper VK issuance)
+    oidc_*:        IdP coordinates (OIDC_ISSUER_URL / OIDC_CLIENT_ID — see below)
 
     Requires root/admin — uses sudo on Linux/WSL.
     Returns the path of the written file.
@@ -96,6 +99,18 @@ def write_gateway_settings(
         "ANTHROPIC_BASE_URL": gateway_url,
         "GATEWAY_CLI_GATEWAY_URL": admin_api_url,
     }
+
+    # api-key-helper picks its auth mode from ITS OWN process env (main.py:_detect_mode):
+    # OIDC_ISSUER_URL + OIDC_CLIENT_ID present → "oidc"; otherwise → "sts" (legacy, which
+    # calls check_sso_session() and tells the user to run `aws sso login`).
+    # Claude Code runs the helper with this env, so if we don't ship these two the mode
+    # silently depends on whether the user still has them exported in the shell that
+    # launched Claude Code — i.e. it breaks on the next new shell / reboot, and the
+    # employee gets "SSO session expired. Run `aws sso login`" on a Cognito deployment
+    # where they have no AWS account at all. Ship them so auth is deterministic.
+    if oidc_issuer_url and oidc_client_id:
+        env["OIDC_ISSUER_URL"] = oidc_issuer_url
+        env["OIDC_CLIENT_ID"] = oidc_client_id
 
     # Claude Code client-side OTEL (metrics + traces + code activity)
     if otel_endpoint:

@@ -67,3 +67,43 @@ class TestIsWsl:
     def test_false_when_proc_version_missing(self) -> None:
         with patch.object(Path, "read_bytes", side_effect=OSError):
             assert managed._is_wsl() is False
+
+
+class TestOidcEnvShipped:
+    """api-key-helper reads OIDC_ISSUER_URL/OIDC_CLIENT_ID from its own process env
+    (main.py:_detect_mode). Claude Code runs it with managed-settings' env, so setup
+    must ship them — otherwise auth mode silently depends on the launching shell and
+    flips to STS ("Run `aws sso login`") after a reboot.
+    """
+
+    def _write(self, tmp_path, **kw) -> dict:
+        target = tmp_path / "50-gateway.json"
+        with patch.object(managed, "_managed_file", return_value=target), patch.object(
+            managed, "_write_unix"
+        ) as w, patch.object(managed.sys, "platform", "linux"):
+            managed.write_gateway_settings(
+                gateway_url="http://gw",
+                admin_api_url="http://admin",
+                api_key_helper_path="api-key-helper",
+                **kw,
+            )
+        import json
+
+        return json.loads(w.call_args[0][1])
+
+    def test_oidc_env_written_when_given(self, tmp_path) -> None:
+        s = self._write(
+            tmp_path, oidc_issuer_url="https://idp/pool", oidc_client_id="abc123"
+        )
+        assert s["env"]["OIDC_ISSUER_URL"] == "https://idp/pool"
+        assert s["env"]["OIDC_CLIENT_ID"] == "abc123"
+
+    def test_absent_when_not_given(self, tmp_path) -> None:
+        s = self._write(tmp_path)
+        assert "OIDC_ISSUER_URL" not in s["env"]
+        assert "OIDC_CLIENT_ID" not in s["env"]
+
+    def test_absent_when_only_one_given(self, tmp_path) -> None:
+        # Half a config would still land in STS; don't pretend otherwise.
+        s = self._write(tmp_path, oidc_issuer_url="https://idp/pool")
+        assert "OIDC_ISSUER_URL" not in s["env"]
