@@ -110,9 +110,9 @@ def setup(
 ) -> None:
     """Enable LLM Gateway for Claude Code.
 
-    Writes managed settings to /etc/claude-code/managed-settings.d/
-    which takes highest priority in Claude Code's config hierarchy.
-    Requires sudo on Linux/WSL.
+    Writes managed settings to the platform's managed-settings.d/ (see
+    managed._managed_dir — the path differs per OS), which takes highest priority
+    in Claude Code's config hierarchy. Requires sudo (Linux/macOS) or admin (Windows).
     """
     _ = ctx.obj.get("_", lambda s: s)
 
