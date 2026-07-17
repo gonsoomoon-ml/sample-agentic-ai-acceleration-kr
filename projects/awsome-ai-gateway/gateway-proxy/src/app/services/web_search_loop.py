@@ -297,6 +297,8 @@ async def _anthropic_stream(
                         # and do NOT advance global_index. Stitching merges N turns into one
                         # envelope; a thinking block replayed inside a stitched assistant message
                         # is rejected by Bedrock ("thinking blocks ... cannot be modified").
+                        # Prior-turn thinking may be omitted on the client's next user turn, so
+                        # suppressing it from client output is safe. (F-thinking)
                         thinking_buf[idx] = {"kind": btype, "thinking": "", "signature": "",
                                              "data": block.get("data")}
                     else:
@@ -324,7 +326,7 @@ async def _anthropic_stream(
                         yield _sse("content_block_delta", ev2)
                         continue
                     if idx in thinking_buf:
-                        # Accumulate thinking/signature internally; never emit to client.
+                        # Accumulate thinking/signature internally; never emit to client (see start).
                         if dtype == "thinking_delta":
                             thinking_buf[idx]["thinking"] += delta.get("thinking", "") or ""
                         elif dtype == "signature_delta":
@@ -545,7 +547,7 @@ async def _anthropic_nonstream(
     # Strip thinking/redacted_thinking from the CLIENT-returned body: the client replays
     # this (possibly stitched) assistant message on its next turn, and Bedrock rejects a
     # modified thinking block. Prior-turn thinking may be omitted on a new user turn, so
-    # this is safe. (Mirrors the streaming path's client-side suppression.)
+    # this is safe. (Mirrors the streaming path's client-side suppression.) (F-thinking)
     if final_status == 200 and isinstance(final_body.get("content"), list):
         final_body["content"] = [
             b for b in final_body["content"]
@@ -930,7 +932,8 @@ async def run_web_search_loop(
     # Strip Anthropic/OpenAI NATIVE web_search tool(s) up front: Bedrock/Mantle reject
     # them, and we fulfill the intent via our own loop. Doing it here (before F-7) means
     # a native-only request no longer trips _client_declares_web_search, so the loop runs;
-    # a genuine CUSTOM web_search tool (no native type) survives and is still respected.
+    # a genuine CUSTOM web_search tool (no native type) survives and is still respected
+    # (F-7). This also covers the MCP-init-failure fallback below (both read initial_req_data).
     initial_req_data = _strip_native_web_search(initial_req_data)
 
     # streaming.py sse helpers now call on_usage(usage, first_token_time) (2-arg TTFT
