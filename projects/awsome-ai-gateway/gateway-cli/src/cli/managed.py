@@ -24,10 +24,36 @@ log = structlog.get_logger(component="cli")
 GATEWAY_SETTINGS_FILENAME = "50-gateway.json"
 
 
+def _is_wsl() -> bool:
+    """Return True when running inside Windows Subsystem for Linux."""
+    try:
+        return b"microsoft" in Path("/proc/version").read_bytes().lower()
+    except OSError:
+        return False
+
+
 def _managed_dir() -> Path:
-    """Return the managed-settings.d directory path for the current platform."""
+    """Return the managed-settings.d directory path for the current platform.
+
+    Claude Code managed-settings paths (highest-priority drop-in directory):
+      Windows:       C:\\Program Files\\ClaudeCode\\managed-settings.d
+      macOS:         /Library/Application Support/ClaudeCode/managed-settings.d
+      Linux / WSL:   /etc/claude-code/managed-settings.d
+
+    Getting this wrong FAILS SILENTLY: setup reports success, the file is created,
+    and Claude Code simply never reads it — the user keeps their previous auth and
+    bypasses the gateway (no budget/rate-limit/cost accounting) with no error.
+
+    WSL runs as Linux (sys.platform == "linux") but the Claude Code process is the
+    Windows binary, so it reads the Windows path. Detect WSL via /proc/version and
+    write to the Windows path through the WSL mount.
+    """
     if sys.platform == "win32":
         return Path(r"C:\Program Files\ClaudeCode\managed-settings.d")
+    if sys.platform == "darwin":
+        return Path("/Library/Application Support/ClaudeCode/managed-settings.d")
+    if _is_wsl():
+        return Path("/mnt/c/Program Files/ClaudeCode/managed-settings.d")
     return Path("/etc/claude-code/managed-settings.d")
 
 
