@@ -52,9 +52,9 @@ log = structlog.get_logger(component="cli")
 def setup(ctx: click.Context, gateway_url: Optional[str], admin_api_url: Optional[str], api_key_helper: Optional[str], otel_endpoint: Optional[str], issuer_url: Optional[str], client_id: Optional[str]) -> None:
     """Enable LLM Gateway for Claude Code.
 
-    Writes managed settings to /etc/claude-code/managed-settings.d/
-    which takes highest priority in Claude Code's config hierarchy.
-    Requires sudo on Linux/WSL.
+    Writes managed settings to the platform's managed-settings.d/ (see
+    managed._managed_dir — the path differs per OS), which takes highest priority
+    in Claude Code's config hierarchy. Requires sudo (Linux/macOS) or admin (Windows).
     """
     _ = ctx.obj.get("_", lambda s: s)
 
