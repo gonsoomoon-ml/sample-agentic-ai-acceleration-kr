@@ -316,7 +316,32 @@ EOF
 
 위에서 출력된 값으로 아래를 채운다.
 
-> 💡 **팁**: 손으로 채우는 대신 **Claude Code 에게 시켜도 된다** — 아래 블록과 위에서 출력된 값(principal_arn·account_id 등)을 함께 주고 *"이 값으로 `terraform.tfvars` 를 채워라"* 라고 지시한 뒤, 채워진 파일을 다시 검증하게 하면 빠르고 실수가 적다.
+> 💡 **팁**: 손으로 채우는 대신 **Claude Code 에게 시켜도 된다** — 위에서 출력된 값과 함께 아래 프롬프트를 그대로 주면, **예시(`terraform.tfvars.example`)가 Seoul·global 기본값이라 US 에선 반드시 바꿔야 하는 4곳**(리전·`azs`·Bedrock US Geo·chat-agent)까지 한 번에 맞춰준다. 채운 뒤 **다시 검증**하게 하는 것까지 프롬프트에 넣었다.
+>
+> **Claude Code 에 넣을 프롬프트 (복사)** — `<...>` 는 위 블록에서 출력된 값으로 바꾼다:
+>
+> ```text
+> 이 디렉터리의 terraform.tfvars.example 을 terraform.tfvars 로 복사한 뒤 US(us-west-2) 배포에 맞게 채워라.
+>
+> [값]
+> - account_id  = <위에서 출력된 ACCOUNT>
+> - principal_arn = <위에서 출력된 principal_arn>   ← ...:role/... 형태. assumed-role 세션 ARN 아님
+>
+> [예시가 Seoul/global 이라 US 에선 반드시 교체할 4곳]
+> 1) aws_region = "us-west-2"
+> 2) azs = ["us-west-2a", "us-west-2b"]                 (예시 기본값 ap-northeast-2a/2c = Seoul → apply 실패하니 교체)
+> 3) cognito_domain_suffix = "us-auth-<account_id>"
+> 4) bedrock_allowed_model_arns 를 US Geo 용으로 통째 교체:
+>      - inference-profile: us.anthropic.*  (us-west-2:<account_id> + *:* 와일드카드 2줄)
+>      - foundation-model : us-east-1 / us-east-2 / us-west-2 의 anthropic.claude-* + 리전없는 anthropic.*
+>      - 예시의 global.anthropic.* / apac.anthropic.* 줄은 US 에서 안 쓰니 제거
+> 5) enable_chat_agent = false, enable_chat_db_tools = false   (BI 챗은 이번 US 스코프 밖)
+>
+> 다 채웠으면 파일을 다시 열어 검증하고 문제가 있으면 고쳐라:
+>   ① principal_arn 이 최상위가 아니라 eks_access_entries.developer 안에 있는지
+>   ② ARN 이 ...:role/... 형태인지 (sts get-caller-identity 의 assumed-role 세션 ARN 아님)
+>   ③ Seoul/global 잔재(ap-northeast-2 · global.anthropic · apac.anthropic)가 남아있지 않은지
+> ```
 
 📄 **파일에 넣기** · `terraform.tfvars`
 
