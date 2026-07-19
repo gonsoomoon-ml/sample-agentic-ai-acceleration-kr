@@ -1,0 +1,313 @@
+# US LLM Gateway — 운영 참조 (§8 설치 후 운영 작업)
+
+> **설치 중엔 이 문서를 볼 일이 없다.** 설치는 [README.md](README.md) → [install-guide.md](install-guide.md) 순서로 한다.
+> 이 문서는 **설치가 끝난 뒤** 하는 **운영 작업**(업데이트·직원 온보딩·보안 하드닝·teardown·TTL·prod 승격·멀티계정)을 할 때 본다.
+>
+> 📌 본문의 `§0`**~`§6` 은 다른 문서의 절 번호**다 — `§0` = [README.md](README.md)의 범위, `§1`~`§6` = [install-guide.md](install-guide.md). (옛 §7 배포 후 보안은 이 문서 [§8-S](#8-s-배포-후-보안-하드닝-직원-오픈-전-필수) 로 옮겨왔다.)
+
+---
+
+## 8. 설치 후 운영 작업
+
+> 순서 = **POC 사용 빈도순** — 자주(업데이트·온보딩·보안) → 가끔(teardown·TTL) → POC 이후(prod 승격·멀티계정).
+
+---
+
+### 8-U. 업데이트 (코드 변경 반영)
+
+**업데이트(코드 변경 반영):**
+
+`git pull` 후 **바뀐 것에 따라** 아래 A·B·C 중 하나를 배포 EC2 에서 돌린다. 공통은 마지막 `install-eks.sh dev`, **서비스 코드가 바뀐 경우에만** 앞에 이미지 rebuild.
+
+**A. 서비스 코드** (gateway-proxy·admin-api·admin-ui·worker 등) — rebuild 필요
+
+```bash
+cd ~/awsome-ai-gateway && git pull
+./deployment/scripts/rebuild-image.sh gateway-proxy dev   # 바뀐 서비스마다 (인자 = <service> [env])
+./deployment/scripts/install-eks.sh dev
+```
+
+> ℹ️ `install-eks.sh dev` **= 앱을 클러스터에 (재)배포하는 한 방 명령.** 인프라 값(주소·권한)을 알아서 읽어 게이트웨이 서비스(추론·관리 API·화면·워커)를 EKS 에 올리고, **DB 스키마 변경까지 같이 반영**한다 — 그래서 A·B·C 모두 이 줄로 끝난다.
+> **작동 방식**: `terraform output`(엔드포인트·IRSA 역할·Cognito)을 helm `--set` 으로 주입 → 릴리스 `llm-gateway`(gateway-proxy·admin-api·admin-ui·scheduler·workers + pre-install **migration Job**)를 `helm upgrade --install --wait`. kubectl 컨텍스트 설정·네임스페이스·ExternalSecrets 확인까지 한 번에.
+
+**B. DB 스키마** (새 migration `db/versions`·`db/init`) — rebuild 불필요, migration Job 이 자동 적용
+
+```bash
+cd ~/awsome-ai-gateway && git pull
+./deployment/scripts/install-eks.sh dev
+```
+
+**C. values·chart·env** (이미지 그대로) — rebuild 불필요
+
+```bash
+cd ~/awsome-ai-gateway && git pull
+./deployment/scripts/install-eks.sh dev
+```
+
+---
+
+### 8-Y. 직원 온보딩 — Cognito 사용자 추가
+
+§3-8 은 **관리자 한 명**만 만든다. 직원이 [§6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli) 의 `gateway-cli login` 을 하려면, 그 전에 **관리자가 직원을 Cognito 에 미리 등록**해둬야 한다. 방법은 두 가지.
+
+**공통 — 어느 그룹에 넣나**
+
+- **팀 그룹**(`Claude_default-department_default-team`) = **필수.** 없으면 로그인은 되지만 VK 발급이 **403**. 이 배포는 팀이 하나뿐이라 전원 이 그룹에 넣는다(§3-2 `cognito_groups`).
+- `ClaudeAdmin` = **관리자에게만.** admin-ui(`/models`·예산 등)를 쓸 사람만. 일반 직원은 **넣지 않는다.**
+
+#### 방법 A — admin-ui 화면 (권장, 소수)
+
+admin-ui(`/models` 와 같은 사이트)의 **사용자 관리** 화면에서 초대·그룹 배정. 관리자 로그인 + `inbound-cidrs` 안에서. 몇 명이면 이게 제일 쉽다.
+
+#### 방법 B — CLI (대량·자동화)
+
+§3-8 과 같은 명령이다. 직원 이메일만 바꾸고 `ClaudeAdmin` **줄은 뺀다**:
+
+▶ **실행** · 배포 EC2
+
+```bash
+POOL_ID=$(cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev \
+  && terraform output -raw cognito_user_pool_id)
+EMAIL="employee@your-org.com"                 # ← 직원 이메일
+TEMP_PW='<임시비번 12자+ 대소문자·숫자·특수문자>'   # 직원이 첫 로그인 때 변경
+
+aws cognito-idp admin-create-user --user-pool-id "$POOL_ID" --username "$EMAIL" \
+  --user-attributes Name=email,Value="$EMAIL" Name=email_verified,Value=true \
+  --temporary-password "$TEMP_PW" --message-action SUPPRESS
+# 팀 그룹만 (관리자 아님 → ClaudeAdmin 안 넣음)
+aws cognito-idp admin-add-user-to-group --user-pool-id "$POOL_ID" --username "$EMAIL" \
+  --group-name "Claude_default-department_default-team"
+```
+
+> `--message-action SUPPRESS` 는 Cognito 기본 초대 메일을 **안 보낸다**(SES 미설정 배포라). 이메일·임시비번을 관리자가 직원에게 **직접 전달**한다. 직원은 그걸로 §6 `gateway-cli login` 팝업에 로그인 → 첫 로그인 시 새 비번으로 변경.
+>
+> ⚠️ 위 방법은 **기존 팀에 사용자**를 넣는 것. **새 팀**을 나눌 거면 그룹 생성만으로 안 되니 아래 **새 팀 추가** 절을 본다. 이 배포는 팀 하나라 해당 없음.
+
+#### 새 팀(부서) 추가 — 그룹 생성만으로는 안 된다
+
+**새 팀**을 하나 만들려면 Cognito 그룹 생성 하나로 안 끝난다 — **이름 규칙 → terraform 그룹 → (멤버 첫 로그인) → 예산** 을 다 밟아야 admin-ui 에서 실제로 쓸 수 있다.
+
+```text
+  ①  이름 정하기 — Claude_<부서>_<팀>   ("Claude_" 없으면 매핑 실패)
+        └ 예) Claude_AI-department_agent-team → 부서 AI-department · 팀 agent-team
+        └ 밑줄 _ = 구분자 → 부서·팀 이름엔 하이픈만
+                    │
+                    ▼
+  ②  그룹 생성   — tfvars cognito_groups 에 추가 → terraform apply
+        └ 콘솔 수동 생성 X — 이 목록에서만 관리된다
+                    │
+                    ▼
+  ③  사용자 배정 — 방법 A(admin-ui) / B(CLI) 로 그 그룹에 add-user
+                    │
+                    ▼
+  ④  첫 로그인   — ⚡ 이 순간 팀이 DB 에 "자동 생성"(lazy) → admin-ui 에 등장
+        └ 단, 예산 $0 · HARD_BLOCK 으로 생성 → 그 팀 요청 전부 429 (로그 없음)
+                    │
+                    ▼
+  ⑤  예산 부여   — admin-ui /budgets 에서 그 팀에 한도 설정 → ✅ 사용 가능
+
+  ──────────────────────────────────────────────────────────────
+  ✕ 흔한 실패
+        · 이름에 Claude_ 없음  → 로그인 시 "no group mapping found"
+        · ⑤ 예산을 건너뜀      → "로그인은 되는데 그 팀 전부 429"
+```
+
+**②의 terraform 그룹** — tfvars 에 한 줄 더하고 apply:
+
+```hcl
+# §3-2 terraform.tfvars — cognito_groups (그룹은 이 목록에서만 생성·관리)
+cognito_groups = [
+  "Claude_default-department_default-team",
+  "Claude_AI-department_agent-team",     # ← 새 팀 (밑줄=구분자, 이름엔 하이픈)
+]
+```
+
+> 🔴 **가장 흔한 함정 = ⑤ 예산 누락.** 그룹만 만들고 예산을 안 주면 "로그인·토큰은 정상인데 그 팀 요청 전부 429, 로그도 없음" — 자동 생성 팀이 `$0`·`HARD_BLOCK` 이라 그렇다(§6 도입부 예산 🔴와 같은 원인). 근거: `oidc_service.py` 의 `_parse_group`(이름 매핑) · `_get_or_create_team`(첫 로그인 시 팀 + `$0 HARD_BLOCK` 자동 생성).
+
+---
+
+### 8-S. 배포 후 보안 하드닝 (직원 오픈 전 필수)
+
+> [install-guide.md](install-guide.md) §1~§6 설치가 끝나면, **직원에게 열기 전** 여기서 하드닝한다. 지금까지는 **설치 편의로 입구가 넓게 열려 있다** — 입구 IP 를 직원 대역으로 정리하고 **admin 콘솔을 관리자 전용으로 가둬야** 직원 오픈이 가능하다. HTTPS 가 없으므로([§0](README.md#0-이번-배포의-범위-확정)) **IP 허용목록이 유일한 보호막**이다.
+
+> - **입구 IP 확대(직원 대역) · admin 콘솔 IP 좁히기 · ALB 잠금 검증** → 명령만 돌리면 되는 것들(절차 (1)~(3) 아래). 아직 안 함.
+> - **입구 대역** → (1) "네트워크팀에 딱 하나 묻는다" 가 선결. **답에 따라 §0(HTTPS 미사용)을 재검토해야 할 수도 있다.**
+
+**해야 할 것 (게이트):**
+
+
+| 항목          | 조치                                                                                                                                                               |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| admin 콘솔 보호 | admin-ui 엔 실제 OIDC 로그인이 없어 `DEV_LOGIN_ENABLED=false` 로 하면 **GUI 가 잠긴다**. 그대로 두고 **admin-ui·admin-api 를 관리자 IP/VPN 전용**으로 좁혀 네트워크로 보호한다(아래 "admin 콘솔은 네트워크로 보호"). |
+| 입구 접근제한     | values `inbound-cidrs` 를 **직원 출구 대역**으로 확대하고 **설치용 관리자** `/32` **는 제거**. HTTPS 대신 이 IP제한이 보호막(§0 결정). 절차 = (1)(2) 아래.                                            |
+| 허용 모델 목록    | §4에서 등록한 3모델 외 불필요 alias 정리.                                                                                                                                     |
+
+
+**절차:**
+
+**(1) 입구 대역 확보 — 네트워크팀에 질의 필요.**
+
+받은 대역으로 §3-6 의 `inbound-cidrs` 를 교체 → `install-eks.sh dev` 재적용. 답이 "그런 대역 없음(재택·각자 ISP·동적 IP)"이면 `0.0.0.0/0` 으로 열지 말 것 — HTTP+IP제한이라는 §0 전제가 성립하지 않으므로 **NAT/프록시로 출구 고정**, 
+
+>
+
+IP 허용목록은 ALB 앞단 **보안 그룹의 ingress** 인데, `aws ec2 authorize-security-group-ingress` 로 **직접 넣지 말 것** — AWS Load Balancer Controller 가 ingress annotation(`alb.ingress.kubernetes.io/inbound-cidrs`)에서 SG 를 **재조정**하므로 손으로 넣은 규칙은 다음 `install-eks.sh` 때 사라진다. 정답은 **values 의** `inbound-cidrs` **를 바꾸고 재적용**하는 것이고, 설치 때 쓴 `fill-org-values.sh` 가 그걸 해준다(멱등 — IP 넓힐 때마다 다시 실행).
+
+▶ **실행** · 배포 EC2
+
+```bash
+cd ~/awsome-ai-gateway
+bash deployment/scripts/fill-org-values.sh dev
+```
+
+스크립트가 하는 일:
+
+- **배포 EC2 IP** 는 `checkip.amazonaws.com` 로 자동 감지(→ `/32`).
+- **관리자/직원 IP** 를 프롬프트로 받는다 — 맨 IP(`1.2.3.4` → `/32`), **CIDR 대역**(`52.94.133.0/24` 그대로), 또는 **콤마로 여러 개**(`1.2.3.4,52.94.133.0/24`).
+- 요약 확인 후 `y` → values 의 `alb.ingress.kubernetes.io/inbound-cidrs` 에 그 값을 쓴다.
+
+그다음 **재적용해야 SG 에 반영**된다:
+
+```bash
+cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
+```
+
+> 🔴 **덮어쓴다 = 이전 IP 가 사라진다.** 스크립트는 `inbound-cidrs` 를 **입력값으로 통째로 교체**한다(EC2 IP + 이번에 넣은 것만). 기존 허용 IP 를 유지하며 **추가**하려면 프롬프트에 **원하는 전체 목록을 콤마로** 다 넣는다. (또는 values 파일의 `inbound-cidrs:` 줄을 직접 편집 → `install-eks.sh dev`.)
+>
+> ℹ️ 반영은 즉시가 아니다 — `install-eks.sh` 뒤 ALB Controller 가 SG 를 갱신하는 데 수십 초. 아래 (3) 으로 확인한다.
+
+**(3) ALB 잠금 검증**
+
+▶ **실행** · 배포 EC2
+
+```bash
+VPC_ID=$(cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev && terraform output -raw vpc_id)
+for LB in $(aws elbv2 describe-load-balancers --query "LoadBalancers[?VpcId=='$VPC_ID'].LoadBalancerArn" --output text); do
+  for SG in $(aws elbv2 describe-load-balancers --load-balancer-arns "$LB" --query 'LoadBalancers[0].SecurityGroups' --output text); do
+    aws ec2 describe-security-groups --group-ids "$SG" \
+      --query 'SecurityGroups[0].IpPermissions[].{Port:FromPort,CIDRs:IpRanges[].CidrIp}' --output json
+  done
+done
+```
+
+→ 허용 CIDR이 위에서 확보한 대역과 일치하고 `0.0.0.0/0` 이 없으면 잠긴 것.
+
+**admin 콘솔은 네트워크로 보호 (dev-login 유지)**
+
+admin-ui 에는 **실제 로그인(OIDC)이 없다** — 유일한 경로가 dev-login 이고 `DEV_LOGIN_ENABLED=false` 면 **404 로 아무도 못 들어간다**(admin-api 도 dev 토큰 거부, `auth.py:100`). 그래서 이 배포는 **dev-login 을 켠 채, admin 콘솔을 네트워크로 가둔다**:
+
+- **admin-ui·admin-api 는 관리자 IP/VPN 대역만** 닿게 한다. 데이터 플레인(gateway)은 직원 대역으로 넓혀도 컨트롤 플레인은 관리자만.
+- ⚠️ **기본 차트는 3 ALB(gateway·admin-ui·admin-api)가 `inbound-cidrs` 를 공유**한다 — 그냥 두면 직원 대역이 admin 콘솔에도 닿아 dev-login 우회를 누구나 쓸 수 있다. **admin-ui/admin-api 만 따로 좁히는 전용 설정은 없다 — 필요하면 차트에 per-ingress override 를 별도 개발해야 한다(현재 미구현).**
+- POC 로 **allowlist 전체가 신뢰된 관리자/VPN** 이면 공유해도 된다 — dev-login 이 그 신뢰 경계 안에서만 노출된다.
+
+> 🔴 admin-ui·admin-api 를 `**0.0.0.0/0` 이나 광범위 대역에 두지 말 것** — dev-login 이 **서명 없는 admin 토큰**을 즉시 내주므로 닿는 사람 = admin 이다.
+
+---
+
+### 8-T. teardown (과금 중단 · 초기화)
+
+> 🔴 **되돌릴 수 없다.** 아래는 dev 스택 전체(EKS·Aurora·시크릿·웹서치)를 파기한다. 데이터가 필요하면 **먼저 Aurora 스냅샷**을 뜬다.
+
+```bash
+helm uninstall llm-gateway -n llm-gateway
+kubectl delete namespace llm-gateway
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev && terraform destroy
+# Terraform이 안 지우는 잔여물: ECR 이미지, Secrets Manager(/llm-gateway/dev/*),
+#   AgentCore WebSearch gateway(provision_agentcore_websearch.py teardown), tfstate(S3/DynamoDB)
+python3 ~/awsome-ai-gateway/deployment/scripts/provision_agentcore_websearch.py teardown  # (REGION/GW_NAME env 동일)
+```
+
+---
+
+### 8-Z. 토큰 TTL 조절
+
+인증 토큰 수명(기본값)과 **바꾸는 이유**는 [client-setup-explained.md 의 "만료 조건"](client-setup-explained.md#언제-다시-인증해야-하나-만료-조건) 참고. 여기서는 **어떻게 바꾸나**만 다룬다. 둘은 위치·반영 방식이 다르다.
+
+
+| 무엇                          | 기본      | 어디서                 | 반영            |
+| --------------------------- | ------- | ------------------- | ------------- |
+| **refresh_token** (재로그인 주기) | **7일**  | Cognito (terraform) | 새로 로그인하는 사람부터 |
+| access/id_token             | 1시간     | Cognito (terraform) | 위와 동일         |
+| **VK** (게이트웨이 열쇠)           | **1시간** | admin-api env       | 다음 VK 발급부터    |
+
+
+#### ① Cognito 토큰 TTL (refresh 7일 · access/id 1시간)
+
+`cognito/main.tf` 에 **하드코딩**돼 있다(변수 아님 → tfvars 로는 못 바꾼다). 파일을 직접 고치고 apply:
+
+```hcl
+# deployment/terraform/modules/cognito/main.tf (line 121~123)
+access_token_validity  = 1    # 시간
+id_token_validity      = 1    # 시간
+refresh_token_validity = 14   # ← 7 에서 변경 (일)
+```
+
+▶ **실행** · 배포 EC2
+
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
+terraform apply     # Cognito client 설정만 갱신 (리소스 재생성 아님, 즉시)
+```
+
+> ⚠️ **콘솔/**`aws cognito-idp update-user-pool-client` **로 바꾸지 말 것** — update 는 전체 덮어쓰기라 다른 설정을 빠뜨리면 리셋되고, 다음 `terraform apply` 가 **소스값(7일)으로 되돌린다.** terraform 이 정본이다.
+>
+> ℹ️ **이미 로그인한 직원에겐 즉시 적용 안 됨** — refresh_token 수명은 **발급 시점에 토큰에 박힌다.** 늘려도 그들은 다음 재로그인 때 새 수명을 받는다. (줄이는 경우도 마찬가지 — 이미 발급된 건 원래 수명대로 산다.)
+
+#### ② VK TTL (게이트웨이 열쇠, 1시간)
+
+admin-api 환경변수 `OIDC_VK_TTL_HOURS`(`config.py:90` 기본 1)다. values 로 오버라이드:
+
+```yaml
+# values-eks-fargate-dev.yaml — adminApi.env
+OIDC_VK_TTL_HOURS: "2"     # 1 → 2시간
+```
+
+▶ **실행** · 배포 EC2
+
+```bash
+cd ~/awsome-ai-gateway
+./deployment/scripts/install-eks.sh dev   # 파드 재시작 = env 반영
+```
+
+> 짧을수록 유출 내성 ↑ · admin-api 재발급 부하 ↑. 길수록 반대. 기본 1시간이면 대개 충분하다(helper 가 30분 전 미리 재발급하므로 요청이 끊기지 않는다).
+
+---
+
+### 8-P. dev → prod 승격 (검증 후 운영 전환)
+
+> prod 는 dev 의 스위치가 아니라 **나란히 서는 별개 스택**(별도 tfstate·EKS·Aurora·Cognito, namespace 만 동일). 승격 = **§1~§6 을** `prod` **env 로 재실행** — `install-eks.sh prod` · `/llm-gateway/prod/`* · `values-*-prod.yaml` 만 `dev`→`prod`(이미지는 ECR 공유라 재빌드 불필요, 코드는 §2 브랜치 동일).
+>
+> **prod 에서만 다른 것**: ① **[§8-S 하드닝 먼저](#8-s-배포-후-보안-하드닝-직원-오픈-전-필수)**(prod values 도 `DEV_LOGIN_ENABLED=true` 선적재) · ② **직원 env 4줄(§6)을 prod 엔드포인트로 교체**(Cognito·admin-api·gateway 새로 생김) · ③ 웹서치 `GW_NAME=…-prod` 별도. 패치는 env 별 [§8-U](#8-u-업데이트-코드-변경-반영)로(dev→prod 자동 전파 없음).
+
+---
+
+### 8-X. 멀티계정 확장 — claude-code 를 별도 계정 Bedrock 으로
+
+이 배포는 **단일 계정**이라 claude-code 가 이 계정 Bedrock 을 직접 쓴다(§4-3 에서 `account_role_arn=NULL` = in-account). 나중에 claude-code 트래픽을 **다른 AWS 계정**의 Bedrock 으로 보내려면(계정 분리·비용 격리·규제 등) 아래 3가지를 세팅하고 §4-3 SQL 을 **반대로** 돌리면 된다.
+
+> **게이트웨이 코드 변경은 없다.** cross-account 분기는 이미 구현돼 있고(`BedrockAccountClientProvider` + `client_resolver`), **DB 의** `account_role_arn` **한 컬럼이 스위치**다 — 값이 있으면 그 역할을 AssumeRole, 비어 있으면 in-account(`main.py:181`). §4-3 이 그 스위치를 끈 것뿐이다.
+
+**① 대상 계정에 역할 만들기** (terraform / 콘솔) — 게이트웨이 계정이 assume 할 수 있는 역할:
+
+- **trust policy**: 게이트웨이 파드의 IRSA 역할(`llm-gateway-dev-gateway-proxy-bedrock`)이 `sts:AssumeRole` 하도록 허용 + `ExternalId` **조건**(confused-deputy 방지).
+- **권한**: `bedrock:InvokeModel` 등 대상 계정 Bedrock 호출 권한.
+
+**② 게이트웨이 파드 IRSA 에** `sts:AssumeRole` **추가** — 지금은 자기 계정 Bedrock 만 부른다. 다른 계정 역할을 assume 하려면 그 권한이 IRSA 정책에 있어야 한다(대상 = ①의 역할 ARN).
+
+**③ DB 한 줄 — §4-3 을 되돌린다** (in-account → cross-account):
+
+▶ **실행** · 배포 EC2 (§4-1 처럼 psql 파드로)
+
+```sql
+UPDATE model.routing_profiles
+   SET account_role_arn = 'arn:aws:iam::<대상계정>:role/<역할>',   -- ①에서 만든 역할
+       external_id      = '<ExternalId>',                        -- ①의 trust 조건과 동일
+       region           = '<대상 리전>'                            -- 대상 계정 Bedrock 리전
+ WHERE client = 'claude-code';
+```
+
+그다음 **Redis 캐시 플러시** 필수 — `routing_profiles` 를 psql 로 직접 고치면 캐시(`routing_profile:claude-code`, TTL 5분)가 안 지워져 최대 5분 지연된다. admin-api 경로(있으면)로 바꾸거나 캐시 키를 지운다.
+
+> **롤백은 즉시**: `account_role_arn`·`external_id` 를 다시 `NULL` 로 → 다음 요청부터 in-account 복귀(무배포).
+>
+> **codex·cowork 도 같은 구조**다(원 설계: claude-code·codex·cowork 를 각각 다른 계정으로). 이 배포는 둘을 out-of-scope(§0)로 두고 [§4-2 (D)](install-guide.md#4-2-3모델-alias-를-us-geo-프로파일로-sonnet-5는-신규)에서 INACTIVE 처리했다. 그것들까지 멀티계정으로 살리려면 클라이언트마다 ①②③ 을 반복한다.
