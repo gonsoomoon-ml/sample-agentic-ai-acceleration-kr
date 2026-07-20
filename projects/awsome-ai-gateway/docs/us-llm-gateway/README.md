@@ -64,7 +64,7 @@
 
 **E. 클라이언트·오픈 — ⏱️ ~35분**
 
-1. **직원 PC 가 게이트웨이 통해 쓰게 설정** — Claude Code 배포 … [§6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli)
+1. **직원 PC 가 게이트웨이 통해 쓰게 설정** — Claude Code 배포 … [§6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli) (운영자는 §6-0 까지, **직원 PC 는 [client-install.md](client-install.md)**)
 2. **IP 제한·로그인 우회 차단 후 재배포** — 보안 하드닝(직원 오픈 전 필수) … [operations.md §8-S](operations.md#8-s-배포-후-보안-하드닝-직원-오픈-전-필수)
 
 > ⏱️ 대기의 대부분은 **9번**(terraform apply)과 **11번**(이미지 빌드)이다.
@@ -79,7 +79,8 @@
 | 문서                                                                 | 무엇                                                                             | 언제 본다                         |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ----------------------------- |
 | **README.md** (이 문서)                                               | 범위 · 설치 흐름 · 문서 지도                                                             | **시작할 때 한 번**                 |
-| **[install-guide.md](install-guide.md)**                           | **§1~§6 실행 런북** (§7 보안은 operations.md)                                         | **설치하는 4시간 내내 — 여기만 본다**      |
+| **[install-guide.md](install-guide.md)**                           | **§1~§6-0 실행 런북** (운영자용. §7 보안은 operations.md)                              | **설치하는 4시간 내내 — 여기만 본다**      |
+| **[client-install.md](client-install.md)**                         | **§6-1~§6-3 직원 PC 설치** (macOS · Windows) — 직원에게 그대로 전달                    | 직원 온보딩할 때 (**직원이 받는 문서**)     |
 | [operations.md](operations.md)                                     | §8 **설치 후 운영 작업** — 업데이트·직원 온보딩·**§8-S 보안 하드닝(직원 오픈 전)**·teardown·prod 승격·멀티계정 | **설치가 끝난 뒤 · 직원 오픈 전**        |
 | [prd.md](prd.md)                                                   | 요구사항 · 확정 범위 · out-of-scope                                                    | 시작 전 · 고객사와 범위 합의할 때          |
 | [web-search-explained.md](web-search-explained.md)                 | 서버측 web search 가 동작하는 원리 (초보자용 ASCII 흐름)                                       | §5 를 개념부터 이해하고 싶을 때           |
