@@ -83,6 +83,7 @@
 | **[client-install.md](client-install.md)**                         | **§6-1~§6-3 직원 PC 설치** (macOS · Windows) — 직원에게 그대로 전달                    | 직원 온보딩할 때 (**직원이 받는 문서**)     |
 | [operations.md](operations.md)                                     | §8 **설치 후 운영 작업** — 업데이트·직원 온보딩·**§8-S 보안 하드닝(직원 오픈 전)**·teardown·prod 승격·멀티계정 | **설치가 끝난 뒤 · 직원 오픈 전**        |
 | [prd.md](prd.md)                                                   | 요구사항 · 확정 범위 · out-of-scope                                                    | 시작 전 · 고객사와 범위 합의할 때          |
+| [architecture.md](architecture.md)                                 | **전체 그림 1장** — ASCII 아키텍처 · 요청 흐름 5개 · 벤더 레퍼런스 대비                              | 시작 전 · 구조를 한눈에 보고 싶을 때        |
 | [web-search-explained.md](web-search-explained.md)                 | 서버측 web search 가 동작하는 원리 (초보자용 ASCII 흐름)                                       | §5 를 개념부터 이해하고 싶을 때           |
 | [client-setup-explained.md](client-setup-explained.md)             | 클라이언트 설치·인증 흐름 (초보자용 ASCII 흐름)                                                 | §6 을 개념부터 이해하고 싶을 때           |
 | [telemetry-explained.md](telemetry-explained.md)                   | Claude Code 텔레메트리(OTEL) — 무엇을 수집·어디로·켤까끌까                                      | §6 setup 이 켜는 텔레메트리를 이해·결정할 때 |
