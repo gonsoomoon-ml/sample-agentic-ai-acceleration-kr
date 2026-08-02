@@ -12,10 +12,13 @@
 #       reference model_aliases and none declare ON DELETE)
 #
 # Usage:
-#   bash 02-add-opus5-model.sh --help
-#   bash 02-add-opus5-model.sh --input 0.005 --output 0.025 \
-#        --cache-5m 0.00625 --cache-1h 0.01 --cache-read 0.0005
-#   ... append --apply once the printed plan looks right
+#   Fill MODEL_PRICE_* in config.env, then:
+#       bash 02-add-opus5-model.sh              # dry-run
+#       bash 02-add-opus5-model.sh --apply
+#
+#   Or pass prices on the command line, which overrides config.env:
+#       bash 02-add-opus5-model.sh --input 0.005 --output 0.025 \
+#            --cache-5m 0.00625 --cache-1h 0.01 --cache-read 0.0005 --apply
 #
 #   If team_allowed_models is in whitelist mode (00 reports this):
 #   ... --team-id <uuid>   also inserts the matching team allow row
@@ -30,12 +33,15 @@ usage() {
   cat <<EOF
 $(basename "$0") — register the model alias defined in config.env
 
-Required (USD per 1K tokens)
-  --input      <n>   input tokens
-  --output     <n>   output tokens
-  --cache-5m   <n>   cache write, 5-minute TTL
-  --cache-1h   <n>   cache write, 1-hour TTL
-  --cache-read <n>   cache read
+Prices (USD per 1K tokens) — required, from config.env or these flags
+  --input      <n>   input tokens          (config: MODEL_PRICE_INPUT)
+  --output     <n>   output tokens         (config: MODEL_PRICE_OUTPUT)
+  --cache-5m   <n>   cache write, 5m TTL   (config: MODEL_PRICE_CACHE_5M)
+  --cache-1h   <n>   cache write, 1h TTL   (config: MODEL_PRICE_CACHE_1H)
+  --cache-read <n>   cache read            (config: MODEL_PRICE_CACHE_READ)
+
+  Flags win over config.env. Filling config.env is preferred: the values stay
+  recorded, and MODEL_PRICE_ASOF documents when they were last checked.
 
 Optional
   --team-id <uuid>   only when team_allowed_models is in whitelist mode
@@ -69,6 +75,13 @@ done
 
 require_env
 
+# config.env supplies the prices; command-line flags override them.
+P_IN="${P_IN:-$MODEL_PRICE_INPUT}"
+P_OUT="${P_OUT:-$MODEL_PRICE_OUTPUT}"
+P_C5M="${P_C5M:-$MODEL_PRICE_CACHE_5M}"
+P_C1H="${P_C1H:-$MODEL_PRICE_CACHE_1H}"
+P_CREAD="${P_CREAD:-$MODEL_PRICE_CACHE_READ}"
+
 # Config supplies the model identity; these locals keep the SQL readable.
 ALIAS="$MODEL_ALIAS"
 MODEL_ID="$MODEL_PROVIDER_ID"
@@ -83,7 +96,8 @@ missing=()
 [ -z "$P_C1H" ]   && missing+=(--cache-1h)
 [ -z "$P_CREAD" ] && missing+=(--cache-read)
 if [ ${#missing[@]} -gt 0 ]; then
-  bad "missing price arguments: ${missing[*]}"
+  bad "prices not set: ${missing[*]}"
+  note "Fill MODEL_PRICE_* in config.env, or pass the flags below."
   echo
   usage
   exit 1
@@ -142,6 +156,7 @@ cat <<EOF
     cache 5m     $P_C5M
     cache 1h     $P_C1H
     cache read   $P_CREAD
+    as of        ${MODEL_PRICE_ASOF:-(not recorded)}
 EOF
 [ -n "$TEAM_ID" ] && echo "  team_allowed_models  allow row for team $TEAM_ID"
 
@@ -153,9 +168,7 @@ if [ "$APPLY" -eq 0 ]; then
   cat <<EOF
 
   Nothing applied yet.
-  Apply:  bash $(basename "$0") --input $P_IN --output $P_OUT \\
-           --cache-5m $P_C5M --cache-1h $P_C1H --cache-read $P_CREAD \\
-           ${TEAM_ID:+--team-id $TEAM_ID }--apply
+  Apply:  bash $(basename "$0") ${TEAM_ID:+--team-id $TEAM_ID }--apply
 EOF
   exit 0
 fi

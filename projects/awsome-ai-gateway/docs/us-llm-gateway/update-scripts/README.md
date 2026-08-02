@@ -145,10 +145,8 @@ bash 00-preflight-check.sh                 # 항상 먼저. 읽기 전용
 bash 01-fix-cowork-routing.sh              # 확인
 bash 01-fix-cowork-routing.sh --apply
 
-bash 02-add-opus5-model.sh --help          # 단가 인자 확인
-bash 02-add-opus5-model.sh --input <n> --output <n> \
-     --cache-5m <n> --cache-1h <n> --cache-read <n>          # 확인
-bash 02-add-opus5-model.sh ... --apply
+bash 02-add-opus5-model.sh                 # 확인 (단가는 config.env 에 기입돼 있음)
+bash 02-add-opus5-model.sh --apply
 
 bash 03-create-cloudfront.sh               # 설정 확인
 bash 03-create-cloudfront.sh --create
@@ -182,11 +180,23 @@ router_service.py:26          MODEL_LIST_CACHE_TTL = 300
 
 관련 없어 보이지만 함께 기억할 것: `budget_service.py:18` 의 `BUDGET_CONFIG_TTL = None`(무기한). 예산을 SQL로 바꾸면 **기다려도 반영되지 않습니다.**
 
-### 왜 단가 인자가 필수인가
+### 왜 단가가 필수인가
 
 가격 행이 없으면 `router_service.py:51-52` 가 예외 없이 0으로 대체하고 `cost_recorder.py:24-39` 가 그대로 곱해 **비용을 $0으로 기록**합니다. 요청은 정상 성공하므로 눈치채기 어렵고, 그동안 예산이 통째로 우회됩니다.
 
-그래서 `02` 는 단가 없이 진행하지 않습니다. AWS Bedrock 요금 페이지에서 확인하십시오 — Pricing API에는 신규 모델이 노출되지 않아 자동 조회가 안 됩니다.
+그래서 `02` 는 단가 없이 진행하지 않습니다. **`config.env` 에는 Opus 5 값이 이미 채워져 있으므로 그대로 두면 됩니다** — 다른 모델을 등록하거나 값을 바꿔야 할 때만 수정하십시오(`--input` 등 인자로 주면 그쪽이 우선).
+
+| 항목 | 1K 토큰당 USD | 근거 |
+|---|---|---|
+| input | `0.005000` | 공표 정가 $5 / 1M |
+| output | `0.025000` | 공표 정가 $25 / 1M |
+| cache write 5m | `0.006250` | input × 1.25 |
+| cache write 1h | `0.010000` | input × 2 |
+| cache read | `0.000500` | input × 0.1 |
+
+⚠️ 위 값은 **Anthropic 1st-party API 정가**입니다. Amazon Bedrock 요금은 AWS가 별도로 책정합니다. 실제로 Opus 계열은 두 값이 일치해 왔고 — 이 코드베이스의 벤더 마이그레이션도 Bedrock 대상으로 Opus 4.6·4.7·4.8 에 **정확히 같은 세트**를 심어 두었습니다(`0003_rename_cache_5m.py`, `0004_add_opus_4_6.py`, `0006_add_opus_4_8.py`) — 비용 정확도가 중요하다면 실제 청구서와 한 번 대조하십시오.
+
+**자동 조회는 불가능합니다.** AWS Pricing API(`AmazonBedrock`)는 Claude 3까지만 담고 있고, 신규 모델은 공개 요금 페이지에도 올라오지 않는 경우가 있습니다. 즉 이 값은 **조용히 낡습니다** — 확인한 날짜를 `MODEL_PRICE_ASOF` 에 적어두는 것이 유일한 감지 수단입니다. 기존 모델들의 현재 값은 `00-preflight-check.sh` 가 함께 보여줍니다.
 
 ### ⚠️ 보안그룹을 직접 고치지 마십시오
 
