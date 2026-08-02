@@ -181,6 +181,7 @@ bash 06-persist-annotations.sh --apply     # 03·05 어노테이션을 values �
 #   ↑ 여기서 5분 대기 (캐시), CloudFront 전파는 5~15분
 
 bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
+#                                                    ↑ 「VK 얻기」 참고
 ```
 
 ⏱ **DB 를 건드리는 스크립트는 조회 중에 화면이 멈춥니다 — 정상입니다.** DB 가 프라이빗 VPC 안이라 조회할 때마다 클러스터에 임시 psql 파드를 띄우는데, Fargate 가 파드 하나를 스케줄하는 데 **1~2분**을 씁니다. 그동안 아무 출력도 없으니 hang 으로 오해하기 쉽습니다. 실측:
@@ -264,6 +265,33 @@ CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받
 | 실질 접근 통제             | IP + VK | **VK 단독**            |
 | admin-api / admin-ui | IP 제한   | **IP 제한 유지 (변경 없음)** |
 
+
+### VK 얻기
+
+`04` 는 실제로 요청을 보내므로 Virtual Key 가 필요합니다. 게이트웨이에 이미 온보딩된 머신(배포 EC2 포함)이라면 한 줄입니다.
+
+```bash
+api-key-helper 2>/dev/null | grep -m1 '^vk-'
+```
+
+`vk-` 로 시작하는 한 줄이 나오면 그게 VK 입니다. 아직 로그인한 적이 없다면 먼저 온보딩합니다(설치 가이드 §6-0 과 같은 절차).
+
+```bash
+export OIDC_ISSUER_URL="<운영자가 준 값>"
+export OIDC_CLIENT_ID="<운영자가 준 값>"
+export ADMIN_API_URL="<운영자가 준 값>"
+cd ~/awsome-ai-gateway && bash scripts/onboard-macos-linux.sh
+```
+
+> `--setup-claude-code` 를 빼면 **로그인만** 하고 끝납니다. Claude Code 설정은 건드리지 않습니다.
+
+⚠️ **로그인은 브라우저 PKCE 이고 콜백이 `localhost:8090` 입니다.** 헤드리스 서버에서 돌린다면 브라우저가 그 포트에 닿아야 하므로 터널을 먼저 여십시오. Cognito 콜백 화이트리스트는 `8090`·`8091`·`8092` 3개뿐이라 그중에서 골라야 합니다.
+
+```bash
+ssh -L 8090:localhost:8090 -i <key> ubuntu@<EC2 공인IP>
+```
+
+⚠️ **VK 발급은 IP 제한을 받습니다.** 로그인(Cognito)은 공개지만 발급(admin-api)은 `inbound-cidrs` 안에서만 됩니다. 그 머신의 공인 IP 가 목록에 없으면 **로그인은 성공하는데 발급이 타임아웃**납니다 — `05` 로 추가하십시오.
 
 ### 이 기계에서 직접 커밋한 적이 있다면
 
