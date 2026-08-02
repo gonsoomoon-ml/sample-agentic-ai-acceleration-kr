@@ -116,13 +116,24 @@ comm -23 /tmp/local.txt /tmp/remote.txt
 수정된 파일을 **먼저 복사한 뒤** 맞춥니다.
 
 ```bash
-git status -s                                     # 수정된 파일 확인
-cp <그 파일> ~/                                    # 특히 values-*.yaml · *.tfvars
+git status -s                                  # 수정된 파일 확인
+cp <그 파일> ~/                                 # 특히 values-*.yaml
 git reset --hard origin/us/deploy-fixes
-diff ~/<백업> <원래 경로>                          # 살릴 값이 있는지
+diff ~/<백업> <원래 경로>                       # 살릴 값이 있으면 복사본을 되돌린다
 ```
 
-⚠️ `values-*.yaml` 과 `*.tfvars` 는 `fill-org-values.sh` 등이 **계정별 실값(ARN·IP·ECR URI)을 채워 넣은 상태**일 수 있습니다. 커밋되지 않는 성격이라 `reset --hard` 로 사라지고, 그 뒤 `helm upgrade`·`terraform apply` 를 돌리면 placeholder 로 되돌아간 채 나갑니다. 백업본을 되돌려 놓으십시오.
+⚠️ **저장소를 지우고 다시 clone 하지 마십시오.** `terraform.tfvars` 와 `.terraform/` 는 `.gitignore` 대상이라 `git status` 에 **한 번도 나오지 않지만** `rm -rf` 로는 같이 사라지고, 재클론으로 복구되지 않습니다(tfvars 는 이 배포의 모든 입력값입니다). `reset --hard` 는 추적 파일만 되돌리므로 이들은 그대로 남습니다 — 그래서 재클론보다 안전합니다.
+
+⚠️ `values-*.yaml` 은 설치 때 **계정별 실값이 채워진 상태**일 수 있습니다. 되돌아가면 다음 `helm upgrade` 가 placeholder 로 나갑니다. 특히 확인할 키:
+
+| 키 | 잃으면 |
+|---|---|
+| `global.imageRegistry` | 존재하지 않는 계정의 ECR 을 가리킴 |
+| `aws.region` · `aws.allowedStsRegions` | 다른 리전으로 나감 |
+| `database.external.masterPasswordRemoteKey` | ESO 가 다른 시크릿을 봐서 DB 비밀번호가 어긋남 |
+| `ingress.annotations` 의 `inbound-cidrs` | **ALB IP 허용목록이 통째로 빠짐** |
+
+> 이 파일은 계정 값이 들어 있어 저장소에 커밋할 수 없습니다. 결과적으로 배포 EC2 한 대에만 남으므로, 안전한 곳(Secrets Manager·사내 private repo 등)에 사본을 두시길 권합니다.
 
 설정 파일을 만들고 계정 ID만 채웁니다.
 
