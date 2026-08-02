@@ -130,5 +130,10 @@ rm -f "$RESP" "$CODE"
 # ── (C) Cost recording ──────────────────────────────────────────────────────
 hdr "C. Is cost actually being recorded?"
 note "\$0 means the price row is wrong — requests succeed, so this is the only place it shows"
-run_sql "SELECT client, model_alias, total_cost_usd, created_at
-           FROM usage.usage_logs ORDER BY created_at DESC LIMIT 5;"
+# Column names per admin-api/src/app/models/usage.py:46-80 — the cost column is
+# cost_usd (not total_cost_usd) and rows are timestamped completed_at, not
+# created_at. status is included because a failed call still writes a row: a
+# $0 next to status=ERROR is expected, next to SUCCESS it means a bad price row.
+run_sql "SELECT COALESCE(client,'(legacy)') AS client, model_alias, status,
+                cost_usd, input_tokens, output_tokens, completed_at
+           FROM usage.usage_logs ORDER BY completed_at DESC LIMIT 5;"
