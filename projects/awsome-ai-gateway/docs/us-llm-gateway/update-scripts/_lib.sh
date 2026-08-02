@@ -203,11 +203,17 @@ show_resolved() {
 # SQL is always passed as a file (-f): psql -c refuses to execute a string that
 # mixes meta-commands like \echo with statements.
 # Credentials enter only through pod env — never through argv or logs.
+# Progress written straight to the terminal, never to stdout/stderr.
+# run_sql_file's stdout IS the query result (callers capture it with $( )), and
+# 00 merges stderr into that capture — so either stream would corrupt the data.
+# /dev/tty bypasses both; when there is no tty (cron, SSM) this silently no-ops.
+_tty() { [ -w /dev/tty ] && printf '%s' "$*" > /dev/tty 2>/dev/null; return 0; }
+
 run_sql_file() {
   local sqlfile="$1"
   [ -f "$sqlfile" ] || die "SQL file not found: $sqlfile"
 
-  local sec u p pod b64 phase
+  local sec u p pod b64 phase t0=$SECONDS
   sec=$(aws secretsmanager get-secret-value --secret-id "$DB_SECRET_ID" \
         --query SecretString --output text 2>/dev/null) \
     || die "Cannot read DB secret: $DB_SECRET_ID"
@@ -228,11 +234,14 @@ run_sql_file() {
     >/dev/null 2>&1
 
   # Fargate scheduling is slow; wait generously before giving up
+  _tty "  querying the database — a temporary psql pod has to be scheduled, which Fargate takes 30-60s to do "
   for _ in $(seq 1 90); do
     phase=$(kubectl get pod "$pod" -n "$NS" -o jsonpath='{.status.phase}' 2>/dev/null)
     [ "$phase" = "Succeeded" ] || [ "$phase" = "Failed" ] && break
+    _tty "."
     sleep 4
   done
+  _tty " $((SECONDS - t0))s"$'\n\n'
 
   kubectl logs "$pod" -n "$NS" 2>&1
   kubectl delete pod "$pod" -n "$NS" --wait=false >/dev/null 2>&1
