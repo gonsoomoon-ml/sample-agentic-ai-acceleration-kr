@@ -2,27 +2,33 @@
 # ---------------------------------------------------------------------------
 # 06-persist-annotations.sh
 #
-# WHAT: copy the gateway Ingress annotations that 03/05 set with `kubectl`
-#       into the helm values file, so they survive the next `helm upgrade`
-# WHY:  helm rebuilds the Ingress from values, and the AWS Load Balancer
-#       Controller rebuilds the SG from the Ingress. An annotation that exists
-#       only in the cluster is dropped on the next upgrade — taking the
-#       CloudFront allow rule (03) or the client IP list (05) with it, and the
-#       gateway starts returning 502 with nothing in the diff to explain why.
+# WHAT: write the Ingress `inbound-cidrs` allow-list into the helm values file
+#       so it survives the next `helm upgrade`
+# WHY:  helm rebuilds the Ingress from values and the AWS Load Balancer
+#       Controller rebuilds the SG from the Ingress. A CIDR added with
+#       `kubectl annotate` (05) exists only in the cluster and is dropped on
+#       the next upgrade — VK issuance then fails for that client with no
+#       diff to explain it.
 # UNDO: the file is copied to snapshots/ before anything is written
 #
 # This edits a file. It does not run helm.
+#
+# ⚠️ It deliberately does NOT persist `security-group-prefix-lists`.
+#    This chart renders all three Ingresses (gateway / admin-api / admin-ui)
+#    from one shared `.Values.ingress.annotations` map — templates/common/
+#    ingress.yaml:22,58,100 — so writing the CloudFront prefix list there
+#    would also open admin-api and admin-ui to anything routed through any
+#    CloudFront distribution, bypassing their IP restriction entirely.
+#    That rule therefore stays cluster-only and must be re-applied by hand
+#    after every helm upgrade. The script says so at the end.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 source "$(dirname "$(readlink -f "$0")")/_lib.sh"
 
 require_env
 
-# Which annotations are worth persisting. Both are set by other scripts here
-# and both fail closed-or-open in ways that are hard to notice:
-#   security-group-prefix-lists  missing -> CloudFront cannot reach the origin (502)
-#   inbound-cidrs                missing -> the ALB drops the allow-list entirely
-KEYS=(security-group-prefix-lists inbound-cidrs)
+KEY="inbound-cidrs"
+PL_KEY="security-group-prefix-lists"
 
 # The values file helm was installed with. Blank => derived from DEPLOY_ENV in
 # the standard repo layout (this script lives 3 levels below the chart root).
@@ -31,10 +37,9 @@ VALUES_FILE="${HELM_VALUES_FILE:-$LIB_DIR/../../../deployment/charts/llm-gateway
      Set HELM_VALUES_FILE in config.env if your chart lives elsewhere."
 VALUES_FILE=$(readlink -f "$VALUES_FILE")
 
-# Value currently live on the Ingress (what the controller is acting on).
-live_ann() {
-  kubectl get ingress "$ING_GATEWAY" -n "$NS" \
-    -o jsonpath="{.metadata.annotations.alb\\.ingress\\.kubernetes\\.io/$1}" 2>/dev/null
+ann_of() {
+  kubectl get ingress "$1" -n "$NS" \
+    -o jsonpath="{.metadata.annotations.alb\\.ingress\\.kubernetes\\.io/$2}" 2>/dev/null
 }
 
 # Value in the values file. Commented-out lines are ignored — the file ships
@@ -46,87 +51,78 @@ file_ann() {
 }
 
 echo
-printf '%s Persist Ingress annotations into helm values%s\n' "$c_bold" "$c_reset"
+printf '%s Persist the Ingress allow-list into helm values%s\n' "$c_bold" "$c_reset"
 hdr "Files"
-echo "  ingress      $ING_GATEWAY  (namespace $NS)"
+echo "  ingresses    $ING_GATEWAY, $ING_ADMIN_API, $ING_ADMIN_UI"
 echo "  values file  $VALUES_FILE"
 
-hdr "Live vs file"
-CHANGES=()
-for k in "${KEYS[@]}"; do
-  l=$(live_ann "$k"); f=$(file_ann "$k")
-  printf '  %-28s live: %s\n' "$k" "${l:-<unset>}"
-  printf '  %-28s file: %s\n' "" "${f:-<unset>}"
-  if [ -z "$l" ]; then
-    note "not set on the Ingress — nothing to persist"
-  elif [ "$l" = "$f" ]; then
-    ok "already matches"
-  else
-    CHANGES+=("$k=$l")
-    warn "differs — would be written into the values file"
-  fi
-  echo
+# One shared annotations map means one shared allow-list. Take the union so
+# that whichever Ingress 05 touched keeps its CIDR; first-seen order is kept
+# so the result reads like the file the operator already knows.
+hdr "Live allow-lists"
+UNION=""
+for ing in "$ING_GATEWAY" "$ING_ADMIN_API" "$ING_ADMIN_UI"; do
+  v=$(ann_of "$ing" "$KEY")
+  printf '  %-32s %s\n' "$ing" "${v:-<unset>}"
+  IFS=, read -r -a parts <<<"$v"
+  for c in "${parts[@]}"; do
+    [ -n "$c" ] || continue
+    case ",$UNION," in *",$c,"*) ;; *) UNION="${UNION:+$UNION,}$c" ;; esac
+  done
 done
+echo
+echo "  union        $UNION"
+note "This chart gives all three Ingresses the same annotations, so the union"
+note "is what helm can express. Anything narrower cannot be written to values."
 
-if [ ${#CHANGES[@]} -eq 0 ]; then
-  ok "values file already reflects the live Ingress. Nothing to do."
+FILE_VAL=$(file_ann "$KEY")
+hdr "values file"
+echo "  current      ${FILE_VAL:-<unset>}"
+
+if [ -z "$UNION" ]; then
+  warn "no inbound-cidrs set on any Ingress — nothing to persist"
+  exit 0
+fi
+if [ "$UNION" = "$FILE_VAL" ]; then
+  ok "already matches. Nothing to do."
   exit 0
 fi
 
-# Rewrite: replace the key if an active line already exists, otherwise insert
-# it just above the `scheme` annotation (present in every active ingress block
-# this chart ships, and the anchor gives us the right indentation for free).
+# Replace the key if an active line already exists, otherwise insert it just
+# above the `scheme` annotation (present in every active ingress block this
+# chart ships, and the anchor gives us the right indentation for free).
 rewrite() {
-  # \037 (unit separator) joins the pairs — it cannot occur in an annotation
-  # value, and it is fixed inside the program because command-line operands
-  # are not yet assigned when BEGIN runs.
-  awk -v pairs="$1" '
-    BEGIN {
-      n = split(pairs, kv, "\037")
-      for (i = 1; i <= n; i++) {
-        p = index(kv[i], "=")
-        key[i] = substr(kv[i], 1, p - 1); val[i] = substr(kv[i], p + 1); done[i] = 0
-      }
-    }
+  # \037 (unit separator) is fixed inside the program because command-line
+  # operands are not yet assigned when BEGIN runs.
+  awk -v pair="$1" '
+    BEGIN { p = index(pair, "\037"); key = substr(pair, 1, p - 1); val = substr(pair, p + 1) }
     {
       line = $0
-      # replace in place when the key is already there and not commented out
-      for (i = 1; i <= n; i++) {
-        if (!done[i] && line ~ ("^[[:space:]]*alb\\.ingress\\.kubernetes\\.io/" key[i] ":")) {
-          match(line, /^[[:space:]]*/); ind = substr(line, 1, RLENGTH)
-          print ind "alb.ingress.kubernetes.io/" key[i] ": \"" val[i] "\""
-          done[i] = 1; next
-        }
-      }
-      # otherwise insert above the scheme annotation, once
-      if (line ~ /^[[:space:]]*alb\.ingress\.kubernetes\.io\/scheme:/) {
+      if (!done && line ~ ("^[[:space:]]*alb\\.ingress\\.kubernetes\\.io/" key ":")) {
         match(line, /^[[:space:]]*/); ind = substr(line, 1, RLENGTH)
-        for (i = 1; i <= n; i++)
-          if (!done[i]) { print ind "alb.ingress.kubernetes.io/" key[i] ": \"" val[i] "\""; done[i] = 1 }
+        print ind "alb.ingress.kubernetes.io/" key ": \"" val "\""
+        done = 1; next
+      }
+      if (!done && line ~ /^[[:space:]]*alb\.ingress\.kubernetes\.io\/scheme:/) {
+        match(line, /^[[:space:]]*/); ind = substr(line, 1, RLENGTH)
+        print ind "alb.ingress.kubernetes.io/" key ": \"" val "\""
+        done = 1
       }
       print line
     }
-    # A values file with no active `scheme` annotation gives the insert branch
-    # nothing to anchor to. Fail loudly rather than write a file that silently
-    # dropped a key.
-    END {
-      for (i = 1; i <= n; i++)
-        if (!done[i]) { print "UNPLACED:" key[i] > "/dev/stderr"; rc = 1 }
-      exit rc
-    }
+    # No active `scheme` annotation means the insert branch had nothing to
+    # anchor to. Fail rather than write a file that silently dropped the key.
+    END { if (!done) { print "UNPLACED" > "/dev/stderr"; exit 1 } }
   ' "$VALUES_FILE"
 }
 
-PAIRS=$(printf '%s\x1f' "${CHANGES[@]}"); PAIRS=${PAIRS%$'\x1f'}
 NEW=$(mktemp)
-if ! rewrite "$PAIRS" > "$NEW" 2>"$NEW.err"; then
-  sed 's/^/  /' "$NEW.err"
-  rm -f "$NEW" "$NEW.err"
-  die "Could not place every annotation. The values file has no active
+if ! rewrite "$KEY"$'\037'"$UNION" > "$NEW" 2>/dev/null; then
+  rm -f "$NEW"
+  die "Could not place the annotation. The values file has no active
      'alb.ingress.kubernetes.io/scheme' line to anchor the insert on —
-     add the keys by hand under ingress.annotations."
+     add the key by hand under ingress.annotations."
 fi
-rm -f "$NEW.err"
 
 hdr "Planned change (not applied yet)"
 diff -u "$VALUES_FILE" "$NEW" | sed -n '3,$p' | sed 's/^/  /'
@@ -138,7 +134,7 @@ if [ "${1:-}" != "--apply" ]; then
   rm -f "$NEW"; exit 0
 fi
 
-confirm "Write these annotations into $VALUES_FILE (helm is NOT run)."
+confirm "Write this allow-list into $VALUES_FILE (helm is NOT run)."
 
 BAK="$SNAP_DIR/${TS}-06-$(basename "$VALUES_FILE")"
 cp "$VALUES_FILE" "$BAK" || die "backup failed"
@@ -147,14 +143,36 @@ rm -f "$NEW"
 ok "written"
 note "previous file: $BAK"
 
+# The part this script cannot fix — say it plainly, every run.
+hdr "Still not persisted"
+PL_LIVE=$(ann_of "$ING_GATEWAY" "$PL_KEY")
+PL_FILE=$(file_ann "$PL_KEY")
+if [ -n "$PL_LIVE" ] && [ -z "$PL_FILE" ]; then
+  bad "$PL_KEY = $PL_LIVE  (gateway Ingress only, cluster-only)"
+  cat <<EOF
+
+  This is what lets CloudFront reach the gateway. It is NOT written to values
+  on purpose: this chart shares one annotations map across all three
+  Ingresses, so persisting it would also open admin-api and admin-ui to any
+  CloudFront distribution — bypassing their IP restriction.
+
+  Consequence: after every 'helm upgrade' the rule is gone and every request
+  through CloudFront returns 502. Re-apply it with:
+
+      bash 03-create-cloudfront.sh --allow-cloudfront
+
+  The durable fix is a chart change — per-Ingress annotations, so the gateway
+  can carry the prefix list without the control plane inheriting it.
+EOF
+else
+  ok "nothing outstanding"
+fi
+
 hdr "Next steps"
 cat <<EOF
-  The file now matches the live Ingress, so the next \`helm upgrade\` keeps
-  these annotations instead of dropping them.
-
-  Nothing was deployed. Verify with:
+  Nothing was deployed. Verify the file with:
     grep -n 'alb.ingress.kubernetes.io' $VALUES_FILE | grep -v '#'
 
-  Note this file holds account-specific values and is not committed, so it
-  lives only on this machine — keep a copy somewhere safe.
+  This file holds account-specific values and is not committed, so it lives
+  only on this machine — keep a copy somewhere safe.
 EOF
