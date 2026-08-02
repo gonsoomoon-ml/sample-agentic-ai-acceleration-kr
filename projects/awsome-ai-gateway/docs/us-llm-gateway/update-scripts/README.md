@@ -142,6 +142,7 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 | `03-create-cloudfront.sh`  | **CloudFront 배포 생성** + gateway Ingress 어노테이션           | ⚠️ 데이터플레인 접근 통제가 바뀝니다 (아래) |
 | `04-verify.sh`             | **없음** — 검증                                            | 없음                         |
 | `05-allow-client-ip.sh`    | Ingress `inbound-cidrs` 어노테이션                          | 낮음                         |
+| `06-persist-annotations.sh`| **helm values 파일** (`03`·`05` 의 어노테이션을 영구화)          | 낮음. helm 을 돌리지 않음        |
 | `99-rollback.sh`           | 위 변경 되돌리기                                              | —                          |
 | `_lib.sh`                  | 공통 함수 (직접 실행하지 않음)                                     | —                          |
 | `config.env`               | 설정값 (부작용 없음)                                           | —                          |
@@ -173,6 +174,9 @@ bash 03-create-cloudfront.sh --create
 bash 03-create-cloudfront.sh --allow-cloudfront   # 안 하면 502
 
 bash 05-allow-client-ip.sh --add <클라이언트IP>/32 --apply   # VK 발급 경로
+
+bash 06-persist-annotations.sh             # 확인
+bash 06-persist-annotations.sh --apply     # 03·05 어노테이션을 values 에 반영
 
 #   ↑ 여기서 5분 대기 (캐시), CloudFront 전파는 5~15분
 
@@ -247,7 +251,7 @@ alb.ingress.kubernetes.io/security-group-prefix-lists ← CloudFront 등 관리�
 
 `03` 과 `05` 는 어노테이션을 바꾸고, **컨트롤러가 실제로 SG에 반영하는지 90초간 확인**한 뒤 결과를 알려줍니다.
 
-**영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음** `helm upgrade` **때 사라집니다.** 영구 적용하려면 values의 `ingress.annotations` 를 함께 갱신해야 하며, 스크립트가 실행 시 해당 스니펫을 출력합니다.
+**영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음** `helm upgrade` **때 사라집니다** — CloudFront 허용 규칙(`03`)이나 클라이언트 IP 목록(`05`)이 함께 없어지고, diff 에는 이유가 남지 않습니다. `06-persist-annotations.sh` 가 살아 있는 Ingress 의 값을 읽어 values 파일에 써 넣습니다(helm 은 돌리지 않고 파일만).
 
 ### `03 --allow-cloudfront` 의 보안 성격 변경
 
