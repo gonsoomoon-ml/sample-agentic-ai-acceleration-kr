@@ -96,44 +96,9 @@ cd ~/awsome-ai-gateway && git pull
 cd docs/us-llm-gateway/update-scripts
 ```
 
-> `~/awsome-ai-gateway` 는 설치 가이드 §1-4 가 만든 **심링크**로, 이미 저장소의 `projects/awsome-ai-gateway` 안을 가리킵니다. 그래서 두 번째 줄이 짧습니다. 심링크 없이 저장소 루트에서 시작한다면 `cd projects/awsome-ai-gateway/docs/us-llm-gateway/update-scripts` 입니다. 브랜치는 설치 때와 같은 `us/deploy-fixes`.
-
-**`git pull` 이 `divergent branches` 로 멈춘다면** — 이 브랜치는 upstream 위로 **리베이스**되므로(최종 목표가 upstream 머지) 커밋 해시가 바뀝니다. 리베이스 이전에 클론해 둔 사본은 같은 작업을 **옛 해시로** 들고 있어 원격과 공통 조상을 잃습니다.
-
-> 이 경우 로컬 전용 커밋은 **거의 항상 존재합니다** — 없었다면 fast-forward 로 그냥 붙었을 테니까요. 그러니 "로컬 커밋이 있다"가 아니라 **"그 커밋들이 원격에도 있는가"** 를 봐야 합니다.
-
-판별은 **제목 대조**입니다. 로컬에만 있는 커밋의 제목이 원격에도 있으면 해시만 다른 같은 커밋입니다.
-
-```bash
-git fetch origin
-git log --format=%s HEAD --not origin/us/deploy-fixes | sort > /tmp/local.txt
-git log --format=%s origin/us/deploy-fixes | sort > /tmp/remote.txt
-comm -23 /tmp/local.txt /tmp/remote.txt
-```
-
-`comm` 이 **아무것도 출력하지 않으면** 로컬 커밋은 전부 원격에 있는 것이라 버려도 잃는 게 없습니다. 뭔가 출력되면 그 커밋은 이 기계에만 있는 작업이므로 지우지 말고 따로 판단하십시오.
-
-수정된 파일을 **먼저 복사한 뒤** 맞춥니다.
-
-```bash
-git status -s                                  # 수정된 파일 확인
-cp <그 파일> ~/                                 # 특히 values-*.yaml
-git reset --hard origin/us/deploy-fixes
-diff ~/<백업> <원래 경로>                       # 살릴 값이 있으면 복사본을 되돌린다
-```
-
-⚠️ **저장소를 지우고 다시 clone 하지 마십시오.** `terraform.tfvars` 와 `.terraform/` 는 `.gitignore` 대상이라 `git status` 에 **한 번도 나오지 않지만** `rm -rf` 로는 같이 사라지고, 재클론으로 복구되지 않습니다(tfvars 는 이 배포의 모든 입력값입니다). `reset --hard` 는 추적 파일만 되돌리므로 이들은 그대로 남습니다 — 그래서 재클론보다 안전합니다.
-
-⚠️ `values-*.yaml` 은 설치 때 **계정별 실값이 채워진 상태**일 수 있습니다. 되돌아가면 다음 `helm upgrade` 가 placeholder 로 나갑니다. 특히 확인할 키:
-
-| 키 | 잃으면 |
-|---|---|
-| `global.imageRegistry` | 존재하지 않는 계정의 ECR 을 가리킴 |
-| `aws.region` · `aws.allowedStsRegions` | 다른 리전으로 나감 |
-| `database.external.masterPasswordRemoteKey` | ESO 가 다른 시크릿을 봐서 DB 비밀번호가 어긋남 |
-| `ingress.annotations` 의 `inbound-cidrs` | **ALB IP 허용목록이 통째로 빠짐** |
-
-> 이 파일은 계정 값이 들어 있어 저장소에 커밋할 수 없습니다. 결과적으로 배포 EC2 한 대에만 남으므로, 안전한 곳(Secrets Manager·사내 private repo 등)에 사본을 두시길 권합니다.
+> `~/awsome-ai-gateway` 는 설치 가이드 §1-4 가 만든 **심링크**로 이미 `projects/awsome-ai-gateway` 안입니다. 저장소 루트에서 시작한다면 `cd projects/awsome-ai-gateway/docs/us-llm-gateway/update-scripts`. 브랜치는 `us/deploy-fixes`.
+>
+> `git pull` 이 `divergent branches` 로 멈추면 → 아래 「`git pull` 이 막힐 때」
 
 설정 파일을 만들고 계정 ID만 채웁니다.
 
@@ -269,6 +234,30 @@ CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받
 | 실질 접근 통제             | IP + VK | **VK 단독**            |
 | admin-api / admin-ui | IP 제한   | **IP 제한 유지 (변경 없음)** |
 
+
+### `git pull` 이 막힐 때
+
+이 브랜치는 upstream 위로 리베이스되므로 커밋 해시가 바뀝니다. 그 전에 클론한 사본은 같은 커밋을 옛 해시로 들고 있어 공통 조상을 잃고 `divergent branches` 로 멈춥니다. 로컬 커밋이 **있는지**가 아니라 **원격에도 있는지**를 봅니다 — 제목을 대조합니다.
+
+```bash
+git fetch origin
+git log --format=%s HEAD --not origin/us/deploy-fixes | sort > /tmp/a
+git log --format=%s origin/us/deploy-fixes | sort > /tmp/b
+comm -23 /tmp/a /tmp/b      # 빈 출력 = 전부 원격에 있음 = 버려도 됨
+```
+
+빈 출력이면 수정 파일을 복사해 두고 맞춥니다. 뭔가 나오면 이 기계에만 있는 작업이니 지우지 말고 따로 판단하십시오.
+
+```bash
+git status -s               # 수정된 파일 확인
+cp deployment/charts/llm-gateway/values-*.yaml ~/
+git reset --hard origin/us/deploy-fixes
+diff ~/values-eks-fargate-dev.yaml deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+```
+
+⚠️ **지우고 재클론하지 마십시오.** `terraform.tfvars`·`.terraform/` 는 gitignore 대상이라 `git status` 에 안 보이면서 `rm -rf` 로는 사라지고 재클론으로 복구되지 않습니다. `reset --hard` 는 추적 파일만 되돌리므로 이들은 남습니다.
+
+⚠️ `values-*.yaml` 에는 설치 때 채운 계정별 실값이 있습니다 — `imageRegistry` · `aws.region` · `allowedStsRegions` · `masterPasswordRemoteKey` · ingress `inbound-cidrs`. 되돌아가면 다음 `helm upgrade` 가 placeholder 로 나가고 **ALB IP 허용목록이 통째로 빠집니다.** `diff` 에 나오면 복사본을 되돌려 놓으십시오. (이 파일은 계정 값 때문에 커밋할 수 없어 배포 EC2 한 대에만 남습니다 — 안전한 곳에 사본을 두시길 권합니다.)
 
 ### `05` 가 필요한 이유
 
