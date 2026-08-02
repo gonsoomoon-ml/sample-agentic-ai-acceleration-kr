@@ -179,7 +179,12 @@ bash 05-allow-client-ip.sh --add <클라이언트IP>/32 --apply   # VK 발급 �
 bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 ```
 
-⏱ **DB 를 건드리는 스크립트(`00`·`01`·`02`·`04`)는 조회마다 몇 분씩 멈춘 것처럼 보입니다 — 정상입니다.** DB 가 프라이빗 VPC 안이라 클러스터에 임시 psql 파드를 띄우는데 Fargate 는 파드 하나에 30~60초를 씁니다. `00` 은 조회가 세 번이라 2~3분, 나머지는 1분 안팎입니다.
+⏱ **DB 를 건드리는 스크립트(`00`·`01`·`02`·`04`)는 조회마다 오래 걸립니다.** DB 가 프라이빗 VPC 안이라 조회할 때마다 클러스터에 임시 psql 파드를 띄우는데, Fargate 가 파드 하나를 띄우는 데 **1~2분**을 씁니다(실측). `00` 은 조회가 세 번이라 그만큼 곱해집니다. 진행 중에는 이런 줄이 나오므로 멈춘 것인지 구분할 수 있습니다.
+
+```
+  querying the database — a temporary psql pod has to be scheduled,
+  which Fargate takes 30-60s to do ......... 104s
+```
 
 게이트웨이 쪽은 여기까지입니다. 이어지는 클라이언트(Cowork) 설치는 **`cowork-client-install.md`**.
 
