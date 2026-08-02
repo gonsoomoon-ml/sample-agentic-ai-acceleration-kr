@@ -98,20 +98,31 @@ cd docs/us-llm-gateway/update-scripts
 
 > `~/awsome-ai-gateway` 는 설치 가이드 §1-4 가 만든 **심링크**로, 이미 저장소의 `projects/awsome-ai-gateway` 안을 가리킵니다. 그래서 두 번째 줄이 짧습니다. 심링크 없이 저장소 루트에서 시작한다면 `cd projects/awsome-ai-gateway/docs/us-llm-gateway/update-scripts` 입니다. 브랜치는 설치 때와 같은 `us/deploy-fixes`.
 
-**`git pull` 이 `divergent branches` 로 멈춘다면** — 이 브랜치는 upstream 위로 **리베이스**되므로(최종 목표가 upstream 머지) 커밋 해시가 바뀝니다. 오래전에 클론해 둔 사본은 공통 조상을 잃어 자동 병합이 안 됩니다. 아래로 확인하고 맞추십시오.
+**`git pull` 이 `divergent branches` 로 멈춘다면** — 이 브랜치는 upstream 위로 **리베이스**되므로(최종 목표가 upstream 머지) 커밋 해시가 바뀝니다. 리베이스 이전에 클론해 둔 사본은 같은 작업을 **옛 해시로** 들고 있어 원격과 공통 조상을 잃습니다.
+
+> 이 경우 로컬 전용 커밋은 **거의 항상 존재합니다** — 없었다면 fast-forward 로 그냥 붙었을 테니까요. 그러니 "로컬 커밋이 있다"가 아니라 **"그 커밋들이 원격에도 있는가"** 를 봐야 합니다.
+
+판별은 **제목 대조**입니다. 로컬에만 있는 커밋의 제목이 원격에도 있으면 해시만 다른 같은 커밋입니다.
 
 ```bash
-git status -s                                    # 수정된 파일
-git log --oneline HEAD --not origin/us/deploy-fixes   # 로컬 전용 커밋
+git fetch origin
+git log --format=%s HEAD --not origin/us/deploy-fixes | sort > /tmp/local.txt
+git log --format=%s origin/us/deploy-fixes | sort > /tmp/remote.txt
+comm -23 /tmp/local.txt /tmp/remote.txt
 ```
 
-두 출력이 **모두 비어 있으면** 로컬을 버려도 됩니다 — 커밋 내용은 새 해시로 원격에 그대로 있습니다.
+`comm` 이 **아무것도 출력하지 않으면** 로컬 커밋은 전부 원격에 있는 것이라 버려도 잃는 게 없습니다. 뭔가 출력되면 그 커밋은 이 기계에만 있는 작업이므로 지우지 말고 따로 판단하십시오.
+
+수정된 파일을 **먼저 복사한 뒤** 맞춥니다.
 
 ```bash
-git fetch origin && git reset --hard origin/us/deploy-fixes
+git status -s                                     # 수정된 파일 확인
+cp <그 파일> ~/                                    # 특히 values-*.yaml · *.tfvars
+git reset --hard origin/us/deploy-fixes
+diff ~/<백업> <원래 경로>                          # 살릴 값이 있는지
 ```
 
-⚠️ **수정된 파일이 있으면 먼저 복사해 두십시오.** `reset --hard` 가 지웁니다. 특히 `deployment/charts/**/values-*.yaml` 과 `*.tfvars` 는 이 배포의 실제 설정일 수 있습니다. 되돌린 뒤 `diff` 로 비교해 무엇을 살릴지 판단하십시오.
+⚠️ `values-*.yaml` 과 `*.tfvars` 는 `fill-org-values.sh` 등이 **계정별 실값(ARN·IP·ECR URI)을 채워 넣은 상태**일 수 있습니다. 커밋되지 않는 성격이라 `reset --hard` 로 사라지고, 그 뒤 `helm upgrade`·`terraform apply` 를 돌리면 placeholder 로 되돌아간 채 나갑니다. 백업본을 되돌려 놓으십시오.
 
 설정 파일을 만들고 계정 ID만 채웁니다.
 
