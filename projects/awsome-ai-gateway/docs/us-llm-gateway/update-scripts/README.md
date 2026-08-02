@@ -175,7 +175,7 @@ bash 03-create-cloudfront.sh               # 설정 확인
 bash 03-create-cloudfront.sh --create
 bash 03-create-cloudfront.sh --allow-cloudfront   # 안 하면 502
 
-bash 05-allow-client-ip.sh --add <클라이언트IP>/32 --apply   # VK 발급 경로
+bash 05-allow-client-ip.sh --add <Cowork 를 돌릴 PC 의 공인IP>/32 --apply
 
 bash 06-persist-annotations.sh             # 확인
 bash 06-persist-annotations.sh --apply     # 03·05 어노테이션을 values 에 반영
@@ -310,7 +310,11 @@ comm -23 /tmp/a /tmp/b      # 빈 출력 = 전부 원격에 있음 = 버려도 �
 
 ### `05` 가 필요한 이유
 
-CloudFront를 세우면 추론은 어디서든 되지만, **VK를 받아오는 경로는 별개**입니다. `gateway-cli login` 과 `api-key-helper` 는 admin-api를 직접 치고 admin-api는 IP로 잠겨 있습니다. 클라이언트 PC의 공인 IP가 목록에 없으면 VK 발급이 아예 안 됩니다.
+CloudFront를 세우면 추론은 어디서든 되지만, **VK를 받아오는 경로는 별개**입니다. `gateway-cli login` 과 `api-key-helper` 는 admin-api를 직접 치고 admin-api는 IP로 잠겨 있습니다.
+
+넣을 IP 는 **Cowork(또는 Claude Code)를 실제로 돌릴 PC 의 공인 IP** 입니다 — 게이트웨이 서버나 배포 EC2 의 IP 가 아닙니다. 사용자가 여럿이면 각자의 IP(또는 사무실 대역)를 넣습니다. 목록에 없으면 **로그인은 성공하는데 VK 발급만 타임아웃**나서 원인을 찾기 어렵습니다.
+
+기본 대상은 `admin-api` 하나입니다. 데이터플레인은 CloudFront 를 거치므로 `gateway` 까지 열 이유가 없습니다.
 
 ⚠️ 사내망은 목적지 리전마다 출구 IP가 다를 수 있습니다. `checkip.amazonaws.com` 결과를 믿지 말고 **대상 리전의 호스트로 SSH해서** 재십시오:
 
