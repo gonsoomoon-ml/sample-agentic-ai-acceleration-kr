@@ -120,14 +120,11 @@ cd docs/us-llm-gateway/update-scripts
 ```bash
 cp config.env.example config.env
 vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
-bash 00-preflight-check.sh
 ```
 
 `config.env` 와 실행 중 생기는 `snapshots/` 는 `.gitignore` 대상이라 위 `reset --hard` 로도 **지워지지 않고**, 다음 갱신을 방해하지도 않습니다. 여러분의 계정 값이 저장소로 올라가지도 않습니다.
 
-`00` 은 읽기 전용입니다. 설정이 어떻게 해석됐는지, 자동 탐지가 무엇을 찾았는지 먼저 보여주므로 **여기서 값이 맞는지 확인**하고 진행하십시오.
-
-⏱ **`1. Database state` 에서 2~3분 멈춘 것처럼 보입니다 — 정상입니다.** DB 는 프라이빗 VPC 안이라 클러스터 안에 임시 psql 파드를 띄워 조회하는데, Fargate 는 파드 하나 뜨는 데 30~60초가 걸립니다. `00` 은 조회를 세 번 하므로 그만큼 곱해집니다. DB 를 건드리는 `01`·`02`·`04` 도 각각 1분 안팎을 씁니다.
+**여기까지가 준비입니다.** 실행은 다음 절의 순서를 그대로 따르십시오 — 맨 처음 `00` 이 읽기 전용으로 설정이 어떻게 해석됐는지, 자동 탐지가 무엇을 찾았는지 보여줍니다. 값이 틀렸으면 거기서 멈추면 됩니다.
 
 > 배포 EC2는 인스턴스 역할로 AWS에 접근하므로 `AWS_PROFILE` 을 따로 설정할 필요가 없습니다. 다른 자격증명이 잡혀 있으면 계정 가드가 걸러냅니다.
 
@@ -163,7 +160,7 @@ bash 00-preflight-check.sh
 ## 실행 순서
 
 ```bash
-bash 00-preflight-check.sh                 # 항상 먼저. 읽기 전용
+bash 00-preflight-check.sh                 # 항상 먼저. 읽기 전용 (2~3분)
 
 bash 01-fix-cowork-routing.sh              # 확인
 bash 01-fix-cowork-routing.sh --apply
@@ -181,6 +178,8 @@ bash 05-allow-client-ip.sh --add <클라이언트IP>/32 --apply   # VK 발급 �
 
 bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 ```
+
+⏱ **DB 를 건드리는 스크립트(`00`·`01`·`02`·`04`)는 조회마다 몇 분씩 멈춘 것처럼 보입니다 — 정상입니다.** DB 가 프라이빗 VPC 안이라 클러스터에 임시 psql 파드를 띄우는데 Fargate 는 파드 하나에 30~60초를 씁니다. `00` 은 조회가 세 번이라 2~3분, 나머지는 1분 안팎입니다.
 
 게이트웨이 쪽은 여기까지입니다. 이어지는 클라이언트(Cowork) 설치는 **`cowork-client-install.md`**.
 
