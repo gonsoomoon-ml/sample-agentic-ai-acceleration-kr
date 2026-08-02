@@ -93,10 +93,10 @@ account_role_arn=arn:aws:iam::<존재하지 않는 계정>:role/...
 
 ```bash
 cd ~/awsome-ai-gateway && git pull
-cd projects/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+cd docs/us-llm-gateway/update-scripts
 ```
 
-> 클론 위치가 다르면 그 경로에서 `git pull` 하십시오. 브랜치는 설치 때와 같은 `us/deploy-fixes` 입니다.
+> `~/awsome-ai-gateway` 는 설치 가이드 §1-4 가 만든 **심링크**로, 이미 저장소의 `projects/awsome-ai-gateway` 안을 가리킵니다. 그래서 두 번째 줄이 짧습니다. 심링크 없이 저장소 루트에서 시작한다면 `cd projects/awsome-ai-gateway/docs/us-llm-gateway/update-scripts` 입니다. 브랜치는 설치 때와 같은 `us/deploy-fixes`.
 
 설정 파일을 만들고 계정 ID만 채웁니다.
 
