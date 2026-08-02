@@ -2,7 +2,7 @@
 
 이미 운영 중인 LLM Gateway에 **Cowork(Claude Desktop 3P)를 연결**하고 **신규 모델을 등록**하는 도구 모음입니다.
 
-`deployment/scripts/install-eks.sh` 로 설치한 게이트웨이라면 **`config.env` 에서 계정 ID 한 줄만** 고치면 됩니다. 나머지 값은 설치 기본값이거나 클러스터에서 자동으로 찾아냅니다.
+`deployment/scripts/install-eks.sh` 로 설치한 게이트웨이라면 `config.env` **에서 계정 ID 한 줄만** 고치면 됩니다. 나머지 값은 설치 기본값이거나 클러스터에서 자동으로 찾아냅니다.
 
 ---
 
@@ -12,15 +12,15 @@ Claude Code는 잘 되는데 Cowork만 안 되는 상태를 고칩니다. 원인
 
 ### ① Cowork 요청이 전부 실패합니다
 
-게이트웨이는 클라이언트(Claude Code / Cowork)마다 **"이 요청을 어디로 보낼지"를 적어둔 설정 행**을 하나씩 갖고 있습니다. DB의 **`model.routing_profiles`** 테이블이고, Cowork용은 **`client='cowork'`** 행입니다.
+게이트웨이는 클라이언트(Claude Code / Cowork)마다 **"이 요청을 어디로 보낼지"를 적어둔 설정 행**을 하나씩 갖고 있습니다. DB의 `model.routing_profiles` 테이블이고, Cowork용은 `client='cowork'` 행입니다.
 
-설치할 때 자동으로 채워지는데, **Cowork 행에는 실습용 예시값이 들어갑니다.** 구체적으로 **`account_role_arn`** 컬럼이 존재하지 않는 AWS 계정 번호를 가리킵니다.
+설치할 때 자동으로 채워지는데, **Cowork 행에는 실습용 예시값이 들어갑니다.** 구체적으로 `account_role_arn` 컬럼이 존재하지 않는 AWS 계정 번호를 가리킵니다.
 
-그래서 Cowork가 요청을 보내면 게이트웨이가 그 계정의 역할로 **`sts:AssumeRole`** 을 시도하다 실패합니다(보통 502로 보입니다). Claude Code 행(`client='claude-code'`)은 설치 과정에서 올바르게 채워지므로 영향이 없고, 그래서 **"Claude Code는 되는데 Cowork만 안 되는"** 모습이 됩니다.
+그래서 Cowork가 요청을 보내면 게이트웨이가 그 계정의 역할로 `sts:AssumeRole` 을 시도하다 실패합니다(보통 502로 보입니다). Claude Code 행(`client='claude-code'`)은 설치 과정에서 올바르게 채워지므로 영향이 없고, 그래서 **"Claude Code는 되는데 Cowork만 안 되는"** 모습이 됩니다.
 
 ### ② 모델을 새로 등록해도 Cowork에서는 못 씁니다
 
-같은 Cowork 행의 **`default_model`** 컬럼이 **"모델 고정" 스위치**로 동작합니다. `backend='mantle'` 과 함께 값이 채워져 있으면, 게이트웨이는 사용자가 고른 모델을 **무시하고** 이 컬럼에 적힌 모델로 바꿔서 처리합니다.
+같은 Cowork 행의 `default_model` 컬럼이 **"모델 고정" 스위치**로 동작합니다. `backend='mantle'` 과 함께 값이 채워져 있으면, 게이트웨이는 사용자가 고른 모델을 **무시하고** 이 컬럼에 적힌 모델로 바꿔서 처리합니다.
 
 ```
 Cowork 앱에서 "Claude Opus 5" 선택
@@ -44,20 +44,21 @@ Cowork는 게이트웨이 주소(`inferenceGatewayBaseUrl`)가 `https://` 로 �
 
 ### 직접 확인·디버깅할 때 쓸 이름
 
-| 이 문서의 표현 | 실제 이름 |
-|---|---|
-| 요청을 어디로 보낼지 적어둔 설정 행 | `model.routing_profiles` 테이블, `client` 컬럼이 키 |
-| 존재하지 않는 계정을 가리키는 값 | `routing_profiles.account_role_arn` |
-| 그 계정에 접속 시도 | `sts:AssumeRole` (실패 시 502) |
-| 모델 고정 스위치 | `routing_profiles.default_model` (+ `backend='mantle'` 일 때만 발동) |
-| 등록된 모델 목록 | `model.model_aliases` (`status='ACTIVE'` 인 것만 사용 가능) |
-| 모델 단가 | `model.model_pricings` |
-| 팀별 모델 허용목록 | `model.team_allowed_models` (행 0개 = 전체 허용) |
+
+| 이 문서의 표현             | 실제 이름                                                           |
+| -------------------- | --------------------------------------------------------------- |
+| 요청을 어디로 보낼지 적어둔 설정 행 | `model.routing_profiles` 테이블, `client` 컬럼이 키                    |
+| 존재하지 않는 계정을 가리키는 값   | `routing_profiles.account_role_arn`                             |
+| 그 계정에 접속 시도          | `sts:AssumeRole` (실패 시 502)                                     |
+| 모델 고정 스위치            | `routing_profiles.default_model` (+ `backend='mantle'` 일 때만 발동) |
+| 등록된 모델 목록            | `model.model_aliases` (`status='ACTIVE'` 인 것만 사용 가능)            |
+| 모델 단가                | `model.model_pricings`                                          |
+| 팀별 모델 허용목록           | `model.team_allowed_models` (행 0개 = 전체 허용)                      |
+
 
 현재 상태는 `00-preflight-check.sh` 가 이 테이블들을 그대로 조회해 보여줍니다.
 
-<details>
-<summary>근거 — 코드에서 확인하려면</summary>
+근거 — 코드에서 확인하려면
 
 `gateway-proxy/src/app/routers/messages.py:118`
 
@@ -79,9 +80,8 @@ account_role_arn=arn:aws:iam::<존재하지 않는 계정>:role/...
 
 `claude-code` 행은 `backend='invoke'`, `default_model=NULL` 이라 이 규칙이 발동하지 않습니다. `01` 은 Cowork 행을 이 모양으로 맞춥니다.
 
-</details>
-
 ---
+
 
 ## 실행 위치와 준비물
 
@@ -114,28 +114,32 @@ bash 00-preflight-check.sh
 
 ---
 
+
 ## 어느 스크립트가 무엇을 바꾸나
 
-| 스크립트 | 바꾸는 것 | 위험도 |
-|---|---|---|
-| `00-preflight-check.sh` | **없음** — 상태 조회·판정·스냅샷 | 없음 |
-| `01-fix-cowork-routing.sh` | `model.routing_profiles` 의 **행 1개** | 낮음. Claude Code 경로 무관 |
-| `02-add-opus5-model.sh` | `model_aliases` + `model_pricings` 에 **행 추가** (기존 미변경) | 낮음 |
-| `03-create-cloudfront.sh` | **CloudFront 배포 생성** + gateway Ingress 어노테이션 | ⚠️ 데이터플레인 접근 통제가 바뀝니다 (아래) |
-| `04-verify.sh` | **없음** — 검증 | 없음 |
-| `05-allow-client-ip.sh` | Ingress `inbound-cidrs` 어노테이션 | 낮음 |
-| `99-rollback.sh` | 위 변경 되돌리기 | — |
-| `_lib.sh` | 공통 함수 (직접 실행하지 않음) | — |
-| `config.env` | 설정값 (부작용 없음) | — |
+
+| 스크립트                       | 바꾸는 것                                                  | 위험도                        |
+| -------------------------- | ------------------------------------------------------ | -------------------------- |
+| `00-preflight-check.sh`    | **없음** — 상태 조회·판정·스냅샷                                  | 없음                         |
+| `01-fix-cowork-routing.sh` | `model.routing_profiles` 의 **행 1개**                    | 낮음. Claude Code 경로 무관      |
+| `02-add-opus5-model.sh`    | `model_aliases` + `model_pricings` 에 **행 추가** (기존 미변경) | 낮음                         |
+| `03-create-cloudfront.sh`  | **CloudFront 배포 생성** + gateway Ingress 어노테이션           | ⚠️ 데이터플레인 접근 통제가 바뀝니다 (아래) |
+| `04-verify.sh`             | **없음** — 검증                                            | 없음                         |
+| `05-allow-client-ip.sh`    | Ingress `inbound-cidrs` 어노테이션                          | 낮음                         |
+| `99-rollback.sh`           | 위 변경 되돌리기                                              | —                          |
+| `_lib.sh`                  | 공통 함수 (직접 실행하지 않음)                                     | —                          |
+| `config.env`               | 설정값 (부작용 없음)                                           | —                          |
+
 
 ### 공통 규약
 
 - **인자 없이 실행 = dry-run.** 현재값과 바꿀 내용만 출력하고 아무것도 건드리지 않습니다.
-- **`--apply` / `--create` 를 주어야 실제 변경**되며, 그때 `snapshots/` 에 원복 근거를 남깁니다.
+- `--apply` **/** `--create` **를 주어야 실제 변경**되며, 그때 `snapshots/` 에 원복 근거를 남깁니다.
 - 변경 전 `yes` 입력을 받습니다. (⚠️ 한글 입력기면 `ㅛ` 가 들어가 취소됩니다 — 영문으로)
 - 시작 시 **계정을 확인하고 불일치하면 즉시 중단**합니다. `config.env` 의 `AWS_ACCOUNT_ID` 가 그 기준입니다.
 
 ---
+
 
 ## 실행 순서
 
@@ -159,9 +163,13 @@ bash 05-allow-client-ip.sh --add <클라이언트IP>/32 --apply   # VK 발급 �
 bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 ```
 
+게이트웨이 쪽은 여기까지입니다. 이어지는 클라이언트(Cowork) 설치는 **`cowork-client-install.md`**.
+
 ---
 
+
 ## 알아야 할 것
+
 
 ### 왜 5분을 기다려야 하나
 
@@ -182,21 +190,19 @@ router_service.py:26          MODEL_LIST_CACHE_TTL = 300
 
 ### 왜 단가가 필수인가
 
-가격 행이 없으면 `router_service.py:51-52` 가 예외 없이 0으로 대체하고 `cost_recorder.py:24-39` 가 그대로 곱해 **비용을 $0으로 기록**합니다. 요청은 정상 성공하므로 눈치채기 어렵고, 그동안 예산이 통째로 우회됩니다.
+가격 행이 없으면 `router_service.py:51-52` 가 조용히 0으로 대체해 **비용이 $0으로 기록**됩니다. 요청은 정상 성공하므로 그동안 예산이 통째로 우회됩니다. 그래서 `02` 는 단가 없이 진행하지 않습니다.
 
-그래서 `02` 는 단가 없이 진행하지 않습니다. **`config.env` 에는 Opus 5 값이 이미 채워져 있으므로 그대로 두면 됩니다** — 다른 모델을 등록하거나 값을 바꿔야 할 때만 수정하십시오(`--input` 등 인자로 주면 그쪽이 우선).
+`config.env` 에 Opus 5 값이 이미 들어 있으니 **그대로 두면 됩니다** (1K 토큰당 USD):
 
-| 항목 | 1K 토큰당 USD | 근거 |
-|---|---|---|
-| input | `0.005000` | 공표 정가 $5 / 1M |
-| output | `0.025000` | 공표 정가 $25 / 1M |
-| cache write 5m | `0.006250` | input × 1.25 |
-| cache write 1h | `0.010000` | input × 2 |
-| cache read | `0.000500` | input × 0.1 |
 
-⚠️ 위 값은 **Anthropic 1st-party API 정가**입니다. Amazon Bedrock 요금은 AWS가 별도로 책정합니다. 실제로 Opus 계열은 두 값이 일치해 왔고 — 이 코드베이스의 벤더 마이그레이션도 Bedrock 대상으로 Opus 4.6·4.7·4.8 에 **정확히 같은 세트**를 심어 두었습니다(`0003_rename_cache_5m.py`, `0004_add_opus_4_6.py`, `0006_add_opus_4_8.py`) — 비용 정확도가 중요하다면 실제 청구서와 한 번 대조하십시오.
+| input   | output  | cache 5m  | cache 1h | cache read |
+| ------- | ------- | --------- | -------- | ---------- |
+| `0.005` | `0.025` | `0.00625` | `0.010`  | `0.0005`   |
 
-**자동 조회는 불가능합니다.** AWS Pricing API(`AmazonBedrock`)는 Claude 3까지만 담고 있고, 신규 모델은 공개 요금 페이지에도 올라오지 않는 경우가 있습니다. 즉 이 값은 **조용히 낡습니다** — 확인한 날짜를 `MODEL_PRICE_ASOF` 에 적어두는 것이 유일한 감지 수단입니다. 기존 모델들의 현재 값은 `00-preflight-check.sh` 가 함께 보여줍니다.
+
+정가 $5·$25 per 1M + 캐시 표준 배수(×1.25 / ×2 / ×0.1). 다른 모델을 등록할 때만 고치십시오(`--input` 등 인자가 우선).
+
+⚠️ Anthropic 1st-party 정가입니다. Bedrock 은 AWS 가 별도 책정하지만 Opus 계열은 일치해 왔고, 벤더 마이그레이션(`0004`·`0006`)도 Bedrock 대상 Opus 4.6·4.8 에 같은 세트를 씁니다. 비용 정확도가 중요하면 청구서와 대조하십시오.
 
 ### ⚠️ 보안그룹을 직접 고치지 마십시오
 
@@ -213,29 +219,19 @@ alb.ingress.kubernetes.io/security-group-prefix-lists ← CloudFront 등 관리�
 
 `03` 과 `05` 는 어노테이션을 바꾸고, **컨트롤러가 실제로 SG에 반영하는지 90초간 확인**한 뒤 결과를 알려줍니다.
 
-**영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음 `helm upgrade` 때 사라집니다.** 영구 적용하려면 values의 `ingress.annotations` 를 함께 갱신해야 하며, 스크립트가 실행 시 해당 스니펫을 출력합니다.
+**영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음** `helm upgrade` **때 사라집니다.** 영구 적용하려면 values의 `ingress.annotations` 를 함께 갱신해야 하며, 스크립트가 실행 시 해당 스니펫을 출력합니다.
 
 ### `03 --allow-cloudfront` 의 보안 성격 변경
 
 CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받아줘야 합니다. 그 결과 데이터플레인의 접근 통제가 바뀝니다.
 
-| | 변경 전 | 변경 후 |
-|---|---|---|
-| gateway ALB 도달 | 허용된 IP만 | CloudFront 경유 시 누구나 |
-| 실질 접근 통제 | IP + VK | **VK 단독** |
-| admin-api / admin-ui | IP 제한 | **IP 제한 유지 (변경 없음)** |
 
-데이터플레인을 공개하고 VK 인증에 일임하는 것은 이미 운영 중인 배포들이 쓰는 모델이지만, **IP로 잠근 설계였다면 그 성격이 바뀌는 변경**이므로 승인 후 진행하십시오.
+|                      | 변경 전    | 변경 후                 |
+| -------------------- | ------- | -------------------- |
+| gateway ALB 도달       | 허용된 IP만 | CloudFront 경유 시 누구나  |
+| 실질 접근 통제             | IP + VK | **VK 단독**            |
+| admin-api / admin-ui | IP 제한   | **IP 제한 유지 (변경 없음)** |
 
-**하드닝 후보**: CloudFront 배포에 WAF IP set 부착, 또는 커스텀 오리진 헤더 + `alb.ingress.kubernetes.io/conditions.*` 로 오리진에서 검사.
-
-### `team_allowed_models` 함정
-
-행이 **0개면 전체 허용**, **1개라도 있으면 화이트리스트** 입니다. 후자면 신규 모델은 `400 invalid_request_error` 가 됩니다 (403이 아닌 것은 Claude Code가 `/login` 을 띄우지 않게 하려는 의도 — `fallback_loop.py:171-196`).
-
-`00` 이 이걸 판정합니다. 화이트리스트면 `02 --team-id <uuid>` 로 팀 행도 함께 넣으십시오.
-
-⚠️ `user_allowed_models` 는 **0행이 전체 허용이 아니라 "팀으로 위임"** 입니다(`auth_service.py:109-121`). 행이 있는 사용자는 팀 설정을 무시하므로 별도로 넣어야 합니다.
 
 ### `05` 가 필요한 이유
 
@@ -249,33 +245,39 @@ ssh -i <key> ubuntu@<대상 리전 EC2> 'echo $SSH_CLIENT'   # 작은따옴표 �
 
 ---
 
+
 ## 검증
 
 `04-verify.sh` 가 세 층을 확인합니다.
 
-| 층 | 확인 | 왜 |
-|---|---|---|
-| A | DB 상태 | 설정이 들어갔는가 |
-| B | 종단 호출 | 실제로 통하는가 |
-| C | `usage_logs` 비용 | 통했는데 제대로 기록되는가 |
+
+| 층   | 확인              | 왜              |
+| --- | --------------- | -------------- |
+| A   | DB 상태           | 설정이 들어갔는가      |
+| B   | 종단 호출           | 실제로 통하는가       |
+| C   | `usage_logs` 비용 | 통했는데 제대로 기록되는가 |
+
 
 A만 보고 끝내면 조용한 실패를 놓칩니다. C에서 `$0` 이 나오면 가격 행이 잘못 들어간 것입니다.
 
-B는 **`anthropic-client-platform: desktop_app` 헤더로 Cowork를 흉내** 냅니다(`client_identifier.py:38-45`). Cowork 앱을 설치하기 전에 서버측을 확정할 수 있습니다.
+B는 `anthropic-client-platform: desktop_app` **헤더로 Cowork를 흉내** 냅니다(`client_identifier.py:38-45`). Cowork 앱을 설치하기 전에 서버측을 확정할 수 있습니다.
 
 실패 시 판별표를 함께 출력합니다:
 
-| 증상 | 원인 |
-|---|---|
-| 404 `not_found_error` | alias 미등록 / INACTIVE / **캐시 미만료(5분 더 대기)** |
-| 400 "does not have access" | `team_allowed_models` 화이트리스트 |
-| 502 / AssumeRole 오류 | `01` 미적용 또는 라우팅 캐시 미만료 |
-| 403 | VK 만료 |
-| CloudFront 502/504 | `03 --allow-cloudfront` 누락 |
+
+| 증상                         | 원인                                         |
+| -------------------------- | ------------------------------------------ |
+| 404 `not_found_error`      | alias 미등록 / INACTIVE / **캐시 미만료(5분 더 대기)** |
+| 400 "does not have access" | `team_allowed_models` 화이트리스트               |
+| 502 / AssumeRole 오류        | `01` 미적용 또는 라우팅 캐시 미만료                     |
+| 403                        | VK 만료                                      |
+| CloudFront 502/504         | `03 --allow-cloudfront` 누락                 |
+
 
 ⚠️ 검증 시 `max_tokens` 를 작게 잡지 마십시오. 최신 모델은 `thinking` 블록을 먼저 냅니다 — 작으면 그것만으로 예산이 소진되어 `text` 가 빈 채로 돌아오고, "빈 응답"으로 오진하기 쉽습니다. 64 이상을 권합니다.
 
 ---
+
 
 ## 롤백
 
@@ -287,28 +289,10 @@ bash 99-rollback.sh --cloudfront    # 03 → 절차 출력 (전파 대기 때문
 bash 05-allow-client-ip.sh --remove <IP>/32 --apply    # 05 되돌리기
 ```
 
-원복 값은 문서나 기억이 아니라 **적용 시점에 실제 DB에서 읽어 `snapshots/` 에 남긴 SQL** 입니다.
+원복 값은 문서나 기억이 아니라 **적용 시점에 실제 DB에서 읽어** `snapshots/` **에 남긴 SQL** 입니다.
 
 모델은 **DELETE하지 않고 INACTIVE** 로 내립니다 — `model_aliases` 를 참조하는 FK가 여럿인데 `ON DELETE` 절이 없습니다.
 
 롤백도 반영에 5분 걸립니다.
 
 ---
-
-## 이 변경이 끝난 뒤 (범위 밖)
-
-클라이언트(Windows/macOS) 설치는 별도 작업입니다.
-
-`uv` → `gateway-cli` 설치 → `gateway-cli login`(OIDC) → credential helper 작성 → 관리형 설정(Windows는 `HKLM\SOFTWARE\Policies\Claude`, macOS는 `.mobileconfig`) → Claude Desktop 실행 → **Help → Troubleshooting → Copy Managed Configuration Report** 로 확인.
-
-Cowork 설정에 들어갈 값:
-
-```
-inferenceProvider          = "gateway"
-inferenceGatewayBaseUrl    = "https://<03 이 출력한 CloudFront 도메인>"
-inferenceGatewayAuthScheme = "bearer"
-inferenceCredentialHelper  = "<helper 절대경로>"
-inferenceModels            = <config.env 의 MODEL_ALIAS 및 기존 ACTIVE alias 들>
-```
-
-⚠️ `gateway-cli` 는 **fork에서 설치**하십시오. upstream에는 벤더 버그 픽스가 빠져 있어, 설치는 성공한 것처럼 보이는데 인증이 조용히 개인 계정으로 새는 등의 문제가 있습니다.
