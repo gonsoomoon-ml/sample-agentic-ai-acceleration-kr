@@ -83,6 +83,7 @@ account_role_arn=arn:aws:iam::<존재하지 않는 계정>:role/...
 ---
 
 
+
 ## 실행 위치와 준비물
 
 **설치할 때 쓴 배포 작업용 EC2(Deployment EC2, 설치 가이드 §1-2)에서 실행합니다.** 랩톱이나 다른 머신에서는 동작하지 않습니다 — DB가 프라이빗 VPC 안에 있어 그 EC2를 거쳐야 하고, 클러스터 접근에 필요한 kubeconfig도 거기에 있습니다.
@@ -131,21 +132,24 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 ---
 
 
+
 ## 어느 스크립트가 무엇을 바꾸나
 
 
-| 스크립트                       | 바꾸는 것                                                  | 위험도                        |
-| -------------------------- | ------------------------------------------------------ | -------------------------- |
-| `00-preflight-check.sh`    | **없음** — 상태 조회·판정·스냅샷                                  | 없음                         |
-| `01-fix-cowork-routing.sh` | `model.routing_profiles` 의 **행 1개**                    | 낮음. Claude Code 경로 무관      |
-| `02-add-opus5-model.sh`    | `model_aliases` + `model_pricings` 에 **행 추가** (기존 미변경) | 낮음                         |
-| `03-create-cloudfront.sh`  | **CloudFront 배포 생성** + gateway Ingress 어노테이션           | ⚠️ 데이터플레인 접근 통제가 바뀝니다 (아래) |
-| `04-verify.sh`             | **없음** — 검증                                            | 없음                         |
-| `05-allow-client-ip.sh`    | Ingress `inbound-cidrs` 어노테이션                          | 낮음                         |
-| `06-persist-annotations.sh`| **helm values 파일** (`03`·`05` 의 어노테이션을 영구화)          | 낮음. helm 을 돌리지 않음        |
-| `99-rollback.sh`           | 위 변경 되돌리기                                              | —                          |
-| `_lib.sh`                  | 공통 함수 (직접 실행하지 않음)                                     | —                          |
-| `config.env`               | 설정값 (부작용 없음)                                           | —                          |
+| 스크립트                        | 바꾸는 것                                                  | 위험도                        |
+| --------------------------- | ------------------------------------------------------ | -------------------------- |
+| `00-preflight-check.sh`     | **없음** — 상태 조회·판정·스냅샷                                  | 없음                         |
+| `01-fix-cowork-routing.sh`  | `model.routing_profiles` 의 **행 1개**                    | 낮음. Claude Code 경로 무관      |
+| `02-add-opus5-model.sh`     | `model_aliases` + `model_pricings` 에 **행 추가** (기존 미변경) | 낮음                         |
+| `03-create-cloudfront.sh`   | **CloudFront 배포 생성** + gateway Ingress 어노테이션           | ⚠️ 데이터플레인 접근 통제가 바뀝니다 (아래) |
+| `04-verify.sh`              | **없음** — 검증                                            | 없음                         |
+| `05-allow-client-ip.sh`     | Ingress `inbound-cidrs` 어노테이션                          | 낮음                         |
+| `06-persist-annotations.sh` | **helm values 파일** (`05` 의 IP 허용목록을 영구화)            | 낮음. helm 을 돌리지 않음          |
+| `99-rollback.sh`            | 위 변경 되돌리기                                              | —                          |
+| `_lib.sh`                   | 공통 함수 (직접 실행하지 않음)                                     | —                          |
+| `config.env`                | 설정값 (부작용 없음)                                           | —                          |
+
+
 
 
 ### 공통 규약
@@ -156,6 +160,7 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 - 시작 시 **계정을 확인하고 불일치하면 즉시 중단**합니다. `config.env` 의 `AWS_ACCOUNT_ID` 가 그 기준입니다.
 
 ---
+
 
 
 ## 실행 순서
@@ -178,7 +183,7 @@ bash 03-create-cloudfront.sh --allow-cloudfront   # 안 하면 502
 bash 05-allow-client-ip.sh --add <Cowork 를 돌릴 PC 의 공인IP>/32 --apply
 
 bash 06-persist-annotations.sh             # 확인
-bash 06-persist-annotations.sh --apply     # 03·05 어노테이션을 values 에 반영
+bash 06-persist-annotations.sh --apply     # 05 의 IP 허용목록을 values 에 반영
 
 #   ↑ 여기서 5분 대기 (캐시), CloudFront 전파는 5~15분
 
@@ -188,22 +193,26 @@ bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 
 ⏱ **DB 를 건드리는 스크립트는 조회 중에 화면이 멈춥니다 — 정상입니다.** DB 가 프라이빗 VPC 안이라 조회할 때마다 클러스터에 임시 psql 파드를 띄우는데, Fargate 가 파드 하나를 스케줄하는 데 **1~2분**을 씁니다. 그동안 아무 출력도 없으니 hang 으로 오해하기 쉽습니다. 실측:
 
-| 스크립트 | 소요 | 비고 |
-|---|---|---|
-| `00-preflight-check.sh` | **2~3분** | 조회 3회 |
-| `01` dry-run / `--apply` | 각 **2분** | |
-| `02` dry-run / `--apply` | 각 **2분** | |
-| `04-verify.sh` | **2분** + curl | |
-| `03` · `05` | 수 초 | DB 를 안 씀 |
+
+| 스크립트                     | 소요            | 비고       |
+| ------------------------ | ------------- | -------- |
+| `00-preflight-check.sh`  | **2~3분**      | 조회 3회    |
+| `01` dry-run / `--apply` | 각 **2분**      |          |
+| `02` dry-run / `--apply` | 각 **2분**      |          |
+| `04-verify.sh`           | **2분** + curl |          |
+| `03` · `05`              | 수 초           | DB 를 안 씀 |
+
 
 `Ctrl+C` 로 끊지 마십시오 — `--apply` 중이라면 스냅샷만 남고 변경이 반쯤 들어갈 수 있습니다.
 
-게이트웨이 쪽은 여기까지입니다. 이어지는 클라이언트(Cowork) 설치는 **`cowork-client-install.md`**.
+게이트웨이 쪽은 여기까지입니다. 이어지는 클라이언트(Cowork) 설치는 `cowork-client-install.md`.
 
 ---
 
 
+
 ## 알아야 할 것
+
 
 
 ### 왜 5분을 기다려야 하나
@@ -254,7 +263,13 @@ alb.ingress.kubernetes.io/security-group-prefix-lists ← CloudFront 등 관리�
 
 `03` 과 `05` 는 어노테이션을 바꾸고, **컨트롤러가 실제로 SG에 반영하는지 90초간 확인**한 뒤 결과를 알려줍니다.
 
-**영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음** `helm upgrade` **때 사라집니다** — CloudFront 허용 규칙(`03`)이나 클라이언트 IP 목록(`05`)이 함께 없어지고, diff 에는 이유가 남지 않습니다. `06-persist-annotations.sh` 가 살아 있는 Ingress 의 값을 읽어 values 파일에 써 넣습니다(helm 은 돌리지 않고 파일만).
+**영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음** `helm upgrade` **때 사라지고**, diff 에는 이유가 남지 않습니다.
+
+`06-persist-annotations.sh` 가 `inbound-cidrs`(=`05` 가 바꾸는 값)를 values 에 써 넣습니다. 다만 **`security-group-prefix-lists`(=`03`)는 일부러 쓰지 않습니다.** 이 차트는 세 Ingress 를 **하나의 `ingress.annotations` 로 렌더**하므로(`templates/common/ingress.yaml:22,58,100`), values 에 넣으면 admin-api·admin-ui 까지 CloudFront 대역에 열립니다 — 누구든 자기 CloudFront 배포를 그 ALB 로 향하게 해 IP 제한을 우회할 수 있습니다.
+
+⚠️ 따라서 **`helm upgrade` 를 돌릴 때마다 `03 --allow-cloudfront` 를 다시 실행해야 합니다.** 안 하면 CloudFront 경유 요청이 전부 502 입니다. `06` 이 실행할 때마다 이 사실을 출력합니다. 근본 해결은 차트에 per-Ingress 어노테이션을 넣는 것입니다.
+
+같은 이유로 `06` 은 세 Ingress 의 `inbound-cidrs` **합집합**을 씁니다 — 차트가 표현할 수 있는 것이 그것뿐입니다.
 
 ### `03 --allow-cloudfront` 의 보안 성격 변경
 
@@ -266,6 +281,8 @@ CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받
 | gateway ALB 도달       | 허용된 IP만 | CloudFront 경유 시 누구나  |
 | 실질 접근 통제             | IP + VK | **VK 단독**            |
 | admin-api / admin-ui | IP 제한   | **IP 제한 유지 (변경 없음)** |
+
+
 
 
 ### VK 얻기
@@ -287,7 +304,7 @@ cd ~/awsome-ai-gateway && bash scripts/onboard-macos-linux.sh
 
 > `--setup-claude-code` 를 빼면 **로그인만** 하고 끝납니다. Claude Code 설정은 건드리지 않습니다.
 
-⚠️ **로그인은 브라우저 PKCE 이고 콜백이 `localhost:8090` 입니다.** 헤드리스 서버에서 돌린다면 브라우저가 그 포트에 닿아야 하므로 터널을 먼저 여십시오. Cognito 콜백 화이트리스트는 `8090`·`8091`·`8092` 3개뿐이라 그중에서 골라야 합니다.
+⚠️ **로그인은 브라우저 PKCE 이고 콜백이** `localhost:8090` **입니다.** 헤드리스 서버에서 돌린다면 브라우저가 그 포트에 닿아야 하므로 터널을 먼저 여십시오. Cognito 콜백 화이트리스트는 `8090`·`8091`·`8092` 3개뿐이라 그중에서 골라야 합니다.
 
 ```bash
 ssh -L 8090:localhost:8090 -i <key> ubuntu@<EC2 공인IP>
@@ -325,6 +342,7 @@ ssh -i <key> ubuntu@<대상 리전 EC2> 'echo $SSH_CLIENT'   # 작은따옴표 �
 ---
 
 
+
 ## 검증
 
 `04-verify.sh` 가 세 층을 확인합니다.
@@ -358,6 +376,7 @@ B는 `anthropic-client-platform: desktop_app` **헤더로 Cowork를 흉내** 냅
 ---
 
 
+
 ## 롤백
 
 ```bash
@@ -375,3 +394,4 @@ bash 05-allow-client-ip.sh --remove <IP>/32 --apply    # 05 되돌리기
 롤백도 반영에 5분 걸립니다.
 
 ---
+
