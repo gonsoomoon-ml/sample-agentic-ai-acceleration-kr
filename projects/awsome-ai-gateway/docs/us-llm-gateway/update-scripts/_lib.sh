@@ -66,6 +66,13 @@ load_config() {
   : "${MODEL_PROVIDER_ID:=us.anthropic.claude-opus-5}"
   : "${MODEL_DISPLAY_NAME:=Claude Opus 5}"
   : "${MODEL_DESCRIPTION:=Claude Opus 5 (US Geo)}"
+  # Prices intentionally have no default — see 02-add-opus5-model.sh
+  : "${MODEL_PRICE_INPUT:=}"
+  : "${MODEL_PRICE_OUTPUT:=}"
+  : "${MODEL_PRICE_CACHE_5M:=}"
+  : "${MODEL_PRICE_CACHE_1H:=}"
+  : "${MODEL_PRICE_CACHE_READ:=}"
+  : "${MODEL_PRICE_ASOF:=}"
   : "${DB_HOST:=}"
   : "${CF_PREFIX_LIST:=}"
   : "${REFERENCE_CF_DIST_ID:=}"
