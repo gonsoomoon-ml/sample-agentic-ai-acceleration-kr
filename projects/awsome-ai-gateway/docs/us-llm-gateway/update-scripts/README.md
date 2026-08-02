@@ -123,7 +123,7 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 bash 00-preflight-check.sh
 ```
 
-`config.env` 와 실행 중 생기는 `snapshots/` 는 `.gitignore` 에 있어 다음 `git pull` 을 방해하지 않습니다. 여러분의 계정 값이 저장소로 올라가지도 않습니다.
+`config.env` 와 실행 중 생기는 `snapshots/` 는 `.gitignore` 대상이라 위 `reset --hard` 로도 **지워지지 않고**, 다음 갱신을 방해하지도 않습니다. 여러분의 계정 값이 저장소로 올라가지도 않습니다.
 
 `00` 은 읽기 전용입니다. 설정이 어떻게 해석됐는지, 자동 탐지가 무엇을 찾았는지 먼저 보여주므로 **여기서 값이 맞는지 확인**하고 진행하십시오.
 
