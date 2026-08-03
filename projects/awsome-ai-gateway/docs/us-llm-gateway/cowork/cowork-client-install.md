@@ -652,9 +652,7 @@ Set-ItemProperty $K chatTabEnabled "true"
 
 마지막 줄이 `true` 를 찍어야 합니다. 아무것도 안 찍히면 값이 안 들어간 것입니다.
 
-이제 앱을 **완전히** 종료합니다. 창을 닫아도 백그라운드에 남아 있을 수 있는데, 그러면 설정을 다시 읽지 않습니다. 아래 한 줄이면 확실합니다 — 안 떠 있으면 아무 일도 일어나지 않습니다.
-
-▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
+이제 앱을 **완전히** 종료합니다. 창을 닫아도 백그라운드에 남아 있을 수 있는데, 그러면 설정을 다시 읽지 않습니다. 아래 한 줄이면 확실합니다 — 안 떠 있으면 아무 일도 일어나지 않습니다. **같은 관리자 창에서 이어서** 하시면 됩니다.
 
 ```powershell
 Get-Process -Name "*laude*" -ErrorAction SilentlyContinue | Stop-Process -Force
