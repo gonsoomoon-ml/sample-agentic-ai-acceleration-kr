@@ -12,7 +12,6 @@ Claude Code는 잘 되는데 Cowork만 안 되는 상태를 고칩니다. 원인
 
 ### ① Cowork 요청이 전부 실패합니다
 
-
 게이트웨이는 클라이언트(Claude Code / Cowork)마다 **"이 요청을 어디로 보낼지"를 적어둔 설정 행**을 하나씩 갖고 있습니다. DB의 `model.routing_profiles` 테이블이고, Cowork용은 `client='cowork'` 행입니다.
 
 설치할 때 자동으로 채워지는데, **Cowork 행에는 실습용 예시값이 들어갑니다.** 구체적으로 `account_role_arn` 컬럼이 존재하지 않는 AWS 계정 번호를 가리킵니다.
@@ -20,7 +19,6 @@ Claude Code는 잘 되는데 Cowork만 안 되는 상태를 고칩니다. 원인
 그래서 Cowork가 요청을 보내면 게이트웨이가 그 계정의 역할로 `sts:AssumeRole` 을 시도하다 실패합니다(보통 502로 보입니다). Claude Code 행(`client='claude-code'`)은 설치 과정에서 올바르게 채워지므로 영향이 없고, 그래서 **"Claude Code는 되는데 Cowork만 안 되는"** 모습이 됩니다.
 
 ### ② 모델을 새로 등록해도 Cowork에서는 못 씁니다
-
 
 같은 Cowork 행의 `default_model` 컬럼이 **"모델 고정" 스위치**로 동작합니다. `backend='mantle'` 과 함께 값이 채워져 있으면, 게이트웨이는 사용자가 고른 모델을 **무시하고** 이 컬럼에 적힌 모델로 바꿔서 처리합니다.
 
@@ -38,12 +36,11 @@ Cowork 앱에서 "Claude Opus 5" 선택
 
 ### ③ Cowork는 `https://` 주소를 요구합니다
 
-
 Cowork는 게이트웨이 주소(`inferenceGatewayBaseUrl`)가 `https://` 로 시작해야 연결합니다. 게이트웨이 ALB가 HTTP만 열려 있고 ACM 인증서·퍼블릭 호스팅영역이 없다면, 도메인을 새로 사지 않고 https를 얻는 방법은 CloudFront를 앞에 세우는 것입니다.
 
 ---
 
-`01` 이 ①②를 (`routing_profiles` 의 `cowork` 행을 `claude-code` 행과 같은 모양으로 고칩니다), `03` 이 ③을 해결합니다.
+`01-fix-cowork-routing.sh` 가 ①②를 (`routing_profiles` 의 `cowork` 행을 `claude-code` 행과 같은 모양으로 고칩니다), `03-create-cloudfront.sh` 가 ③을 해결합니다.
 
 ## 실행 위치와 준비물
 
@@ -69,9 +66,7 @@ cp ~/values.bak $V
 cd docs/us-llm-gateway/update-scripts
 ```
 
-그 외 파일이 `git status` 에 나왔다면 같은 방식으로 복사해 두십시오. **이 기계에서 직접 커밋한 것이 있다면** 지워지므로 아래 「이 기계에서 직접 커밋한 적이 있다면」을 먼저 보십시오.
-
-> `~/awsome-ai-gateway` 는 설치 가이드 §1-4 가 만든 **심링크**로 이미 `projects/awsome-ai-gateway` 안입니다. 저장소 루트에서 시작한다면 마지막 줄이 `cd projects/awsome-ai-gateway/docs/us-llm-gateway/update-scripts`. 브랜치는 `us/deploy-fixes`.
+그 외 파일이 `git status` 에 나왔다면 같은 방식으로 복사해 두십시오.
 
 ⚠️ **지우고 재클론하지 마십시오.** `terraform.tfvars`·`.terraform/` 는 gitignore 대상이라 `git status` 에 안 보이면서 `rm -rf` 로는 사라지고 재클론으로 복구되지 않습니다. `reset --hard` 는 추적 파일만 되돌리므로 이들은 남습니다.
 
@@ -86,12 +81,7 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 
 `config.env` 와 실행 중 생기는 `snapshots/` 는 `.gitignore` 대상이라 위 `reset --hard` 로도 **지워지지 않고**, 다음 갱신을 방해하지도 않습니다. 여러분의 계정 값이 저장소로 올라가지도 않습니다.
 
-**여기까지가 준비입니다.** 실행은 다음 절의 순서를 그대로 따르십시오 — 맨 처음 `00` 이 읽기 전용으로 설정이 어떻게 해석됐는지, 자동 탐지가 무엇을 찾았는지 보여줍니다. 값이 틀렸으면 거기서 멈추면 됩니다.
-
-> 배포 EC2는 인스턴스 역할로 AWS에 접근하므로 `AWS_PROFILE` 을 따로 설정할 필요가 없습니다. 다른 자격증명이 잡혀 있으면 계정 가드가 걸러냅니다.
-
----
-
+**여기까지가 준비입니다.** 실행은 다음 절의 순서를 그대로 따르십시오 — 맨 처음 `00-preflight-check.sh` 가 읽기 전용으로 설정이 어떻게 해석됐는지, 자동 탐지가 무엇을 찾았는지 보여줍니다. 값이 틀렸으면 거기서 멈추면 됩니다.
 
 ## 어느 스크립트가 무엇을 바꾸나
 
@@ -104,10 +94,12 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 | `03-create-cloudfront.sh`   | **CloudFront 배포 생성** + gateway Ingress 어노테이션           | ⚠️ 데이터플레인 접근 통제가 바뀝니다 (아래) |
 | `04-verify.sh`              | **없음** — 검증                                            | 없음                         |
 | `05-allow-client-ip.sh`     | Ingress `inbound-cidrs` 어노테이션                          | 낮음                         |
-| `06-persist-annotations.sh` | **helm values 파일** (`05` 의 IP 허용목록을 영구화)            | 낮음. helm 을 돌리지 않음          |
+| `06-persist-annotations.sh` | **helm values 파일** (`05-allow-client-ip.sh` 의 IP 허용목록을 영구화)               | 낮음. helm 을 돌리지 않음          |
 | `99-rollback.sh`            | 위 변경 되돌리기                                              | —                          |
 | `_lib.sh`                   | 공통 함수 (직접 실행하지 않음)                                     | —                          |
 | `config.env`                | 설정값 (부작용 없음)                                           | —                          |
+
+
 
 
 ### 공통 규약
@@ -120,9 +112,10 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 ---
 
 
+
 ## 실행 순서
 
-⚠️ **파일 번호는 실행 순서가 아니라 변경 ID 입니다.** `04-verify.sh` 는 번호와 달리 **맨 마지막**에 돌립니다 — `05`·`06` 이 나중에 추가됐고 둘 다 검증보다 앞에 와야 하기 때문입니다. 기준은 아래 목록입니다.
+⚠️ **파일 번호는 실행 순서가 아니라 변경 ID 입니다.** `04-verify.sh` 는 번호와 달리 **맨 마지막**에 돌립니다 — `05-allow-client-ip.sh`·`06-persist-annotations.sh` 가 나중에 추가됐고 둘 다 검증보다 앞에 와야 하기 때문입니다. 기준은 아래 목록입니다.
 
 ```bash
 bash 00-preflight-check.sh                 # 항상 먼저. 읽기 전용 (2~3분)
@@ -151,13 +144,13 @@ bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 ⏱ **DB 를 건드리는 스크립트는 조회 중에 화면이 멈춥니다 — 정상입니다.** DB 가 프라이빗 VPC 안이라 조회할 때마다 클러스터에 임시 psql 파드를 띄우는데, Fargate 가 파드 하나를 스케줄하는 데 **1~2분**을 씁니다. 그동안 아무 출력도 없으니 hang 으로 오해하기 쉽습니다. dry-run 은 조회가 더 적습니다.
 
 
-| 스크립트                       | DB 조회    | 대략             |
-| -------------------------- | -------- | -------------- |
-| `00-preflight-check.sh`    | 3회       | 3~5분           |
-| `01-fix-cowork-routing.sh` | 최대 3회    | 2~5분           |
-| `02-add-opus5-model.sh`    | 최대 5회    | 3~8분           |
-| `04-verify.sh`             | 2회       | 2~4분 + 종단 curl |
-| `03` · `05` · `06`         | 없음       | 수 초            |
+| 스크립트                       | DB 조회 | 대략             |
+| -------------------------- | ----- | -------------- |
+| `00-preflight-check.sh`    | 3회    | 3~5분           |
+| `01-fix-cowork-routing.sh` | 최대 3회 | 2~5분           |
+| `02-add-opus5-model.sh`    | 최대 5회 | 3~8분           |
+| `04-verify.sh`             | 2회    | 2~4분 + 종단 curl |
+| `03` · `05` · `06`         | 없음    | 수 초            |
 
 
 `Ctrl+C` 로 끊지 마십시오 — `--apply` 중이라면 스냅샷만 남고 변경이 반쯤 들어갈 수 있습니다.
@@ -165,6 +158,7 @@ bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 게이트웨이 쪽은 여기까지입니다. 이어지는 클라이언트(Cowork) 설치는 `cowork-client-install.md`.
 
 ---
+
 
 
 ## 검증
@@ -186,20 +180,21 @@ B는 `anthropic-client-platform: desktop_app` **헤더로 Cowork를 흉내** 냅
 실패 시 판별표를 함께 출력합니다:
 
 
-| 증상                         | 원인                                         |
-| -------------------------- | ------------------------------------------ |
-| 404 `not_found_error`      | alias 미등록 / INACTIVE / **캐시 미만료(5분 더 대기)** |
-| 400 "does not have access" | `team_allowed_models` 화이트리스트               |
-| 502 `provider_error`       | **간헐적이면** 「문제가 생기면 · 간헐적인 502 / 504」    |
-| 502 / AssumeRole 오류        | `01` 미적용 또는 라우팅 캐시 미만료                     |
-| 403                        | VK 만료                                      |
-| 504 (정확히 60초)              | 오리진이 60초 안에 응답 못 함 → 같은 절                 |
+| 증상                         | 원인                                          |
+| -------------------------- | ------------------------------------------- |
+| 404 `not_found_error`      | alias 미등록 / INACTIVE / **캐시 미만료(5분 더 대기)**  |
+| 400 "does not have access" | `team_allowed_models` 화이트리스트                |
+| 502 `provider_error`       | **간헐적이면** 「문제가 생기면 · 간헐적인 502 / 504」        |
+| 502 / AssumeRole 오류        | `01-fix-cowork-routing.sh` 미적용 또는 라우팅 캐시 미만료                      |
+| 403                        | VK 만료                                       |
+| 504 (정확히 60초)              | 오리진이 60초 안에 응답 못 함 → 같은 절                   |
 | CloudFront 502 (매번)        | `03 --allow-cloudfront` 누락 — 오리진 도달 자체가 안 됨 |
 
 
 ⚠️ 검증 시 `max_tokens` 를 작게 잡지 마십시오. 최신 모델은 `thinking` 블록을 먼저 냅니다 — 작으면 그것만으로 예산이 소진되어 `text` 가 빈 채로 돌아오고, "빈 응답"으로 오진하기 쉽습니다. 64 이상을 권합니다.
 
 ---
+
 
 
 ## 롤백
@@ -220,12 +215,13 @@ bash 05-allow-client-ip.sh --remove <IP>/32 --apply    # 05 되돌리기
 
 ---
 
+
+
 ## 각 단계 보충
 
 실행 순서의 특정 줄이 왜 필요한지에 대한 설명입니다.
 
 ### 왜 5분을 기다려야 하나
-
 
 관련 캐시가 전부 TTL 300초입니다.
 
@@ -244,8 +240,7 @@ router_service.py:26          MODEL_LIST_CACHE_TTL = 300
 
 ### 왜 단가가 필수인가
 
-
-가격 행이 없으면 `router_service.py:51-52` 가 조용히 0으로 대체해 **비용이 $0으로 기록**됩니다. 요청은 정상 성공하므로 그동안 예산이 통째로 우회됩니다. 그래서 `02` 는 단가 없이 진행하지 않습니다.
+가격 행이 없으면 `router_service.py:51-52` 가 조용히 0으로 대체해 **비용이 $0으로 기록**됩니다. 요청은 정상 성공하므로 그동안 예산이 통째로 우회됩니다. 그래서 `02-add-opus5-model.sh` 는 단가 없이 진행하지 않습니다.
 
 `config.env` 에 Opus 5 값이 이미 들어 있으니 **그대로 두면 됩니다** (1K 토큰당 USD):
 
@@ -259,8 +254,7 @@ router_service.py:26          MODEL_LIST_CACHE_TTL = 300
 
 ⚠️ Anthropic 1st-party 정가입니다. Bedrock 은 AWS 가 별도 책정하지만 Opus 계열은 일치해 왔고, 벤더 마이그레이션(`0004`·`0006`)도 Bedrock 대상 Opus 4.6·4.8 에 같은 세트를 씁니다. 비용 정확도가 중요하면 청구서와 대조하십시오.
 
-### `05` 가 필요한 이유
-
+### `05-allow-client-ip.sh` 가 필요한 이유
 
 CloudFront를 세우면 추론은 어디서든 되지만, **VK를 받아오는 경로는 별개**입니다. `gateway-cli login` 과 `api-key-helper` 는 admin-api를 직접 치고 admin-api는 IP로 잠겨 있습니다.
 
@@ -277,10 +271,10 @@ ssh -i <key> ubuntu@<대상 리전 EC2> 'echo $SSH_CLIENT'   # 작은따옴표 �
 ---
 
 
+
 ### VK 얻기
 
-
-`04` 는 실제로 요청을 보내므로 Virtual Key 가 필요합니다. 게이트웨이에 이미 온보딩된 머신(배포 EC2 포함)이라면 한 줄입니다.
+`04-verify.sh` 는 실제로 요청을 보내므로 Virtual Key 가 필요합니다. 게이트웨이에 이미 온보딩된 머신(배포 EC2 포함)이라면 한 줄입니다.
 
 ```bash
 api-key-helper 2>/dev/null | grep -m1 '^vk-'
@@ -303,17 +297,19 @@ cd ~/awsome-ai-gateway && bash scripts/onboard-macos-linux.sh
 ssh -L 8090:localhost:8090 -i <key> ubuntu@<EC2 공인IP>
 ```
 
-⚠️ **VK 발급은 IP 제한을 받습니다.** 로그인(Cognito)은 공개지만 발급(admin-api)은 `inbound-cidrs` 안에서만 됩니다. 그 머신의 공인 IP 가 목록에 없으면 **로그인은 성공하는데 발급이 타임아웃**납니다 — `05` 로 추가하십시오.
-
+⚠️ **VK 발급은 IP 제한을 받습니다.** 로그인(Cognito)은 공개지만 발급(admin-api)은 `inbound-cidrs` 안에서만 됩니다. 그 머신의 공인 IP 가 목록에 없으면 **로그인은 성공하는데 발급이 타임아웃**납니다 — `05-allow-client-ip.sh` 로 추가하십시오.
 
 ---
 
+
+
 ## 문제가 생기면
+
+
 
 ### 간헐적인 502 / 504 — CloudFront 를 의심하지 마십시오
 
-
-`03` 을 제대로 돌렸는데도 요청이 **어떤 때는 되고 어떤 때는 안 되는** 증상이 있습니다. 이 프로젝트에서 실제로 겪었고, 원인을 CloudFront·신규 모델에서 한참 찾다가 아니라는 것을 확인했습니다.
+`03-create-cloudfront.sh` 를 제대로 돌렸는데도 요청이 **어떤 때는 되고 어떤 때는 안 되는** 증상이 있습니다. 이 프로젝트에서 실제로 겪었고, 원인을 CloudFront·신규 모델에서 한참 찾다가 아니라는 것을 확인했습니다.
 
 원인은 게이트웨이 파드 안입니다. `bedrock-runtime` 으로의 keep-alive 연결이 botocore 커넥션 풀에 남는데, **NAT 의 idle timeout(350초)이 그 흐름을 조용히 버립니다**(Bedrock VPC 엔드포인트가 없으면 NAT 경유). 파드가 오래 떠 있을수록 죽은 연결이 쌓이고, 그걸 집은 요청이 두 형태로 실패합니다.
 
@@ -335,7 +331,7 @@ kubectl logs deploy/llm-gateway-gateway-proxy -n llm-gateway --tail=500 |
 
 **② CloudFront 가 아님을 확인 — ALB 로 직접 쏩니다**
 
-배포 EC2 의 IP 는 gateway ALB 허용목록에 있으므로 직접 호출할 수 있습니다. ALB 주소는 `00` 이 `gateway ALB DNS` 로 출력합니다.
+배포 EC2 의 IP 는 gateway ALB 허용목록에 있으므로 직접 호출할 수 있습니다. ALB 주소는 `00-preflight-check.sh` 가 `gateway ALB DNS` 로 출력합니다.
 
 ```bash
 GW=http://<00 이 출력한 gateway ALB DNS>
@@ -374,8 +370,9 @@ kubectl rollout status deploy/llm-gateway-gateway-proxy -n llm-gateway --timeout
 
 > `tcp_keepalive=True` 만으로는 부족합니다 — Linux 기본 `tcp_keepalive_time` 이 7200초라 350초 안에 keepalive 가 나가지 않습니다. **Bedrock VPC 엔드포인트도 해결책이 아닙니다** — 인터페이스 엔드포인트는 NLB 기반이고 NLB idle timeout 도 350초로 같습니다(보안·비용 이유로는 여전히 넣을 값어치가 있습니다).
 
-### ⚠️ 보안그룹을 직접 고치지 마십시오
 
+
+### ⚠️ 보안그룹을 직접 고치지 마십시오
 
 ALB는 **AWS Load Balancer Controller** 가 관리하고, SG 규칙을 Ingress 어노테이션에 맞춰 **계속 재조정**합니다. `aws ec2 authorize-security-group-ingress` 로 직접 넣은 규칙은 잠깐 살아 있다가 조용히 사라지고, 그때부터 502가 납니다.
 
@@ -388,18 +385,17 @@ alb.ingress.kubernetes.io/inbound-cidrs               ← 허용 IP 목록
 alb.ingress.kubernetes.io/security-group-prefix-lists ← CloudFront 등 관리형 대역
 ```
 
-`03` 과 `05` 는 어노테이션을 바꾸고, **컨트롤러가 실제로 SG에 반영하는지 90초간 확인**한 뒤 결과를 알려줍니다.
+`03-create-cloudfront.sh` 와 `05-allow-client-ip.sh` 는 어노테이션을 바꾸고, **컨트롤러가 실제로 SG에 반영하는지 90초간 확인**한 뒤 결과를 알려줍니다.
 
 **영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음** `helm upgrade` **때 사라지고**, diff 에는 이유가 남지 않습니다.
 
-`06-persist-annotations.sh` 가 `inbound-cidrs`(=`05` 가 바꾸는 값)를 values 에 써 넣습니다. 다만 **`security-group-prefix-lists`(=`03`)는 일부러 쓰지 않습니다.** 이 차트는 세 Ingress 를 **하나의 `ingress.annotations` 로 렌더**하므로(`templates/common/ingress.yaml:22,58,100`), values 에 넣으면 admin-api·admin-ui 까지 CloudFront 대역에 열립니다 — 누구든 자기 CloudFront 배포를 그 ALB 로 향하게 해 IP 제한을 우회할 수 있습니다.
+`06-persist-annotations.sh` 가 `inbound-cidrs`(=`05` 가 바꾸는 값)를 values 에 써 넣습니다. 다만 `security-group-prefix-lists`**(=**`03`**)는 일부러 쓰지 않습니다.** 이 차트는 세 Ingress 를 **하나의** `ingress.annotations` **로 렌더**하므로(`templates/common/ingress.yaml:22,58,100`), values 에 넣으면 admin-api·admin-ui 까지 CloudFront 대역에 열립니다 — 누구든 자기 CloudFront 배포를 그 ALB 로 향하게 해 IP 제한을 우회할 수 있습니다.
 
-⚠️ 따라서 **`helm upgrade` 를 돌릴 때마다 `03 --allow-cloudfront` 를 다시 실행해야 합니다.** 안 하면 CloudFront 경유 요청이 전부 502 입니다. `06` 이 실행할 때마다 이 사실을 출력합니다. 근본 해결은 차트에 per-Ingress 어노테이션을 넣는 것입니다.
+⚠️ 따라서 `helm upgrade` **를 돌릴 때마다** `03 --allow-cloudfront` **를 다시 실행해야 합니다.** 안 하면 CloudFront 경유 요청이 전부 502 입니다. `06-persist-annotations.sh` 가 실행할 때마다 이 사실을 출력합니다. 근본 해결은 차트에 per-Ingress 어노테이션을 넣는 것입니다.
 
 같은 이유로 `06` 은 세 Ingress 의 `inbound-cidrs` **합집합**을 씁니다 — 차트가 표현할 수 있는 것이 그것뿐입니다.
 
 ### ⚠️ `helm upgrade` 는 `install-eks.sh` 로만
-
 
 values 파일에는 `<RDS_PROXY_ENDPOINT>` 같은 **placeholder 가 남아 있습니다.** 실제 DB·Redis 엔드포인트, IRSA role ARN, Cognito issuer 는 `install-eks.sh` 가 terraform output 에서 읽어 `--set` 으로 주입하고, helm 이 그 값을 release 에 기록합니다.
 
@@ -426,7 +422,6 @@ placeholder 가 아니라 실제 주소가 보여야 정상입니다.
 
 ### 이 기계에서 직접 커밋한 적이 있다면
 
-
 저장소 갱신의 `reset --hard` 는 **원격에 없는 로컬 커밋을 지웁니다.** 이 기계에서 직접 커밋한 기억이 있다면 먼저 확인하십시오 — 제목을 대조해 원격에도 있는지 봅니다.
 
 ```bash
@@ -438,13 +433,15 @@ comm -23 /tmp/a /tmp/b      # 빈 출력 = 전부 원격에 있음 = 버려도 �
 
 리베이스로 해시만 바뀐 커밋은 제목이 원격에도 있으므로 빈 출력이 나옵니다. 뭔가 출력되면 그 커밋은 이 기계에만 있는 작업이니 지우지 말고 따로 판단하십시오.
 
-
 ---
+
+
 
 ## 참고
 
-### `03 --allow-cloudfront` 의 보안 성격 변경
 
+
+### `03 --allow-cloudfront` 의 보안 성격 변경
 
 CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받아줘야 합니다. 그 결과 데이터플레인의 접근 통제가 바뀝니다.
 
@@ -454,6 +451,8 @@ CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받
 | gateway ALB 도달       | 허용된 IP만 | CloudFront 경유 시 누구나  |
 | 실질 접근 통제             | IP + VK | **VK 단독**            |
 | admin-api / admin-ui | IP 제한   | **IP 제한 유지 (변경 없음)** |
+
+
 
 
 ### 직접 확인·디버깅할 때 쓸 이름
@@ -492,6 +491,7 @@ client=cowork  backend=mantle  default_model=cowork-opus
 account_role_arn=arn:aws:iam::<존재하지 않는 계정>:role/...
 ```
 
-`claude-code` 행은 `backend='invoke'`, `default_model=NULL` 이라 이 규칙이 발동하지 않습니다. `01` 은 Cowork 행을 이 모양으로 맞춥니다.
+`claude-code` 행은 `backend='invoke'`, `default_model=NULL` 이라 이 규칙이 발동하지 않습니다. `01-fix-cowork-routing.sh` 는 Cowork 행을 이 모양으로 맞춥니다.
 
 ---
+
