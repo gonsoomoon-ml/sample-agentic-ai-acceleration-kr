@@ -479,11 +479,22 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
 
 ▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
-먼저 값 두 개를 변수에 넣습니다. **손으로 채우는 것은 첫 줄 하나뿐입니다.**
+먼저 값 두 개를 변수에 넣습니다.
+
+`$BASE` 는 절차 1-③ 의 `ANTHROPIC_BASE_URL` **과 같은 값**입니다. 그 창을 그대로 쓰고 있다면 다시 타이핑할 필요가 없습니다.
 
 ```powershell
-$BASE   = "<from operator - the https:// URL>"
+$BASE   = $env:ANTHROPIC_BASE_URL
 $MODELS = '["claude-opus-5","claude-opus-4-8","claude-sonnet-5","claude-haiku-4-5-20251001"]'
+$BASE
+```
+
+마지막 줄이 `https://` 로 시작하는 주소를 찍으면 그대로 다음으로 가십시오.
+
+**아무것도 안 찍히면** 절차 1 과 다른 창입니다(관리자 창을 새로 열었다면 그렇습니다). `$env:` 값은 창마다 따로라 비어 있는 것이니, 운영자에게 받은 주소를 직접 넣으십시오.
+
+```powershell
+$BASE = "<from operator - the https:// URL>"
 ```
 
 `$MODELS` 는 이 배포의 기본 목록이라 그대로 두시면 됩니다. 운영자가 다른 목록을 줬다면 그것으로 바꾸십시오 — 운영자는 `00-preflight-check.sh` 의 ACTIVE 목록에서 확인합니다.
@@ -509,7 +520,7 @@ Set-ItemProperty $K inferenceModels             $MODELS
 Get-ItemProperty $K | Format-List inference*
 ```
 
-여섯 개가 다 보이고 `inferenceGatewayBaseUrl` 에 **실제 주소**가 들어 있어야 합니다. `<from operator...>` 가 그대로 보이면 `$BASE` 를 안 채운 것입니다 — 채우고 다시 돌리면 덮어써집니다.
+여섯 개가 다 보이고 `inferenceGatewayBaseUrl` 에 **실제 주소**가 들어 있어야 합니다. `<from operator...>` 가 보이거나 값이 비어 있으면 `$BASE` 가 안 잡힌 것입니다 — 위로 돌아가 채우고 다시 돌리면 덮어써집니다.
 
 > ❓ `inferenceModels` 를 JSON 문자열로 넣을지 `REG_MULTI_SZ` 로 넣을지는 **첫 실행 때 Managed Configuration Report 로 확인**해야 합니다. 리포트에 배열로 파싱돼 보이면 맞습니다.
 
