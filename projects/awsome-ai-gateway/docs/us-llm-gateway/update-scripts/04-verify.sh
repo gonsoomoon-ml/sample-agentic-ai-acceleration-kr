@@ -70,12 +70,18 @@ grep -q 'MISSING' <<<"$DB_OUT" \
   || ok "every ACTIVE model has an effective price"
 
 # ── (B) End to end ──────────────────────────────────────────────────────────
+# Section C is a database read, so it must not depend on having a VK. Skipping
+# B used to exit here, which hid the one place a wrong price row shows up.
+RUN_B=1
 if [ -z "$BASE_URL" ] || [ -z "$VK" ]; then
   hdr "B. End-to-end call — skipped"
   note "To run it: bash $(basename "$0") --base-url https://<cf-domain> --vk <VK>"
   note "The VK comes from gateway-cli's api-key-helper"
-  exit 0
+  note "Section C below still runs — it reads what real clients already recorded."
+  RUN_B=0
 fi
+
+if [ "$RUN_B" = "1" ]; then
 
 hdr "B. End-to-end call (headers that classify as client=cowork)"
 note "anthropic-client-platform: desktop_app is what client_identifier.py:38-45 keys on"
@@ -126,6 +132,7 @@ else
 EOF
 fi
 rm -f "$RESP" "$CODE"
+fi
 
 # ── (C) Cost recording ──────────────────────────────────────────────────────
 hdr "C. Is cost actually being recorded?"
@@ -134,6 +141,9 @@ note "\$0 means the price row is wrong — requests succeed, so this is the only
 # cost_usd (not total_cost_usd) and rows are timestamped completed_at, not
 # created_at. status is included because a failed call still writes a row: a
 # $0 next to status=ERROR is expected, next to SUCCESS it means a bad price row.
+# web_search_count is here because server-side web search leaves no log lines
+# even on success — this column is the only place it is observable.
 run_sql "SELECT COALESCE(client,'(legacy)') AS client, model_alias, status,
-                cost_usd, input_tokens, output_tokens, completed_at
+                cost_usd, input_tokens, output_tokens, web_search_count AS ws,
+                completed_at
            FROM usage.usage_logs ORDER BY completed_at DESC LIMIT 5;"
