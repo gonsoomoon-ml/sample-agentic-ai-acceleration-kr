@@ -583,7 +583,88 @@ Get-ItemProperty $K | Format-List inference*
 
 
 
-## 7. 검증 기록
+## 7. 선택 토글 — 앱 기능 켜고 끄기
+
+여기까지 오면 게이트웨이 연결은 끝났습니다. 아래는 **연결과 무관한 앱 기능**들로, 조직이 켜고 끌 수 있습니다. 안 하셔도 됩니다.
+
+값을 넣는 곳은 절차 4 와 같은 `HKLM\SOFTWARE\Policies\Claude` 이고, **바꾼 뒤에는 앱을 완전히 종료했다가 다시 켜야** 반영됩니다(작업 표시줄 알림 영역에 남아 있으면 거기서도 종료).
+
+
+| 키                       | 무엇을                                    | 기본값        |
+| ----------------------- | -------------------------------------- | ---------- |
+| `chatTabEnabled`        | **Chat 탭**(빠른 Q&A·초안, Beta) 노출          | off        |
+| `autoModeEnabled`       | **"Act without asking"** 를 승인 선택지에 노출   | off        |
+| `disabledBuiltinTools`  | 내장 도구를 **없앰** (예: 웹 검색·웹 열기)           | 없음 (전부 노출) |
+| `builtinToolPolicy`     | 내장 도구별 **승인 정책** (매번 물음 / 자동 실행)        | 대부분 자동     |
+| `managedMcpServers`     | 조직이 밀어넣는 **MCP 서버** 목록과 도구별 정책          | 없음         |
+| `disableBundledSkills`  | 번들 Skills·워크플로 비활성화                     | 사용         |
+
+⚠️ **기본값이 off 인 것은 앱에 옵션 자체가 안 뜹니다.** Chat 탭이 안 보이거나 "Act without asking" 이 선택지에 없는 것은 고장이 아니라 이 상태입니다.
+
+### Chat 탭 켜기
+
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
+
+```powershell
+$K = "HKLM:\SOFTWARE\Policies\Claude"
+Set-ItemProperty $K chatTabEnabled "true"
+```
+
+### "Act without asking" 켜기
+
+Claude 가 위험하다고 판단한 작업만 승인을 묻고 나머지는 자율 실행합니다.
+
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
+
+```powershell
+$K = "HKLM:\SOFTWARE\Policies\Claude"
+Set-ItemProperty $K autoModeEnabled "true"
+```
+
+⚠️ **모델이 Claude 4.6 이상**이어야 선택지가 활성화됩니다. 이 배포의 목록 중 `claude-opus-5`·`claude-opus-4-8`·`claude-sonnet-5` 는 충족하고, `claude-haiku-4-5-20251001` 은 미달이라 그 모델을 고르면 회색으로 보입니다.
+
+### 내장 도구 빼기
+
+앱에 딸린 웹 검색·웹 열기 같은 도구를 없앱니다. 회사가 외부 인터넷을 막아 둔 환경에서, 눌러도 실패하는 버튼을 아예 안 보이게 할 때 씁니다.
+
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
+
+```powershell
+$K = "HKLM:\SOFTWARE\Policies\Claude"
+Set-ItemProperty $K disabledBuiltinTools '["WebSearch","WebFetch"]'
+```
+
+⚠️ 이 둘은 **앱에 딸린 도구**이지 게이트웨이의 서버측 웹서치가 아닙니다. 게이트웨이 웹서치는 여기서 끄지 못하고, 운영자가 `routing_profiles.web_search_enabled` 로 끕니다.
+
+### 값이 여러 개인 키의 형식
+
+`disabledBuiltinTools`·`builtinToolPolicy`·`managedMcpServers` 는 값이 목록이나 표 형태입니다. 레지스트리에는 **JSON 을 통째로 하나의 문자열**로 넣습니다 — 절차 4 의 `inferenceModels` 와 같은 방식입니다.
+
+```powershell
+Set-ItemProperty $K builtinToolPolicy '{"Bash":"ask"}'
+```
+
+⚠️ 도구 이름은 **앱이 쓰는 이름 그대로** 여야 합니다. 정확한 이름은 **Help → Troubleshooting → Copy Managed Configuration Report** 에 나오니, 거기서 확인하고 넣으십시오. 틀린 이름은 조용히 무시됩니다.
+
+### 확인과 되돌리기
+
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
+
+```powershell
+Get-ItemProperty "HKLM:\SOFTWARE\Policies\Claude"
+```
+
+되돌릴 때는 값을 `false` 로 바꾸지 말고 **키를 지우십시오.** 기본값으로 돌아갑니다.
+
+```powershell
+Remove-ItemProperty "HKLM:\SOFTWARE\Policies\Claude" chatTabEnabled
+```
+
+⚠️ 절차 4 에서 넣은 여섯 개(`inference*`)는 **지우면 안 됩니다.** 게이트웨이 연결이 끊어지고 앱이 claude.ai 로그인 화면으로 돌아갑니다.
+
+
+
+## 8. 검증 기록
 
 **2026-08-03 · Windows Server 2025 (EC2 `m5zn.metal`) · Cowork 1.24012.9.0**
 
