@@ -144,7 +144,7 @@ winget install --id Python.Python.3.12 -e --scope machine
 winget install --id Git.Git -e
 ```
 
-**`winget` 이 없으면** (Windows Server 등) 설치 파일을 직접 받습니다. 브라우저로 python.org · git-scm.com 에서 받아 실행해도 되고, 아래처럼 받아도 됩니다.
+**`winget` 이 없으면** 설치 파일을 직접 받습니다. `winget` 은 App Installer 라는 구성요소가 있어야 동작합니다 — 구형 Windows 10, 이미지에 따라 일부 Windows Server, 스토어 접근이 막힌 폐쇄망에서 없을 수 있습니다. 브라우저로 python.org · git-scm.com 에서 받아 실행해도 되고, 아래처럼 받아도 됩니다.
 
 ▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
