@@ -621,7 +621,7 @@ DB 조회라 임시 파드가 뜨는 데 1~2분 걸립니다. 화면이 멈춘 �
 
 여기까지 오면 게이트웨이 연결은 끝났습니다. 아래는 **연결과 무관한 앱 기능**들로, 조직이 켜고 끌 수 있습니다. 안 하셔도 됩니다.
 
-값을 넣는 곳은 절차 4 와 같은 `HKLM\SOFTWARE\Policies\Claude` 이고, **바꾼 뒤에는 앱을 완전히 종료했다가 다시 켜야** 반영됩니다(작업 표시줄 알림 영역에 남아 있으면 거기서도 종료).
+값을 넣는 곳은 절차 4 와 같은 `HKLM\SOFTWARE\Policies\Claude` 이고, **바꾼 뒤에는 앱을 완전히 종료했다가 다시 켜야** 반영됩니다. 종료됐는지 확인하는 명령까지 아래 「Chat 탭 켜기」에 적어 뒀습니다 — 다른 토글도 절차는 같습니다.
 
 
 용어 하나만 먼저 — **내장 도구**는 Claude 가 답을 만들면서 스스로 쓰는 기능들입니다. 웹에서 검색하기, 웹 페이지 열어보기 같은 것으로, 사용자가 따로 시키지 않아도 필요하면 씁니다.
@@ -640,12 +640,35 @@ DB 조회라 임시 파드가 뜨는 데 1~2분 걸립니다. 화면이 멈춘 �
 
 ### Chat 탭 켜기
 
+여기가 **다른 토글에도 그대로 쓰는 절차**입니다 — 값 넣기 → 값 확인 → 앱 완전 종료 → 재시작 → 화면 확인.
+
 ▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
 ```powershell
 $K = "HKLM:\SOFTWARE\Policies\Claude"
 Set-ItemProperty $K chatTabEnabled "true"
+(Get-ItemProperty $K).chatTabEnabled
 ```
+
+마지막 줄이 `true` 를 찍어야 합니다. 아무것도 안 찍히면 값이 안 들어간 것입니다.
+
+이제 앱을 **완전히** 종료합니다. 창만 닫으면 백그라운드에 남아 설정을 다시 읽지 않습니다.
+
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
+
+```powershell
+Get-Process -Name "*laude*" -ErrorAction SilentlyContinue | Select Name,Id
+```
+
+**아무것도 안 나와야** 완전히 꺼진 것입니다. 이름과 번호가 나오면 아직 살아 있습니다 — 작업 표시줄 오른쪽 알림 영역(`∧`)에서 Claude 를 찾아 종료하시거나, 아래로 끄십시오.
+
+```powershell
+Get-Process -Name "*laude*" -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+
+다시 실행하면 탭이 **Cowork · Code · Chat** 세 개가 됩니다.
+
+안 늘어나면 순서대로 짚으십시오 — ① 값이 `true` 로 찍히는가 ② 위 프로세스 목록이 비었었는가 ③ 그래도 안 되면 값 형식 문제일 수 있으니 `"1"` 로 바꿔 같은 절차를 반복.
 
 ### "Act without asking" 켜기
 
