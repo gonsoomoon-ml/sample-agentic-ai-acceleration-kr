@@ -652,15 +652,9 @@ Set-ItemProperty $K chatTabEnabled "true"
 
 마지막 줄이 `true` 를 찍어야 합니다. 아무것도 안 찍히면 값이 안 들어간 것입니다.
 
-이제 앱을 **완전히** 종료합니다. 창만 닫으면 백그라운드에 남아 설정을 다시 읽지 않습니다.
+이제 앱을 **완전히** 종료합니다. 창을 닫아도 백그라운드에 남아 있을 수 있는데, 그러면 설정을 다시 읽지 않습니다. 아래 한 줄이면 확실합니다 — 안 떠 있으면 아무 일도 일어나지 않습니다.
 
 ▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
-
-```powershell
-Get-Process -Name "*laude*" -ErrorAction SilentlyContinue | Select Name,Id
-```
-
-**아무것도 안 나와야** 완전히 꺼진 것입니다. 이름과 번호가 나오면 아직 살아 있습니다 — 작업 표시줄 오른쪽 알림 영역(`∧`)에서 Claude 를 찾아 종료하시거나, 아래로 끄십시오.
 
 ```powershell
 Get-Process -Name "*laude*" -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -668,7 +662,7 @@ Get-Process -Name "*laude*" -ErrorAction SilentlyContinue | Stop-Process -Force
 
 다시 실행하면 탭이 **Cowork · Code · Chat** 세 개가 됩니다.
 
-안 늘어나면 순서대로 짚으십시오 — ① 값이 `true` 로 찍히는가 ② 위 프로세스 목록이 비었었는가 ③ 그래도 안 되면 값 형식 문제일 수 있으니 `"1"` 로 바꿔 같은 절차를 반복.
+안 늘어나면 ① 값이 `true` 로 찍히는지 다시 보고, ② 그래도 안 되면 값 형식 문제일 수 있으니 `"1"` 로 바꿔 같은 절차를 반복하십시오.
 
 ### "Act without asking" 켜기
 
