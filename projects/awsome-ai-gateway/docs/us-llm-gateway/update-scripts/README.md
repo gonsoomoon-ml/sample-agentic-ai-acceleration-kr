@@ -128,7 +128,9 @@ bash 02-add-opus5-model.sh --apply
 
 bash 03-create-cloudfront.sh               # 설정 확인
 bash 03-create-cloudfront.sh --create
-bash 03-create-cloudfront.sh --allow-cloudfront   # 안 하면 502
+bash 03-create-cloudfront.sh --allow-cloudfront
+#   안 하면 502. 단 데이터플레인 접근 통제가
+#   IP+VK -> VK 단독으로 바뀝니다 (「참고」 절)
 
 bash 05-allow-client-ip.sh --add <Cowork 를 돌릴 PC 의 공인IP>/32 --apply
 
