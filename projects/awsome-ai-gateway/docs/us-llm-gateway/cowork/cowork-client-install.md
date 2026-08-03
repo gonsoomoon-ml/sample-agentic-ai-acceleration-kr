@@ -211,37 +211,72 @@ api-key-helper 2>$null | Select-String "^vk-"
 
 ### 2. credential helper 작성
 
-`gateway-cli` 의 `api-key-helper` 를 감싸 **VK 한 줄만** 출력하는 스크립트입니다.
+Cowork 는 요청할 때마다 이 스크립트를 실행해서 열쇠(VK)를 받아옵니다. `gateway-cli` 의 `api-key-helper` 를 감싸 **`vk-` 로 시작하는 한 줄만** 내보내는 것이 전부입니다.
 
-**Windows** — `C:\ProgramData\llm-gateway\helper.cmd`
+만들 위치는 `C:\ProgramData\llm-gateway\helper.cmd` 입니다. 모든 사용자가 읽을 수 있고 관리자만 고칠 수 있는 자리라, 앱을 여러 사람이 쓰는 PC 에 맞습니다.
 
-```bat
-@echo off
-set OIDC_ISSUER_URL=<운영자가 준 값>
-set OIDC_CLIENT_ID=<운영자가 준 값>
-set ADMIN_API_URL=<운영자가 준 값>
-api-key-helper 2>nul | findstr /b "vk-"
-```
-
-⚠️ **출력은 개행으로 끝나야 합니다.** 개행 없이 끝나면 앱이 값을 못 읽습니다(Seoul 실측). `grep`/`findstr` 은 개행을 붙이므로 그대로 두면 됩니다 — `echo -n` 등으로 직접 출력하지 마십시오.
-
-⚠️ `api-key-helper` 출력 끝에 빈 줄이 붙는 경우가 있어 `grep -m1` / `findstr /b` 로 **첫 줄만** 뽑습니다.
-
-⚠️ `api-key-helper` **를 PATH 에서 못 찾는 경우가 있습니다.** helper 를 실행하는 것은 Cowork 이므로, **Cowork 가 보는 PATH** 에 설치 위치가 들어 있어야 합니다. 절차 1 의 ② 에서 등록했지만 **로그아웃 후 다시 로그인하기 전까지는 반영되지 않습니다.** 확실히 하려면 helper 에 절대경로를 쓰십시오.
-
-설치 위치는 이렇게 확인합니다.
+#### ① helper 가 부를 실행파일의 경로 확인
 
 ▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
 
 ```powershell
-py -c "import sysconfig; print(sysconfig.get_path('scripts','nt_user'))"
+py -c "import sysconfig,os; print(os.path.join(sysconfig.get_path('scripts','nt_user'),'api-key-helper.exe'))"
 ```
 
-출력된 경로를 helper 에 그대로 넣습니다.
+출력된 경로를 **복사해 두십시오.** 다음 단계에서 붙여넣습니다.
 
-```bat
-"C:\Users\<사용자>\AppData\Roaming\Python\Python312\Scripts\api-key-helper.exe" 2>nul | findstr /b "vk-"
+⚠️ **반드시 직원 본인 계정의 일반 PowerShell 에서** 확인하십시오. 관리자 창에서 하면 관리자 계정의 폴더가 나오고, 그 경로에는 파일이 없습니다.
+
+이름만(`api-key-helper`) 쓰지 않고 전체 경로를 쓰는 이유가 있습니다. helper 를 실행하는 것은 Cowork 인데, **Cowork 가 보는 PATH** 에 설치 위치가 들어 있어야 이름만으로 찾습니다. 절차 1 의 ② 에서 등록했지만 로그아웃 후 다시 로그인하기 전까지는 반영되지 않습니다. 전체 경로를 쓰면 이 문제가 아예 없습니다.
+
+#### ② helper 파일 만들기
+
+🔴 **여기는 관리자 권한이 필요합니다.** `C:\ProgramData` 아래에 파일을 쓰기 때문입니다. PowerShell 을 **"관리자 권한으로 실행"** 으로 여십시오.
+
+먼저 값 네 개를 넣습니다 — 위에서 복사한 경로와, 운영자에게 받은 값 세 개입니다.
+
+▶ **실행** · 직원 PC (Windows) — 관리자 PowerShell
+
+```powershell
+$exe    = "<① 에서 복사한 경로>"
+$issuer = "<운영자가 준 값>"
+$client = "<운영자가 준 값>"
+$admin  = "<운영자가 준 값>"
 ```
+
+이어서 폴더를 만들고 파일을 씁니다.
+
+▶ **실행** · 직원 PC (Windows) — 관리자 PowerShell
+
+```powershell
+$dir = "C:\ProgramData\llm-gateway"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+@"
+@echo off
+set OIDC_ISSUER_URL=$issuer
+set OIDC_CLIENT_ID=$client
+set ADMIN_API_URL=$admin
+"$exe" 2>nul | findstr /b "vk-"
+"@ | Set-Content -Path "$dir\helper.cmd" -Encoding ASCII
+```
+
+`-Encoding ASCII` 는 빼지 마십시오. 다른 인코딩으로 저장하면 파일 앞에 눈에 안 보이는 표식이 붙어 `cmd` 가 첫 줄을 못 읽습니다.
+
+#### ③ 확인
+
+▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+
+```powershell
+& "C:\ProgramData\llm-gateway\helper.cmd"
+```
+
+`vk-` 로 시작하는 한 줄이 나오면 완료입니다.
+
+⚠️ **관리자 창이 아니라 일반 창에서** 확인하십시오. 로그인 토큰은 직원 본인 폴더에 있어서, 관리자 창에서 돌리면 토큰을 못 찾습니다.
+
+⚠️ **출력은 개행으로 끝나야 합니다.** 개행 없이 끝나면 앱이 값을 못 읽습니다(Seoul 실측). `findstr` 이 개행을 붙이므로 위 형태를 그대로 두면 됩니다.
+
+⚠️ `api-key-helper` 출력 끝에 빈 줄이 붙는 경우가 있어 `findstr /b` 로 **첫 줄만** 뽑습니다.
 
 
 
