@@ -12,6 +12,7 @@ Claude Code는 잘 되는데 Cowork만 안 되는 상태를 고칩니다. 원인
 
 ### ① Cowork 요청이 전부 실패합니다
 
+
 게이트웨이는 클라이언트(Claude Code / Cowork)마다 **"이 요청을 어디로 보낼지"를 적어둔 설정 행**을 하나씩 갖고 있습니다. DB의 `model.routing_profiles` 테이블이고, Cowork용은 `client='cowork'` 행입니다.
 
 설치할 때 자동으로 채워지는데, **Cowork 행에는 실습용 예시값이 들어갑니다.** 구체적으로 `account_role_arn` 컬럼이 존재하지 않는 AWS 계정 번호를 가리킵니다.
@@ -19,6 +20,7 @@ Claude Code는 잘 되는데 Cowork만 안 되는 상태를 고칩니다. 원인
 그래서 Cowork가 요청을 보내면 게이트웨이가 그 계정의 역할로 `sts:AssumeRole` 을 시도하다 실패합니다(보통 502로 보입니다). Claude Code 행(`client='claude-code'`)은 설치 과정에서 올바르게 채워지므로 영향이 없고, 그래서 **"Claude Code는 되는데 Cowork만 안 되는"** 모습이 됩니다.
 
 ### ② 모델을 새로 등록해도 Cowork에서는 못 씁니다
+
 
 같은 Cowork 행의 `default_model` 컬럼이 **"모델 고정" 스위치**로 동작합니다. `backend='mantle'` 과 함께 값이 채워져 있으면, 게이트웨이는 사용자가 고른 모델을 **무시하고** 이 컬럼에 적힌 모델로 바꿔서 처리합니다.
 
@@ -36,53 +38,12 @@ Cowork 앱에서 "Claude Opus 5" 선택
 
 ### ③ Cowork는 `https://` 주소를 요구합니다
 
+
 Cowork는 게이트웨이 주소(`inferenceGatewayBaseUrl`)가 `https://` 로 시작해야 연결합니다. 게이트웨이 ALB가 HTTP만 열려 있고 ACM 인증서·퍼블릭 호스팅영역이 없다면, 도메인을 새로 사지 않고 https를 얻는 방법은 CloudFront를 앞에 세우는 것입니다.
 
 ---
 
 `01` 이 ①②를 (`routing_profiles` 의 `cowork` 행을 `claude-code` 행과 같은 모양으로 고칩니다), `03` 이 ③을 해결합니다.
-
-### 직접 확인·디버깅할 때 쓸 이름
-
-
-| 이 문서의 표현             | 실제 이름                                                           |
-| -------------------- | --------------------------------------------------------------- |
-| 요청을 어디로 보낼지 적어둔 설정 행 | `model.routing_profiles` 테이블, `client` 컬럼이 키                    |
-| 존재하지 않는 계정을 가리키는 값   | `routing_profiles.account_role_arn`                             |
-| 그 계정에 접속 시도          | `sts:AssumeRole` (실패 시 502)                                     |
-| 모델 고정 스위치            | `routing_profiles.default_model` (+ `backend='mantle'` 일 때만 발동) |
-| 등록된 모델 목록            | `model.model_aliases` (`status='ACTIVE'` 인 것만 사용 가능)            |
-| 모델 단가                | `model.model_pricings`                                          |
-| 팀별 모델 허용목록           | `model.team_allowed_models` (행 0개 = 전체 허용)                      |
-
-
-현재 상태는 `00-preflight-check.sh` 가 이 테이블들을 그대로 조회해 보여줍니다.
-
-근거 — 코드에서 확인하려면
-
-`gateway-proxy/src/app/routers/messages.py:118`
-
-```python
-# 주석: "a 'mantle' profile WITH a default_model forces that model
-#        (cowork → cowork-opus), ignoring the requested alias."
-if profile is not None and profile.backend == "mantle" and profile.default_model:
-    cfg = await router_service.resolve_mantle_model(redis, db, profile.default_model)
-```
-
-`model.routing_profiles` 의 `cowork` 행이 `backend='mantle'` 이고 `default_model` 이 채워져 있으면, 요청 본문의 모델명을 버리고 `default_model` 로 강제합니다. 이름과 달리 기본값이 아니라 **override** 입니다.
-
-시드가 넣는 값(마이그레이션 `0009_add_mantle_routing_data.py`):
-
-```
-client=cowork  backend=mantle  default_model=cowork-opus
-account_role_arn=arn:aws:iam::<존재하지 않는 계정>:role/...
-```
-
-`claude-code` 행은 `backend='invoke'`, `default_model=NULL` 이라 이 규칙이 발동하지 않습니다. `01` 은 Cowork 행을 이 모양으로 맞춥니다.
-
----
-
-
 
 ## 실행 위치와 준비물
 
@@ -132,7 +93,6 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 ---
 
 
-
 ## 어느 스크립트가 무엇을 바꾸나
 
 
@@ -150,8 +110,6 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 | `config.env`                | 설정값 (부작용 없음)                                           | —                          |
 
 
-
-
 ### 공통 규약
 
 - **인자 없이 실행 = dry-run.** 현재값과 바꿀 내용만 출력하고 아무것도 건드리지 않습니다.
@@ -160,7 +118,6 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 - 시작 시 **계정을 확인하고 불일치하면 즉시 중단**합니다. `config.env` 의 `AWS_ACCOUNT_ID` 가 그 기준입니다.
 
 ---
-
 
 
 ## 실행 순서
@@ -210,12 +167,65 @@ bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 ---
 
 
+## 검증
 
-## 알아야 할 것
+`04-verify.sh` 가 세 층을 확인합니다.
 
 
+| 층   | 확인              | 왜              |
+| --- | --------------- | -------------- |
+| A   | DB 상태           | 설정이 들어갔는가      |
+| B   | 종단 호출           | 실제로 통하는가       |
+| C   | `usage_logs` 비용 | 통했는데 제대로 기록되는가 |
+
+
+A만 보고 끝내면 조용한 실패를 놓칩니다. C에서 `$0` 이 나오면 가격 행이 잘못 들어간 것입니다.
+
+B는 `anthropic-client-platform: desktop_app` **헤더로 Cowork를 흉내** 냅니다(`client_identifier.py:38-45`). Cowork 앱을 설치하기 전에 서버측을 확정할 수 있습니다.
+
+실패 시 판별표를 함께 출력합니다:
+
+
+| 증상                         | 원인                                         |
+| -------------------------- | ------------------------------------------ |
+| 404 `not_found_error`      | alias 미등록 / INACTIVE / **캐시 미만료(5분 더 대기)** |
+| 400 "does not have access" | `team_allowed_models` 화이트리스트               |
+| 502 `provider_error`       | **간헐적이면** 「문제가 생기면 · 간헐적인 502 / 504」    |
+| 502 / AssumeRole 오류        | `01` 미적용 또는 라우팅 캐시 미만료                     |
+| 403                        | VK 만료                                      |
+| 504 (정확히 60초)              | 오리진이 60초 안에 응답 못 함 → 같은 절                 |
+| CloudFront 502 (매번)        | `03 --allow-cloudfront` 누락 — 오리진 도달 자체가 안 됨 |
+
+
+⚠️ 검증 시 `max_tokens` 를 작게 잡지 마십시오. 최신 모델은 `thinking` 블록을 먼저 냅니다 — 작으면 그것만으로 예산이 소진되어 `text` 가 빈 채로 돌아오고, "빈 응답"으로 오진하기 쉽습니다. 64 이상을 권합니다.
+
+---
+
+
+## 롤백
+
+```bash
+bash 99-rollback.sh --list          # 되돌릴 수 있는 항목
+bash 99-rollback.sh --routing       # 01 → 시드 상태로
+bash 99-rollback.sh --model         # 02 → INACTIVE 로
+bash 99-rollback.sh --cloudfront    # 03 → 절차 출력 (전파 대기 때문에 수동)
+bash 05-allow-client-ip.sh --remove <IP>/32 --apply    # 05 되돌리기
+```
+
+원복 값은 문서나 기억이 아니라 **적용 시점에 실제 DB에서 읽어** `snapshots/` **에 남긴 SQL** 입니다.
+
+모델은 **DELETE하지 않고 INACTIVE** 로 내립니다 — `model_aliases` 를 참조하는 FK가 여럿인데 `ON DELETE` 절이 없습니다.
+
+롤백도 반영에 5분 걸립니다.
+
+---
+
+## 각 단계 보충
+
+실행 순서의 특정 줄이 왜 필요한지에 대한 설명입니다.
 
 ### 왜 5분을 기다려야 하나
+
 
 관련 캐시가 전부 TTL 300초입니다.
 
@@ -234,6 +244,7 @@ router_service.py:26          MODEL_LIST_CACHE_TTL = 300
 
 ### 왜 단가가 필수인가
 
+
 가격 행이 없으면 `router_service.py:51-52` 가 조용히 0으로 대체해 **비용이 $0으로 기록**됩니다. 요청은 정상 성공하므로 그동안 예산이 통째로 우회됩니다. 그래서 `02` 는 단가 없이 진행하지 않습니다.
 
 `config.env` 에 Opus 5 값이 이미 들어 있으니 **그대로 두면 됩니다** (1K 토큰당 USD):
@@ -248,69 +259,59 @@ router_service.py:26          MODEL_LIST_CACHE_TTL = 300
 
 ⚠️ Anthropic 1st-party 정가입니다. Bedrock 은 AWS 가 별도 책정하지만 Opus 계열은 일치해 왔고, 벤더 마이그레이션(`0004`·`0006`)도 Bedrock 대상 Opus 4.6·4.8 에 같은 세트를 씁니다. 비용 정확도가 중요하면 청구서와 대조하십시오.
 
-### ⚠️ 보안그룹을 직접 고치지 마십시오
+### `05` 가 필요한 이유
 
-ALB는 **AWS Load Balancer Controller** 가 관리하고, SG 규칙을 Ingress 어노테이션에 맞춰 **계속 재조정**합니다. `aws ec2 authorize-security-group-ingress` 로 직접 넣은 규칙은 잠깐 살아 있다가 조용히 사라지고, 그때부터 502가 납니다.
 
-이 프로젝트에서 실제로 겪었습니다 — 수동으로 넣은 IP가 사라지고 지웠던 IP가 되살아났습니다.
+CloudFront를 세우면 추론은 어디서든 되지만, **VK를 받아오는 경로는 별개**입니다. `gateway-cli login` 과 `api-key-helper` 는 admin-api를 직접 치고 admin-api는 IP로 잠겨 있습니다.
 
-정본은 어노테이션입니다:
+넣을 IP 는 **Cowork(또는 Claude Code)를 실제로 돌릴 PC 의 공인 IP** 입니다 — 게이트웨이 서버나 배포 EC2 의 IP 가 아닙니다. 사용자가 여럿이면 각자의 IP(또는 사무실 대역)를 넣습니다. 목록에 없으면 **로그인은 성공하는데 VK 발급만 타임아웃**나서 원인을 찾기 어렵습니다.
 
-```
-alb.ingress.kubernetes.io/inbound-cidrs               ← 허용 IP 목록
-alb.ingress.kubernetes.io/security-group-prefix-lists ← CloudFront 등 관리형 대역
-```
+기본 대상은 `admin-api` 하나입니다. 데이터플레인은 CloudFront 를 거치므로 `gateway` 까지 열 이유가 없습니다.
 
-`03` 과 `05` 는 어노테이션을 바꾸고, **컨트롤러가 실제로 SG에 반영하는지 90초간 확인**한 뒤 결과를 알려줍니다.
-
-**영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음** `helm upgrade` **때 사라지고**, diff 에는 이유가 남지 않습니다.
-
-`06-persist-annotations.sh` 가 `inbound-cidrs`(=`05` 가 바꾸는 값)를 values 에 써 넣습니다. 다만 **`security-group-prefix-lists`(=`03`)는 일부러 쓰지 않습니다.** 이 차트는 세 Ingress 를 **하나의 `ingress.annotations` 로 렌더**하므로(`templates/common/ingress.yaml:22,58,100`), values 에 넣으면 admin-api·admin-ui 까지 CloudFront 대역에 열립니다 — 누구든 자기 CloudFront 배포를 그 ALB 로 향하게 해 IP 제한을 우회할 수 있습니다.
-
-⚠️ 따라서 **`helm upgrade` 를 돌릴 때마다 `03 --allow-cloudfront` 를 다시 실행해야 합니다.** 안 하면 CloudFront 경유 요청이 전부 502 입니다. `06` 이 실행할 때마다 이 사실을 출력합니다. 근본 해결은 차트에 per-Ingress 어노테이션을 넣는 것입니다.
-
-같은 이유로 `06` 은 세 Ingress 의 `inbound-cidrs` **합집합**을 씁니다 — 차트가 표현할 수 있는 것이 그것뿐입니다.
-
-### ⚠️ `helm upgrade` 는 `install-eks.sh` 로만
-
-values 파일에는 `<RDS_PROXY_ENDPOINT>` 같은 **placeholder 가 남아 있습니다.** 실제 DB·Redis 엔드포인트, IRSA role ARN, Cognito issuer 는 `install-eks.sh` 가 terraform output 에서 읽어 `--set` 으로 주입하고, helm 이 그 값을 release 에 기록합니다.
-
-따라서 values 파일만 넘긴 업그레이드는 **그 실값을 placeholder 로 덮어씁니다.**
+⚠️ 사내망은 목적지 리전마다 출구 IP가 다를 수 있습니다. `checkip.amazonaws.com` 결과를 믿지 말고 **대상 리전의 호스트로 SSH해서** 재십시오:
 
 ```bash
-helm upgrade llm-gateway ./charts/llm-gateway \
-  -f values-eks-fargate-<env>.yaml        # ← DB·Redis·OIDC 가 전부 죽습니다
+ssh -i <key> ubuntu@<대상 리전 EC2> 'echo $SSH_CLIENT'   # 작은따옴표 필수
 ```
 
-업그레이드는 항상 이 경로로만 하십시오. 같은 `--set` 을 다시 조립해 줍니다.
+---
+
+
+### VK 얻기
+
+
+`04` 는 실제로 요청을 보내므로 Virtual Key 가 필요합니다. 게이트웨이에 이미 온보딩된 머신(배포 EC2 포함)이라면 한 줄입니다.
 
 ```bash
-./deployment/scripts/install-eks.sh <env>
+api-key-helper 2>/dev/null | grep -m1 '^vk-'
 ```
 
-현재 release 가 실값을 들고 있는지 확인:
+`vk-` 로 시작하는 한 줄이 나오면 그게 VK 입니다. 아직 로그인한 적이 없다면 먼저 온보딩합니다(설치 가이드 §6-0 과 같은 절차).
 
 ```bash
-helm get values llm-gateway -n <namespace> | grep -E 'host|issuerUrl'
+export OIDC_ISSUER_URL="<운영자가 준 값>"
+export OIDC_CLIENT_ID="<운영자가 준 값>"
+export ADMIN_API_URL="<운영자가 준 값>"
+cd ~/awsome-ai-gateway && bash scripts/onboard-macos-linux.sh
 ```
 
-placeholder 가 아니라 실제 주소가 보여야 정상입니다.
+> `--setup-claude-code` 를 빼면 **로그인만** 하고 끝납니다. Claude Code 설정은 건드리지 않습니다.
 
-### `03 --allow-cloudfront` 의 보안 성격 변경
+⚠️ **로그인은 브라우저 PKCE 이고 콜백이** `localhost:8090` **입니다.** 헤드리스 서버에서 돌린다면 브라우저가 그 포트에 닿아야 하므로 터널을 먼저 여십시오. Cognito 콜백 화이트리스트는 `8090`·`8091`·`8092` 3개뿐이라 그중에서 골라야 합니다.
 
-CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받아줘야 합니다. 그 결과 데이터플레인의 접근 통제가 바뀝니다.
+```bash
+ssh -L 8090:localhost:8090 -i <key> ubuntu@<EC2 공인IP>
+```
 
-
-|                      | 변경 전    | 변경 후                 |
-| -------------------- | ------- | -------------------- |
-| gateway ALB 도달       | 허용된 IP만 | CloudFront 경유 시 누구나  |
-| 실질 접근 통제             | IP + VK | **VK 단독**            |
-| admin-api / admin-ui | IP 제한   | **IP 제한 유지 (변경 없음)** |
+⚠️ **VK 발급은 IP 제한을 받습니다.** 로그인(Cognito)은 공개지만 발급(admin-api)은 `inbound-cidrs` 안에서만 됩니다. 그 머신의 공인 IP 가 목록에 없으면 **로그인은 성공하는데 발급이 타임아웃**납니다 — `05` 로 추가하십시오.
 
 
+---
 
+## 문제가 생기면
 
 ### 간헐적인 502 / 504 — CloudFront 를 의심하지 마십시오
+
 
 `03` 을 제대로 돌렸는데도 요청이 **어떤 때는 되고 어떤 때는 안 되는** 증상이 있습니다. 이 프로젝트에서 실제로 겪었고, 원인을 CloudFront·신규 모델에서 한참 찾다가 아니라는 것을 확인했습니다.
 
@@ -373,34 +374,58 @@ kubectl rollout status deploy/llm-gateway-gateway-proxy -n llm-gateway --timeout
 
 > `tcp_keepalive=True` 만으로는 부족합니다 — Linux 기본 `tcp_keepalive_time` 이 7200초라 350초 안에 keepalive 가 나가지 않습니다. **Bedrock VPC 엔드포인트도 해결책이 아닙니다** — 인터페이스 엔드포인트는 NLB 기반이고 NLB idle timeout 도 350초로 같습니다(보안·비용 이유로는 여전히 넣을 값어치가 있습니다).
 
-### VK 얻기
+### ⚠️ 보안그룹을 직접 고치지 마십시오
 
-`04` 는 실제로 요청을 보내므로 Virtual Key 가 필요합니다. 게이트웨이에 이미 온보딩된 머신(배포 EC2 포함)이라면 한 줄입니다.
 
-```bash
-api-key-helper 2>/dev/null | grep -m1 '^vk-'
+ALB는 **AWS Load Balancer Controller** 가 관리하고, SG 규칙을 Ingress 어노테이션에 맞춰 **계속 재조정**합니다. `aws ec2 authorize-security-group-ingress` 로 직접 넣은 규칙은 잠깐 살아 있다가 조용히 사라지고, 그때부터 502가 납니다.
+
+이 프로젝트에서 실제로 겪었습니다 — 수동으로 넣은 IP가 사라지고 지웠던 IP가 되살아났습니다.
+
+정본은 어노테이션입니다:
+
+```
+alb.ingress.kubernetes.io/inbound-cidrs               ← 허용 IP 목록
+alb.ingress.kubernetes.io/security-group-prefix-lists ← CloudFront 등 관리형 대역
 ```
 
-`vk-` 로 시작하는 한 줄이 나오면 그게 VK 입니다. 아직 로그인한 적이 없다면 먼저 온보딩합니다(설치 가이드 §6-0 과 같은 절차).
+`03` 과 `05` 는 어노테이션을 바꾸고, **컨트롤러가 실제로 SG에 반영하는지 90초간 확인**한 뒤 결과를 알려줍니다.
+
+**영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음** `helm upgrade` **때 사라지고**, diff 에는 이유가 남지 않습니다.
+
+`06-persist-annotations.sh` 가 `inbound-cidrs`(=`05` 가 바꾸는 값)를 values 에 써 넣습니다. 다만 **`security-group-prefix-lists`(=`03`)는 일부러 쓰지 않습니다.** 이 차트는 세 Ingress 를 **하나의 `ingress.annotations` 로 렌더**하므로(`templates/common/ingress.yaml:22,58,100`), values 에 넣으면 admin-api·admin-ui 까지 CloudFront 대역에 열립니다 — 누구든 자기 CloudFront 배포를 그 ALB 로 향하게 해 IP 제한을 우회할 수 있습니다.
+
+⚠️ 따라서 **`helm upgrade` 를 돌릴 때마다 `03 --allow-cloudfront` 를 다시 실행해야 합니다.** 안 하면 CloudFront 경유 요청이 전부 502 입니다. `06` 이 실행할 때마다 이 사실을 출력합니다. 근본 해결은 차트에 per-Ingress 어노테이션을 넣는 것입니다.
+
+같은 이유로 `06` 은 세 Ingress 의 `inbound-cidrs` **합집합**을 씁니다 — 차트가 표현할 수 있는 것이 그것뿐입니다.
+
+### ⚠️ `helm upgrade` 는 `install-eks.sh` 로만
+
+
+values 파일에는 `<RDS_PROXY_ENDPOINT>` 같은 **placeholder 가 남아 있습니다.** 실제 DB·Redis 엔드포인트, IRSA role ARN, Cognito issuer 는 `install-eks.sh` 가 terraform output 에서 읽어 `--set` 으로 주입하고, helm 이 그 값을 release 에 기록합니다.
+
+따라서 values 파일만 넘긴 업그레이드는 **그 실값을 placeholder 로 덮어씁니다.**
 
 ```bash
-export OIDC_ISSUER_URL="<운영자가 준 값>"
-export OIDC_CLIENT_ID="<운영자가 준 값>"
-export ADMIN_API_URL="<운영자가 준 값>"
-cd ~/awsome-ai-gateway && bash scripts/onboard-macos-linux.sh
+helm upgrade llm-gateway ./charts/llm-gateway \
+  -f values-eks-fargate-<env>.yaml        # ← DB·Redis·OIDC 가 전부 죽습니다
 ```
 
-> `--setup-claude-code` 를 빼면 **로그인만** 하고 끝납니다. Claude Code 설정은 건드리지 않습니다.
-
-⚠️ **로그인은 브라우저 PKCE 이고 콜백이** `localhost:8090` **입니다.** 헤드리스 서버에서 돌린다면 브라우저가 그 포트에 닿아야 하므로 터널을 먼저 여십시오. Cognito 콜백 화이트리스트는 `8090`·`8091`·`8092` 3개뿐이라 그중에서 골라야 합니다.
+업그레이드는 항상 이 경로로만 하십시오. 같은 `--set` 을 다시 조립해 줍니다.
 
 ```bash
-ssh -L 8090:localhost:8090 -i <key> ubuntu@<EC2 공인IP>
+./deployment/scripts/install-eks.sh <env>
 ```
 
-⚠️ **VK 발급은 IP 제한을 받습니다.** 로그인(Cognito)은 공개지만 발급(admin-api)은 `inbound-cidrs` 안에서만 됩니다. 그 머신의 공인 IP 가 목록에 없으면 **로그인은 성공하는데 발급이 타임아웃**납니다 — `05` 로 추가하십시오.
+현재 release 가 실값을 들고 있는지 확인:
+
+```bash
+helm get values llm-gateway -n <namespace> | grep -E 'host|issuerUrl'
+```
+
+placeholder 가 아니라 실제 주소가 보여야 정상입니다.
 
 ### 이 기계에서 직접 커밋한 적이 있다면
+
 
 저장소 갱신의 `reset --hard` 는 **원격에 없는 로컬 커밋을 지웁니다.** 이 기계에서 직접 커밋한 기억이 있다면 먼저 확인하십시오 — 제목을 대조해 원격에도 있는지 봅니다.
 
@@ -413,75 +438,60 @@ comm -23 /tmp/a /tmp/b      # 빈 출력 = 전부 원격에 있음 = 버려도 �
 
 리베이스로 해시만 바뀐 커밋은 제목이 원격에도 있으므로 빈 출력이 나옵니다. 뭔가 출력되면 그 커밋은 이 기계에만 있는 작업이니 지우지 말고 따로 판단하십시오.
 
-### `05` 가 필요한 이유
 
-CloudFront를 세우면 추론은 어디서든 되지만, **VK를 받아오는 경로는 별개**입니다. `gateway-cli login` 과 `api-key-helper` 는 admin-api를 직접 치고 admin-api는 IP로 잠겨 있습니다.
+---
 
-넣을 IP 는 **Cowork(또는 Claude Code)를 실제로 돌릴 PC 의 공인 IP** 입니다 — 게이트웨이 서버나 배포 EC2 의 IP 가 아닙니다. 사용자가 여럿이면 각자의 IP(또는 사무실 대역)를 넣습니다. 목록에 없으면 **로그인은 성공하는데 VK 발급만 타임아웃**나서 원인을 찾기 어렵습니다.
+## 참고
 
-기본 대상은 `admin-api` 하나입니다. 데이터플레인은 CloudFront 를 거치므로 `gateway` 까지 열 이유가 없습니다.
+### `03 --allow-cloudfront` 의 보안 성격 변경
 
-⚠️ 사내망은 목적지 리전마다 출구 IP가 다를 수 있습니다. `checkip.amazonaws.com` 결과를 믿지 말고 **대상 리전의 호스트로 SSH해서** 재십시오:
 
-```bash
-ssh -i <key> ubuntu@<대상 리전 EC2> 'echo $SSH_CLIENT'   # 작은따옴표 필수
+CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받아줘야 합니다. 그 결과 데이터플레인의 접근 통제가 바뀝니다.
+
+
+|                      | 변경 전    | 변경 후                 |
+| -------------------- | ------- | -------------------- |
+| gateway ALB 도달       | 허용된 IP만 | CloudFront 경유 시 누구나  |
+| 실질 접근 통제             | IP + VK | **VK 단독**            |
+| admin-api / admin-ui | IP 제한   | **IP 제한 유지 (변경 없음)** |
+
+
+### 직접 확인·디버깅할 때 쓸 이름
+
+
+| 이 문서의 표현             | 실제 이름                                                           |
+| -------------------- | --------------------------------------------------------------- |
+| 요청을 어디로 보낼지 적어둔 설정 행 | `model.routing_profiles` 테이블, `client` 컬럼이 키                    |
+| 존재하지 않는 계정을 가리키는 값   | `routing_profiles.account_role_arn`                             |
+| 그 계정에 접속 시도          | `sts:AssumeRole` (실패 시 502)                                     |
+| 모델 고정 스위치            | `routing_profiles.default_model` (+ `backend='mantle'` 일 때만 발동) |
+| 등록된 모델 목록            | `model.model_aliases` (`status='ACTIVE'` 인 것만 사용 가능)            |
+| 모델 단가                | `model.model_pricings`                                          |
+| 팀별 모델 허용목록           | `model.team_allowed_models` (행 0개 = 전체 허용)                      |
+
+
+현재 상태는 `00-preflight-check.sh` 가 이 테이블들을 그대로 조회해 보여줍니다.
+
+근거 — 코드에서 확인하려면
+
+`gateway-proxy/src/app/routers/messages.py:118`
+
+```python
+# 주석: "a 'mantle' profile WITH a default_model forces that model
+#        (cowork → cowork-opus), ignoring the requested alias."
+if profile is not None and profile.backend == "mantle" and profile.default_model:
+    cfg = await router_service.resolve_mantle_model(redis, db, profile.default_model)
 ```
 
----
+`model.routing_profiles` 의 `cowork` 행이 `backend='mantle'` 이고 `default_model` 이 채워져 있으면, 요청 본문의 모델명을 버리고 `default_model` 로 강제합니다. 이름과 달리 기본값이 아니라 **override** 입니다.
 
+시드가 넣는 값(마이그레이션 `0009_add_mantle_routing_data.py`):
 
-
-## 검증
-
-`04-verify.sh` 가 세 층을 확인합니다.
-
-
-| 층   | 확인              | 왜              |
-| --- | --------------- | -------------- |
-| A   | DB 상태           | 설정이 들어갔는가      |
-| B   | 종단 호출           | 실제로 통하는가       |
-| C   | `usage_logs` 비용 | 통했는데 제대로 기록되는가 |
-
-
-A만 보고 끝내면 조용한 실패를 놓칩니다. C에서 `$0` 이 나오면 가격 행이 잘못 들어간 것입니다.
-
-B는 `anthropic-client-platform: desktop_app` **헤더로 Cowork를 흉내** 냅니다(`client_identifier.py:38-45`). Cowork 앱을 설치하기 전에 서버측을 확정할 수 있습니다.
-
-실패 시 판별표를 함께 출력합니다:
-
-
-| 증상                         | 원인                                         |
-| -------------------------- | ------------------------------------------ |
-| 404 `not_found_error`      | alias 미등록 / INACTIVE / **캐시 미만료(5분 더 대기)** |
-| 400 "does not have access" | `team_allowed_models` 화이트리스트               |
-| 502 `provider_error`       | **간헐적이면** 위 「간헐적인 502 / 504」 절            |
-| 502 / AssumeRole 오류        | `01` 미적용 또는 라우팅 캐시 미만료                     |
-| 403                        | VK 만료                                      |
-| 504 (정확히 60초)              | 오리진이 60초 안에 응답 못 함 → 「간헐적인 502 / 504」 절    |
-| CloudFront 502 (매번)        | `03 --allow-cloudfront` 누락 — 오리진 도달 자체가 안 됨 |
-
-
-⚠️ 검증 시 `max_tokens` 를 작게 잡지 마십시오. 최신 모델은 `thinking` 블록을 먼저 냅니다 — 작으면 그것만으로 예산이 소진되어 `text` 가 빈 채로 돌아오고, "빈 응답"으로 오진하기 쉽습니다. 64 이상을 권합니다.
-
----
-
-
-
-## 롤백
-
-```bash
-bash 99-rollback.sh --list          # 되돌릴 수 있는 항목
-bash 99-rollback.sh --routing       # 01 → 시드 상태로
-bash 99-rollback.sh --model         # 02 → INACTIVE 로
-bash 99-rollback.sh --cloudfront    # 03 → 절차 출력 (전파 대기 때문에 수동)
-bash 05-allow-client-ip.sh --remove <IP>/32 --apply    # 05 되돌리기
+```
+client=cowork  backend=mantle  default_model=cowork-opus
+account_role_arn=arn:aws:iam::<존재하지 않는 계정>:role/...
 ```
 
-원복 값은 문서나 기억이 아니라 **적용 시점에 실제 DB에서 읽어** `snapshots/` **에 남긴 SQL** 입니다.
-
-모델은 **DELETE하지 않고 INACTIVE** 로 내립니다 — `model_aliases` 를 참조하는 FK가 여럿인데 `ON DELETE` 절이 없습니다.
-
-롤백도 반영에 5분 걸립니다.
+`claude-code` 행은 `backend='invoke'`, `default_model=NULL` 이라 이 규칙이 발동하지 않습니다. `01` 은 Cowork 행을 이 모양으로 맞춥니다.
 
 ---
-
