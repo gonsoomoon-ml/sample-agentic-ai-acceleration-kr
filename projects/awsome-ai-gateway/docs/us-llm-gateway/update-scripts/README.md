@@ -387,13 +387,28 @@ alb.ingress.kubernetes.io/security-group-prefix-lists ← CloudFront 등 관리�
 
 `03-create-cloudfront.sh` 와 `05-allow-client-ip.sh` 는 어노테이션을 바꾸고, **컨트롤러가 실제로 SG에 반영하는지 90초간 확인**한 뒤 결과를 알려줍니다.
 
-**영속성**: 이 Ingress들은 helm release 소유입니다. `kubectl annotate` 로 넣은 값은 **다음** `helm upgrade` **때 사라지고**, diff 에는 이유가 남지 않습니다.
+**영속성 — 어노테이션은 두 곳에 있을 수 있습니다.**
 
-`06-persist-annotations.sh` 가 `inbound-cidrs`(=`05` 가 바꾸는 값)를 values 에 써 넣습니다. 다만 `security-group-prefix-lists`**(=**`03`**)는 일부러 쓰지 않습니다.** 이 차트는 세 Ingress 를 **하나의** `ingress.annotations` **로 렌더**하므로(`templates/common/ingress.yaml:22,58,100`), values 에 넣으면 admin-api·admin-ui 까지 CloudFront 대역에 열립니다 — 누구든 자기 CloudFront 배포를 그 ALB 로 향하게 해 IP 제한을 우회할 수 있습니다.
+```
+클러스터의 Ingress    ← kubectl annotate.  03·05 가 여기에 씁니다
+values 파일           ← helm 이 읽는 정본
+      │
+      └─ helm upgrade 는 values 로 클러스터를 덮어씁니다.
+         values 에 없는 어노테이션은 그때 사라집니다.
+```
 
-⚠️ 따라서 `helm upgrade` **를 돌릴 때마다** `03 --allow-cloudfront` **를 다시 실행해야 합니다.** 안 하면 CloudFront 경유 요청이 전부 502 입니다. `06-persist-annotations.sh` 가 실행할 때마다 이 사실을 출력합니다. 근본 해결은 차트에 per-Ingress 어노테이션을 넣는 것입니다.
+| 어노테이션 | 넣는 스크립트 | values 에 기록 | `helm upgrade` 후 |
+|---|---|---|---|
+| `inbound-cidrs` | `05-allow-client-ip.sh` | `06-persist-annotations.sh` 가 함 | 유지 |
+| `security-group-prefix-lists` | `03-create-cloudfront.sh` | **일부러 안 함** | **사라짐** |
 
-같은 이유로 `06` 은 세 Ingress 의 `inbound-cidrs` **합집합**을 씁니다 — 차트가 표현할 수 있는 것이 그것뿐입니다.
+⚠️ **`helm upgrade` 를 돌렸다면 `03 --allow-cloudfront` 를 다시 실행하십시오.** 안 하면 CloudFront 경유 요청이 전부 502 입니다. `06-persist-annotations.sh` 가 실행할 때마다 이 사실을 알려줍니다.
+
+**왜 prefix-list 만 빼는가.** 이 차트는 세 Ingress 를 `ingress.annotations` **하나로** 렌더합니다(`templates/common/ingress.yaml:22,58,100`). values 에 넣으면 gateway 뿐 아니라 **admin-api·admin-ui 에도 붙습니다.** 그러면 누구든 자기 CloudFront 배포의 오리진을 그 ALB 로 지정해 IP 제한을 우회할 수 있습니다. gateway 는 그 상태를 승인하고 쓰는 것이지만(「참고 · `03 --allow-cloudfront` 의 보안 성격 변경」), 컨트롤 플레인까지 그럴 이유는 없습니다.
+
+같은 제약 때문에 `06` 은 세 Ingress 의 `inbound-cidrs` **합집합**을 씁니다 — 공유 맵으로 표현할 수 있는 것이 그것뿐입니다.
+
+근본 해결은 차트에 per-Ingress 어노테이션을 넣는 것입니다.
 
 ### ⚠️ `helm upgrade` 는 `install-eks.sh` 로만
 
