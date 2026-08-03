@@ -299,15 +299,42 @@ set ADMIN_API_URL=$admin
 
 **설정보다 앱을 먼저 켜지 마십시오.** 관리형 설정 없이 처음 실행하면 claude.ai 로그인 화면이 뜨고, 거기서 개인 계정으로 들어가 버릴 여지가 생깁니다. 벤더 문서도 "설정 먼저, 앱 나중"을 권합니다.
 
+#### ① 설치 파일 받기
+
+**브라우저**로 이 주소를 여십시오. 약 1.8 GB 파일이 내려받아집니다.
+
+```
+https://claude.ai/api/desktop/win32/x64/offline/latest/redirect
+```
+
+⚠️ **반드시 이 주소의 `.msix` 를 받으십시오.** `claude.com/download` 는 `setup`(`.exe`) 을 주는데, **그것으로 깔면 Claude Desktop 은 설치되지만 Cowork 가 빠집니다.** 위 offline 판만 Cowork 가 들어 있고, 작업 환경 번들이 파일 안에 있어 설치 중 추가 다운로드도 없습니다.
+
+⚠️ **명령으로는 못 받습니다.** `Invoke-WebRequest` · `curl` 은 User-Agent 를 바꿔도 403 입니다(브라우저인지 검사하는 차단). 실제 브라우저로만 받힙니다.
+
+받은 파일이 **어느 폴더에 있는지 전체 경로를 확인해 두십시오.** 다음 단계는 🔴 관리자 창에서 도는데, 그 창은 관리자 계정을 기준으로 폴더를 찾기 때문에 `내 다운로드` 같은 줄임 표현이 통하지 않습니다.
+
+#### ② 설치
+
 ▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
 ```powershell
 Add-AppxProvisionedPackage -Online -SkipLicense `
-  -PackagePath "<Claude .msix 경로>"
+  -PackagePath "<받아 둔 .msix 의 전체 경로>"
 Get-AppxPackage -AllUsers -Name "*laude*" | Select Name,Version
 ```
 
-사이드로딩 정책이 막혀 있으면 먼저 열어야 합니다:
+📋 **예시** — 테스트 머신에서 실제로 쓴 명령입니다. 파일명 끝의 버전은 받은 시점에 따라 다르니, 앞 단계에서 확인한 경로로 바꿔 쓰십시오.
+
+```powershell
+Add-AppxProvisionedPackage -Online -SkipLicense `
+  -PackagePath "C:\Users\Administrator\Downloads\Claude-offline-win32-x64-1.24012.9.msix"
+```
+
+`Get-AppxPackage` 가 이름과 버전을 한 줄 찍으면 설치된 것입니다.
+
+`Add-AppxPackage` 가 아니라 `Add-AppxProvisionedPackage` 를 쓰는 이유는, 앞의 것은 **명령을 돌린 계정에게만** 설치되기 때문입니다. 뒤의 것은 이 PC 에 로그인하는 모든 사용자에게 등록됩니다.
+
+#### ③ 사이드로딩이 막혀 있을 때만
 
 ▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
