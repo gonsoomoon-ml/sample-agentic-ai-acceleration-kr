@@ -479,14 +479,16 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
 
 ▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
-먼저 이 배포의 값 두 개를 변수에 넣습니다. **채워야 하는 것은 이 두 줄뿐입니다.**
+먼저 값 두 개를 변수에 넣습니다. **손으로 채우는 것은 첫 줄 하나뿐입니다.**
 
 ```powershell
 $BASE   = "<from operator - the https:// URL>"
-$MODELS = '["<alias1>","<alias2>","<alias3>"]'
+$MODELS = '["claude-opus-5","claude-opus-4-8","claude-sonnet-5","claude-haiku-4-5-20251001"]'
 ```
 
-`$MODELS` 는 운영자가 알려 준 alias 목록입니다. **DB 에 등록된 문자열 그대로** 써야 합니다 — 예를 들어 Haiku 는 `claude-haiku-4-5` 가 아니라 `claude-haiku-4-5-20251001` 입니다.
+`$MODELS` 는 이 배포의 기본 목록이라 그대로 두시면 됩니다. 운영자가 다른 목록을 줬다면 그것으로 바꾸십시오 — 운영자는 `00-preflight-check.sh` 의 ACTIVE 목록에서 확인합니다.
+
+⚠️ alias 는 **DB 에 등록된 문자열 그대로** 여야 합니다. 예를 들어 Haiku 는 `claude-haiku-4-5` 가 아니라 `claude-haiku-4-5-20251001` 입니다. 한 글자만 달라도 그 모델만 404 가 납니다.
 
 이제 아래는 **그대로** 붙여넣으면 됩니다.
 
@@ -507,7 +509,7 @@ Set-ItemProperty $K inferenceModels             $MODELS
 Get-ItemProperty $K | Format-List inference*
 ```
 
-여섯 개가 다 보이고 `inferenceGatewayBaseUrl` 에 **실제 주소**가 들어 있어야 합니다. `<from operator...>` 가 그대로 보이면 위 두 줄을 안 채운 것입니다 — 채우고 다시 돌리면 덮어써집니다.
+여섯 개가 다 보이고 `inferenceGatewayBaseUrl` 에 **실제 주소**가 들어 있어야 합니다. `<from operator...>` 가 그대로 보이면 `$BASE` 를 안 채운 것입니다 — 채우고 다시 돌리면 덮어써집니다.
 
 > ❓ `inferenceModels` 를 JSON 문자열로 넣을지 `REG_MULTI_SZ` 로 넣을지는 **첫 실행 때 Managed Configuration Report 로 확인**해야 합니다. 리포트에 배열로 파싱돼 보이면 맞습니다.
 
