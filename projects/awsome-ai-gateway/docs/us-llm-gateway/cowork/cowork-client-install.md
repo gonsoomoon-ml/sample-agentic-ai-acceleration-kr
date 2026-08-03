@@ -133,13 +133,38 @@ git --version
 
 `python` 이 아니라 `py` 로 확인하는 이유는, 이 문서의 모든 명령이 `py` 를 쓰기 때문입니다. `py` 는 여러 Python 버전 중 맞는 것을 골라주는 별도 프로그램이고, 설치할 때 빠뜨리면 `python` 만 있고 `py` 는 없는 상태가 됩니다.
 
-환경에 따라 둘 중 하나입니다.
 
 
-| 환경                | 방법                                                                                           |
-| ----------------- | -------------------------------------------------------------------------------------------- |
-| `winget` 있음 (대부분) | `winget install --id Python.Python.3.12 -e --scope machine` `winget install --id Git.Git -e` |
-| `winget` 없음       | python.org · git-scm.com 에서 설치 파일을 받아 직접 설치                                                  |
+**`winget` 이 있으면** (Windows 10·11 대부분) 두 줄이면 끝납니다. **두 개의 명령이니 한 줄씩** 실행하십시오.
+
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
+
+```powershell
+winget install --id Python.Python.3.12 -e --scope machine
+winget install --id Git.Git -e
+```
+
+**`winget` 이 없으면** (Windows Server 등) 설치 파일을 직접 받습니다. 브라우저로 python.org · git-scm.com 에서 받아 실행해도 되고, 아래처럼 받아도 됩니다.
+
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = "Tls12"
+$py="https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe"
+$g="https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe"
+Invoke-WebRequest -Uri $py -OutFile "$env:TEMP\py.exe"  -UseBasicParsing
+Invoke-WebRequest -Uri $g  -OutFile "$env:TEMP\git.exe" -UseBasicParsing
+```
+
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
+
+```powershell
+Start-Process "$env:TEMP\py.exe" -Wait -ArgumentList `
+  "/quiet InstallAllUsers=1 PrependPath=1 Include_launcher=1"
+Start-Process "$env:TEMP\git.exe" -Wait -ArgumentList "/VERYSILENT /NORESTART"
+```
+
+`Include_launcher=1` 은 빼지 마십시오 — 이것이 `py` 를 설치합니다. 두 명령 모두 조용히 돌고 끝날 때까지 프롬프트가 안 돌아옵니다(각 1~3분).
 
 
 설치가 끝나면 **PowerShell 창을 닫고 다시 여십시오.** 새로 깐 프로그램의 위치가 창에 반영되려면 필요합니다.
