@@ -191,16 +191,16 @@ bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 #                                                    ↑ 「VK 얻기」 참고
 ```
 
-⏱ **DB 를 건드리는 스크립트는 조회 중에 화면이 멈춥니다 — 정상입니다.** DB 가 프라이빗 VPC 안이라 조회할 때마다 클러스터에 임시 psql 파드를 띄우는데, Fargate 가 파드 하나를 스케줄하는 데 **1~2분**을 씁니다. 그동안 아무 출력도 없으니 hang 으로 오해하기 쉽습니다. 실측:
+⏱ **DB 를 건드리는 스크립트는 조회 중에 화면이 멈춥니다 — 정상입니다.** DB 가 프라이빗 VPC 안이라 조회할 때마다 클러스터에 임시 psql 파드를 띄우는데, Fargate 가 파드 하나를 스케줄하는 데 **1~2분**을 씁니다. 그동안 아무 출력도 없으니 hang 으로 오해하기 쉽습니다. dry-run 은 조회가 더 적습니다.
 
 
-| 스크립트                     | 소요            | 비고       |
-| ------------------------ | ------------- | -------- |
-| `00-preflight-check.sh`  | **2~3분**      | 조회 3회    |
-| `01` dry-run / `--apply` | 각 **2분**      |          |
-| `02` dry-run / `--apply` | 각 **2분**      |          |
-| `04-verify.sh`           | **2분** + curl |          |
-| `03` · `05`              | 수 초           | DB 를 안 씀 |
+| 스크립트                       | DB 조회    | 대략             |
+| -------------------------- | -------- | -------------- |
+| `00-preflight-check.sh`    | 3회       | 3~5분           |
+| `01-fix-cowork-routing.sh` | 최대 3회    | 2~5분           |
+| `02-add-opus5-model.sh`    | 최대 5회    | 3~8분           |
+| `04-verify.sh`             | 2회       | 2~4분 + 종단 curl |
+| `03` · `05` · `06`         | 없음       | 수 초            |
 
 
 `Ctrl+C` 로 끊지 마십시오 — `--apply` 중이라면 스냅샷만 남고 변경이 반쯤 들어갈 수 있습니다.
@@ -310,6 +310,69 @@ CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받
 
 
 
+### 간헐적인 502 / 504 — CloudFront 를 의심하지 마십시오
+
+`03` 을 제대로 돌렸는데도 요청이 **어떤 때는 되고 어떤 때는 안 되는** 증상이 있습니다. 이 프로젝트에서 실제로 겪었고, 원인을 CloudFront·신규 모델에서 한참 찾다가 아니라는 것을 확인했습니다.
+
+원인은 게이트웨이 파드 안입니다. `bedrock-runtime` 으로의 keep-alive 연결이 botocore 커넥션 풀에 남는데, **NAT 의 idle timeout(350초)이 그 흐름을 조용히 버립니다**(Bedrock VPC 엔드포인트가 없으면 NAT 경유). 파드가 오래 떠 있을수록 죽은 연결이 쌓이고, 그걸 집은 요청이 두 형태로 실패합니다.
+
+```
+ReadTimeoutError       → 300초 매달림 → CloudFront 가 60초에 포기하고 504
+ConnectionClosedError  → 즉시 502   {"type":"provider_error"}
+```
+
+새 연결을 집은 요청은 1~2초에 정상 응답합니다. 그래서 **재시도하면 되는 것처럼 보입니다.**
+
+**① 판별 — 로그에서 예외 종류를 봅니다**
+
+```bash
+kubectl logs deploy/llm-gateway-gateway-proxy -n llm-gateway --tail=500 |
+  grep -o '\(ReadTimeout\|ConnectionClosed\)Error[^"]*' | tail -3
+```
+
+둘 중 하나가 보이면 이 문제입니다. (release·namespace 는 `config.env` 의 `HELM_RELEASE`·`K8S_NAMESPACE`.)
+
+**② CloudFront 가 아님을 확인 — ALB 로 직접 쏩니다**
+
+배포 EC2 의 IP 는 gateway ALB 허용목록에 있으므로 직접 호출할 수 있습니다. ALB 주소는 `00` 이 `gateway ALB DNS` 로 출력합니다.
+
+```bash
+GW=http://<00 이 출력한 gateway ALB DNS>
+VK=$(api-key-helper 2>/dev/null | grep -m1 '^vk-')
+```
+
+```bash
+for i in 1 2 3; do
+  curl -sS -o /dev/null -w "$i: %{http_code}  %{time_total}s\n" --max-time 90 \
+    -X POST "$GW/v1/messages" \
+    -H "Authorization: Bearer $VK" \
+    -H "Content-Type: application/json" \
+    -H "anthropic-version: 2023-06-01" \
+    -d '{"model":"claude-opus-5","max_tokens":64,
+         "messages":[{"role":"user","content":"hi"}]}'
+done
+```
+
+3회 중 일부만 실패하면 이 문제입니다. **CloudFront 를 거치지 않았는데도 실패하기 때문입니다.** 전부 실패한다면 다른 원인이니 판별표를 보십시오.
+
+**③ 임시 조치 — 파드 재시작**
+
+풀이 비워집니다. Ingress 어노테이션·DB·CloudFront 는 **건드리지 않습니다**(그것들이 사라지는 건 `helm upgrade` 입니다).
+
+```bash
+kubectl rollout restart deploy/llm-gateway-gateway-proxy -n llm-gateway
+```
+
+```bash
+kubectl rollout status deploy/llm-gateway-gateway-proxy -n llm-gateway --timeout=5m
+```
+
+기존 파드가 계속 서비스하므로 중단은 없습니다. 다만 **증상을 미루는 것일 뿐이라 유휴가 쌓이면 재발합니다.**
+
+**근본 해결**(미적용): `gateway-proxy/src/app/providers/bedrock_adapter.py` 의 boto `Config` 에서 `read_timeout` 을 300 → 30 으로 낮추고 재시도를 붙이면, 300초 매달림이 빠른 재시도로 바뀌어 새 연결을 잡습니다. 이미지 재빌드 + `install-eks.sh` 가 필요합니다.
+
+> `tcp_keepalive=True` 만으로는 부족합니다 — Linux 기본 `tcp_keepalive_time` 이 7200초라 350초 안에 keepalive 가 나가지 않습니다. **Bedrock VPC 엔드포인트도 해결책이 아닙니다** — 인터페이스 엔드포인트는 NLB 기반이고 NLB idle timeout 도 350초로 같습니다(보안·비용 이유로는 여전히 넣을 값어치가 있습니다).
+
 ### VK 얻기
 
 `04` 는 실제로 요청을 보내므로 Virtual Key 가 필요합니다. 게이트웨이에 이미 온보딩된 머신(배포 EC2 포함)이라면 한 줄입니다.
@@ -391,9 +454,11 @@ B는 `anthropic-client-platform: desktop_app` **헤더로 Cowork를 흉내** 냅
 | -------------------------- | ------------------------------------------ |
 | 404 `not_found_error`      | alias 미등록 / INACTIVE / **캐시 미만료(5분 더 대기)** |
 | 400 "does not have access" | `team_allowed_models` 화이트리스트               |
+| 502 `provider_error`       | **간헐적이면** 위 「간헐적인 502 / 504」 절            |
 | 502 / AssumeRole 오류        | `01` 미적용 또는 라우팅 캐시 미만료                     |
 | 403                        | VK 만료                                      |
-| CloudFront 502/504         | `03 --allow-cloudfront` 누락                 |
+| 504 (정확히 60초)              | 오리진이 60초 안에 응답 못 함 → 「간헐적인 502 / 504」 절    |
+| CloudFront 502 (매번)        | `03 --allow-cloudfront` 누락 — 오리진 도달 자체가 안 됨 |
 
 
 ⚠️ 검증 시 `max_tokens` 를 작게 잡지 마십시오. 최신 모델은 `thinking` 블록을 먼저 냅니다 — 작으면 그것만으로 예산이 소진되어 `text` 가 빈 채로 돌아오고, "빈 응답"으로 오진하기 쉽습니다. 64 이상을 권합니다.
