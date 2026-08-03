@@ -288,10 +288,10 @@ bash 07-client-values.sh
 ▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
-$env:OIDC_ISSUER_URL="<운영자가 준 값>"
-$env:OIDC_CLIENT_ID="<운영자가 준 값>"
-$env:ADMIN_API_URL="<운영자가 준 값>"
-$env:ANTHROPIC_BASE_URL="<운영자가 준 값 — https:// 로 시작>"
+$env:OIDC_ISSUER_URL="<from operator>"
+$env:OIDC_CLIENT_ID="<from operator>"
+$env:ADMIN_API_URL="<from operator>"
+$env:ANTHROPIC_BASE_URL="<from operator - starts with https://>"
 ```
 
 ⚠️ `ANTHROPIC_BASE_URL` 은 `https://` **여야 합니다.** Cowork 가 평문 HTTP 주소를 거부합니다. `07-client-values.sh` 는 Cowork 기준이라 CloudFront 주소를 넣어 줍니다.
@@ -340,7 +340,7 @@ api-key-helper 2>$null | Select-String "^vk-"
 ▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
-(iwr "<ADMIN_API_URL>/health" -TimeoutSec 10).StatusCode   # 200 이어야 함
+(iwr "$env:ADMIN_API_URL/health" -TimeoutSec 10).StatusCode   # 200 이어야 함
 (irm https://checkip.amazonaws.com).Trim()                 # 막혔으면 이 IP 를 운영자에게
 ```
 
@@ -375,10 +375,10 @@ py -c "import sysconfig,os; print(os.path.join(sysconfig.get_path('scripts','nt_
 ▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
 ```powershell
-$exe    = "<① 에서 복사한 경로>"
-$issuer = "<운영자가 준 값>"
-$client = "<운영자가 준 값>"
-$admin  = "<운영자가 준 값>"
+$exe    = "<path printed by the command above>"
+$issuer = "<from operator>"
+$client = "<from operator>"
+$admin  = "<from operator>"
 ```
 
 이어서 폴더를 만들고 파일을 씁니다.
@@ -439,7 +439,7 @@ https://claude.ai/api/desktop/win32/x64/offline/latest/redirect
 
 ```powershell
 Add-AppxProvisionedPackage -Online -SkipLicense `
-  -PackagePath "<받아 둔 .msix 의 전체 경로>"
+  -PackagePath "<full path to the .msix you downloaded>"
 Get-AppxPackage -AllUsers -Name "*laude*" | Select Name,Version
 ```
 
@@ -483,7 +483,7 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
 $K = "HKLM:\SOFTWARE\Policies\Claude"
 New-Item -Path $K -Force | Out-Null
 Set-ItemProperty $K inferenceProvider           "gateway"
-Set-ItemProperty $K inferenceGatewayBaseUrl     "https://<CloudFront 도메인>"
+Set-ItemProperty $K inferenceGatewayBaseUrl     "https://<cloudfront-domain>"
 Set-ItemProperty $K inferenceGatewayAuthScheme  "bearer"
 Set-ItemProperty $K inferenceCredentialHelper   "C:\ProgramData\llm-gateway\helper.cmd"
 Set-ItemProperty $K inferenceCredentialHelperTtlSec 1800
