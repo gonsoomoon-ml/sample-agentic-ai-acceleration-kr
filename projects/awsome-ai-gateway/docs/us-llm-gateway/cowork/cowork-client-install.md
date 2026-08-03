@@ -660,6 +660,14 @@ Set-ItemProperty $K chatTabEnabled "true"
 Get-Process -Name "*laude*" -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
+명령 대신 화면으로 하셔도 됩니다.
+
+```
+Ctrl + Shift + Esc  →  Claude 찾기  →  우클릭  →  작업 끝내기
+```
+
+여러 개(`Claude`, `Claude Helper` 등)가 보이면 **전부** 끝내십시오. 하나라도 남으면 설정을 다시 읽지 않습니다.
+
 다시 실행하면 탭이 **Cowork · Code · Chat** 세 개가 됩니다.
 
 안 늘어나면 ① 값이 `true` 로 찍히는지 다시 보고, ② 그래도 안 되면 값 형식 문제일 수 있으니 `"1"` 로 바꿔 같은 절차를 반복하십시오.
