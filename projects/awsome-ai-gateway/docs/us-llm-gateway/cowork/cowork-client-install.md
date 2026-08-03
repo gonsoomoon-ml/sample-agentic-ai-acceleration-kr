@@ -135,7 +135,13 @@ git --version
 
 
 
-**`winget` 이 있으면** (Windows 10·11 대부분) 두 줄이면 끝납니다. **두 개의 명령이니 한 줄씩** 실행하십시오.
+설치 방법은 두 갈래이고 **둘 중 하나만** 하면 됩니다. 먼저 `winget` 이 있는지 봅니다.
+
+```powershell
+winget --version
+```
+
+**갈래 A — `winget` 이 있을 때** (Windows 10·11 대부분). 두 줄이면 끝납니다. **두 개의 명령이니 한 줄씩** 실행하십시오. 이 갈래로 끝냈으면 **갈래 B 는 건너뛰고** 아래 「설치 후 확인」으로 가십시오.
 
 ▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
@@ -144,7 +150,7 @@ winget install --id Python.Python.3.12 -e --scope machine
 winget install --id Git.Git -e
 ```
 
-**`winget` 이 없으면** 설치 파일을 직접 받습니다. `winget` 은 App Installer 라는 구성요소가 있어야 동작합니다 — 구형 Windows 10, 이미지에 따라 일부 Windows Server, 스토어 접근이 막힌 폐쇄망에서 없을 수 있습니다. 브라우저로 python.org · git-scm.com 에서 받아 실행해도 되고, 아래처럼 받아도 됩니다.
+**갈래 B — `winget` 이 없을 때.** 갈래 A 를 했다면 **여기는 하지 않습니다.** 설치 파일을 직접 받습니다. `winget` 은 App Installer 라는 구성요소가 있어야 동작합니다 — 구형 Windows 10, 이미지에 따라 일부 Windows Server, 스토어 접근이 막힌 폐쇄망에서 없을 수 있습니다. 브라우저로 python.org · git-scm.com 에서 받아 실행해도 되고, 아래처럼 받아도 됩니다.
 
 ▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
@@ -166,6 +172,8 @@ Start-Process "$env:TEMP\git.exe" -Wait -ArgumentList "/VERYSILENT /NORESTART"
 
 `Include_launcher=1` 은 빼지 마십시오 — 이것이 `py` 를 설치합니다. 두 명령 모두 조용히 돌고 끝날 때까지 프롬프트가 안 돌아옵니다(각 1~3분).
 
+
+#### 설치 후 확인 — 갈래 A·B 공통
 
 설치가 끝나면 **PowerShell 창을 닫고 새로 여십시오.** 새로 깐 프로그램의 위치는 그 뒤에 연 창부터 반영됩니다.
 
