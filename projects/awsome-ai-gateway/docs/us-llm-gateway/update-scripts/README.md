@@ -271,6 +271,31 @@ alb.ingress.kubernetes.io/security-group-prefix-lists ← CloudFront 등 관리�
 
 같은 이유로 `06` 은 세 Ingress 의 `inbound-cidrs` **합집합**을 씁니다 — 차트가 표현할 수 있는 것이 그것뿐입니다.
 
+### ⚠️ `helm upgrade` 는 `install-eks.sh` 로만
+
+values 파일에는 `<RDS_PROXY_ENDPOINT>` 같은 **placeholder 가 남아 있습니다.** 실제 DB·Redis 엔드포인트, IRSA role ARN, Cognito issuer 는 `install-eks.sh` 가 terraform output 에서 읽어 `--set` 으로 주입하고, helm 이 그 값을 release 에 기록합니다.
+
+따라서 values 파일만 넘긴 업그레이드는 **그 실값을 placeholder 로 덮어씁니다.**
+
+```bash
+helm upgrade llm-gateway ./charts/llm-gateway \
+  -f values-eks-fargate-<env>.yaml        # ← DB·Redis·OIDC 가 전부 죽습니다
+```
+
+업그레이드는 항상 이 경로로만 하십시오. 같은 `--set` 을 다시 조립해 줍니다.
+
+```bash
+./deployment/scripts/install-eks.sh <env>
+```
+
+현재 release 가 실값을 들고 있는지 확인:
+
+```bash
+helm get values llm-gateway -n <namespace> | grep -E 'host|issuerUrl'
+```
+
+placeholder 가 아니라 실제 주소가 보여야 정상입니다.
+
 ### `03 --allow-cloudfront` 의 보안 성격 변경
 
 CloudFront는 오리진에 공인 IP로 접근하므로 ALB가 그 대역을 받아줘야 합니다. 그 결과 데이터플레인의 접근 통제가 바뀝니다.
