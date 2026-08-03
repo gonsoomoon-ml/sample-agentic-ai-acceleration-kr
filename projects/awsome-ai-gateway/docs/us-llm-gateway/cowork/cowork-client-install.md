@@ -167,7 +167,23 @@ Start-Process "$env:TEMP\git.exe" -Wait -ArgumentList "/VERYSILENT /NORESTART"
 `Include_launcher=1` 은 빼지 마십시오 — 이것이 `py` 를 설치합니다. 두 명령 모두 조용히 돌고 끝날 때까지 프롬프트가 안 돌아옵니다(각 1~3분).
 
 
-설치가 끝나면 **PowerShell 창을 닫고 다시 여십시오.** 새로 깐 프로그램의 위치가 창에 반영되려면 필요합니다.
+설치가 끝나면 **PowerShell 창을 닫고 새로 여십시오.** 새로 깐 프로그램의 위치는 그 뒤에 연 창부터 반영됩니다.
+
+▶ 🔵 **실행 · 일반 PowerShell (새 창)** — 직원 PC
+
+```powershell
+py --version
+git --version
+```
+
+```
+Python 3.12.10
+git version 2.55.0.windows.3
+```
+
+이렇게 둘 다 나오면 ⓪ 이 끝난 것입니다. 버전 숫자는 받은 시점에 따라 다릅니다.
+
+⚠️ **창을 새로 열지 않으면** `py` 는 되는데 `git` 만 `인식할 수 없습니다` 로 나옵니다. git 이 안 깔린 것이 아닙니다 — Python 런처는 `C:\Windows` 에 들어가는데 그 폴더는 원래 PATH 에 있고, git 은 `C:\Program Files\Git\cmd` 라는 **새로 추가된 자리**에 들어가기 때문입니다. 실측에서 이 순서로 겪었습니다.
 
 ⚠️ Python 은 **python.org / winget 판**을 쓰십시오. Microsoft Store 판은 경로 리다이렉션 때문에 `py` 런처와 `--user` 설치가 꼬입니다.
 
