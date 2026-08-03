@@ -152,6 +152,8 @@ winget --version
 
 ---
 
+
+
 ##### A. `winget` 으로 설치 — 대부분 이쪽입니다
 
 **두 개의 명령이니 한 줄씩** 실행하십시오.
@@ -303,9 +305,14 @@ $env:ANTHROPIC_BASE_URL="<운영자가 준 값 — https:// 로 시작>"
 ▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
+cd ~\sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\scripts\onboard-windows.ps1
 ```
+
+첫 줄은 ① 에서 받은 폴더로 돌아가는 것입니다. 이미 거기에 계시면 아무 일도 일어나지 않습니다. `.\scripts\...` 가 "지금 폴더 기준"이라 다른 곳에 있으면 파일을 못 찾습니다.
+
+⚠️ **③ 을 넣은 그 창에서 실행하십시오.** `$env:` 로 넣은 값 4개는 그 창에서만 살아 있습니다. 창을 새로 열었다면 폴더가 맞아도 스크립트가 값이 없다며 멈춥니다 — ③ 부터 다시 하시면 됩니다.
 
 기본 브라우저에 로그인 화면이 뜹니다(현재는 Amazon Cognito 화면입니다 — 「한눈에」의 안내대로 나중에 회사 로그인 화면으로 바뀔 수 있습니다). 운영자가 발급한 이메일 + 비밀번호를 넣으십시오. **첫 로그인이면** 임시 비밀번호로 들어간 뒤 새 비밀번호를 설정하라고 요구합니다.
 
