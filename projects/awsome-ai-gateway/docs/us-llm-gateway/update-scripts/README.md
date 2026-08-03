@@ -405,7 +405,7 @@ values 파일           ← helm 이 읽는 정본
 ⚠️ **`helm upgrade` 를 돌렸다면 반드시 다시 실행하십시오.** 안 하면 CloudFront 경유 요청이 전부 502 입니다.
 
 ```bash
-cd <저장소>/docs/us-llm-gateway/update-scripts
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 03-create-cloudfront.sh --allow-cloudfront
 ```
 
