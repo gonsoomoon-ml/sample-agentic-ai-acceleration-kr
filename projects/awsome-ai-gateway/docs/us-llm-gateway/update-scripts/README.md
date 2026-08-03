@@ -188,7 +188,7 @@ B는 `anthropic-client-platform: desktop_app` **헤더로 Cowork를 흉내** 냅
 | 502 / AssumeRole 오류        | `01-fix-cowork-routing.sh` 미적용 또는 라우팅 캐시 미만료                      |
 | 403                        | VK 만료                                       |
 | 504 (정확히 60초)              | 오리진이 60초 안에 응답 못 함 → 같은 절                   |
-| CloudFront 502 (매번)        | `03 --allow-cloudfront` 누락 — 오리진 도달 자체가 안 됨 |
+| CloudFront 502 (매번)        | `03-create-cloudfront.sh --allow-cloudfront` 누락 |
 
 
 ⚠️ 검증 시 `max_tokens` 를 작게 잡지 마십시오. 최신 모델은 `thinking` 블록을 먼저 냅니다 — 작으면 그것만으로 예산이 소진되어 `text` 가 빈 채로 돌아오고, "빈 응답"으로 오진하기 쉽습니다. 64 이상을 권합니다.
@@ -402,7 +402,14 @@ values 파일           ← helm 이 읽는 정본
 | `inbound-cidrs` | `05-allow-client-ip.sh` | `06-persist-annotations.sh` 가 함 | 유지 |
 | `security-group-prefix-lists` | `03-create-cloudfront.sh` | **일부러 안 함** | **사라짐** |
 
-⚠️ **`helm upgrade` 를 돌렸다면 `03 --allow-cloudfront` 를 다시 실행하십시오.** 안 하면 CloudFront 경유 요청이 전부 502 입니다. `06-persist-annotations.sh` 가 실행할 때마다 이 사실을 알려줍니다.
+⚠️ **`helm upgrade` 를 돌렸다면 반드시 다시 실행하십시오.** 안 하면 CloudFront 경유 요청이 전부 502 입니다.
+
+```bash
+cd <저장소>/docs/us-llm-gateway/update-scripts
+bash 03-create-cloudfront.sh --allow-cloudfront
+```
+
+배포는 그대로 두고 어노테이션만 다시 겁니다(수 초). `06-persist-annotations.sh` 도 실행할 때마다 이 사실을 알려줍니다.
 
 **왜 prefix-list 만 빼는가.** 이 차트는 세 Ingress 를 `ingress.annotations` **하나로** 렌더합니다(`templates/common/ingress.yaml:22,58,100`). values 에 넣으면 gateway 뿐 아니라 **admin-api·admin-ui 에도 붙습니다.** 그러면 누구든 자기 CloudFront 배포의 오리진을 그 ALB 로 지정해 IP 제한을 우회할 수 있습니다. gateway 는 그 상태를 승인하고 쓰는 것이지만(「참고 · `03 --allow-cloudfront` 의 보안 성격 변경」), 컨트롤 플레인까지 그럴 이유는 없습니다.
 
