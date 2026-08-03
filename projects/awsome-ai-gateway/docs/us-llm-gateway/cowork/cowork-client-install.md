@@ -54,6 +54,19 @@ Claude Code 가 아니라 **Cowork(Claude Desktop 3P)** 를 게이트웨이에 �
 
 ## 절차
 
+명령 블록 앞에는 **어느 창에서 돌리는지** 표시가 붙습니다. 창을 잘못 고르면 오류 없이 조용히 빗나가므로, 매번 확인하십시오.
+
+
+| 표시                            | 어느 창인가                                             | 왜 나뉘나                                  |
+| ----------------------------- | -------------------------------------------------- | -------------------------------------- |
+| ▶ 🔵 **실행 · 일반 PowerShell**   | 직원 본인 계정으로 그냥 연 PowerShell                         | 설치 파일과 로그인 토큰이 **직원 본인 폴더**에 들어갑니다     |
+| ▶ 🔴 **실행 · 관리자 PowerShell**  | **"관리자 권한으로 실행"** 으로 연 창 (제목 표시줄에 `관리자:` 가 보입니다)  | 모든 사용자에게 앱을 깔고 시스템 영역에 설정을 씁니다         |
+| ▶ 🟢 **실행 · 배포 EC2**          | 직원 PC 가 아니라 **운영자**가 게이트웨이 서버에서                    | 직원이 볼 수 없는 값을 뽑습니다                     |
+
+
+⚠️ 🔵 자리에서 🔴 창을 쓰면 **관리자 계정의 폴더**에 설치되고 토큰도 그쪽에 저장됩니다. 명령은 성공한 것처럼 보이는데 Cowork 는 아무것도 못 찾습니다.
+
+
 
 
 ### 1. `gateway-cli` 설치 + 로그인
@@ -76,7 +89,7 @@ Cowork 는 VK 를 직접 만들지 못합니다. `api-key-helper` 가 대신 받
 
 #### ⓪ 사전 요구사항 — 없을 때만
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 py --version     # 3.11+ 가 찍히면 건너뜀
@@ -102,7 +115,7 @@ git --version
 
 ⚠️ **반드시** `gonsoomoon-ml` **fork 를 쓰십시오.** 원본인 `aws-samples` 저장소에는 벤더 버그 픽스가 빠져 있어, 설치는 성공한 것처럼 보이는데 인증이 조용히 개인 AWS 계정으로 새는 등의 문제가 있습니다.
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 cd ~
@@ -117,7 +130,7 @@ cd ~\sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway
 
 #### ② `gateway-cli` 설치
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 py -m pip install --user .\gateway-cli
@@ -134,7 +147,7 @@ $env:PATH = "$s;$env:PATH"
 
 확인:
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 gateway-cli version
@@ -146,7 +159,7 @@ gateway-cli version
 
 직원은 이 값들을 직접 찾을 수 없습니다 — 두 개는 terraform 상태에, 두 개는 클러스터 안에 있습니다. **운영자가 배포 EC2 에서 아래를 돌려** 나온 4줄을 그대로 전달합니다.
 
-▶ **실행** · 배포 EC2 (운영자)
+▶ 🟢 **실행 · 배포 EC2** — 운영자
 
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
@@ -155,7 +168,7 @@ bash 07-client-values.sh
 
 읽기 전용이고, PowerShell 문법 4줄과 macOS 용 4줄을 함께 출력합니다. 직원은 받은 4줄을 그대로 붙여넣습니다.
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 $env:OIDC_ISSUER_URL="<운영자가 준 값>"
@@ -172,7 +185,7 @@ $env:ANTHROPIC_BASE_URL="<운영자가 준 값 — https:// 로 시작>"
 
 #### ④ 로그인
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
@@ -192,7 +205,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 #### ⑤ 확인
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 api-key-helper 2>$null | Select-String "^vk-"
@@ -202,7 +215,7 @@ api-key-helper 2>$null | Select-String "^vk-"
 
 ⚠️ **로그인이 됐다고 안심하면 안 됩니다.** Cognito 는 공개라 ALB 와 무관하게 성공합니다. VK 발급은 admin-api 를 치고 그쪽은 IP 로 잠겨 있어, 그 PC 의 공인 IP 가 허용목록에 없으면 여기서 타임아웃납니다.
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 (iwr "<ADMIN_API_URL>/health" -TimeoutSec 10).StatusCode   # 200 이어야 함
@@ -217,7 +230,7 @@ Cowork 는 요청할 때마다 이 스크립트를 실행해서 열쇠(VK)를 �
 
 #### ① helper 가 부를 실행파일의 경로 확인
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 py -c "import sysconfig,os; print(os.path.join(sysconfig.get_path('scripts','nt_user'),'api-key-helper.exe'))"
@@ -235,7 +248,7 @@ py -c "import sysconfig,os; print(os.path.join(sysconfig.get_path('scripts','nt_
 
 먼저 값 네 개를 넣습니다 — 위에서 복사한 경로와, 운영자에게 받은 값 세 개입니다.
 
-▶ **실행** · 직원 PC (Windows) — 관리자 PowerShell
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
 ```powershell
 $exe    = "<① 에서 복사한 경로>"
@@ -246,7 +259,7 @@ $admin  = "<운영자가 준 값>"
 
 이어서 폴더를 만들고 파일을 씁니다.
 
-▶ **실행** · 직원 PC (Windows) — 관리자 PowerShell
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
 ```powershell
 $dir = "C:\ProgramData\llm-gateway"
@@ -264,7 +277,7 @@ set ADMIN_API_URL=$admin
 
 #### ③ 확인
 
-▶ **실행** · 직원 PC (Windows) — 일반 PowerShell
+▶ 🔵 **실행 · 일반 PowerShell** — 직원 PC
 
 ```powershell
 & "C:\ProgramData\llm-gateway\helper.cmd"
@@ -286,7 +299,7 @@ set ADMIN_API_URL=$admin
 
 **설정보다 앱을 먼저 켜지 마십시오.** 관리형 설정 없이 처음 실행하면 claude.ai 로그인 화면이 뜨고, 거기서 개인 계정으로 들어가 버릴 여지가 생깁니다. 벤더 문서도 "설정 먼저, 앱 나중"을 권합니다.
 
-▶ **실행** · 직원 PC (Windows) — 관리자 PowerShell
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
 ```powershell
 Add-AppxProvisionedPackage -Online -SkipLicense `
@@ -296,7 +309,7 @@ Get-AppxPackage -AllUsers -Name "*laude*" | Select Name,Version
 
 사이드로딩 정책이 막혀 있으면 먼저 열어야 합니다:
 
-▶ **실행** · 직원 PC (Windows) — 관리자 PowerShell
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
 ```powershell
 New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
@@ -311,7 +324,7 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
 
 `HKLM` 은 컴퓨터 전체 설정, `HKCU` 는 사용자별 설정입니다. `HKLM` **에 값이 있으면** `HKCU` **는 통째로 무시됩니다** — 조직이 정한 설정을 사용자가 못 바꾸게 하는 구조입니다.
 
-▶ **실행** · 직원 PC (Windows) — 관리자 PowerShell
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
 ```powershell
 $K = "HKLM:\SOFTWARE\Policies\Claude"
