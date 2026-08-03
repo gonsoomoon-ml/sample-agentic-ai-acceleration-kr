@@ -479,27 +479,21 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
 
 ▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
-먼저 값 두 개를 변수에 넣습니다.
-
-`$BASE` 는 절차 1-③ 의 `ANTHROPIC_BASE_URL` **과 같은 값**입니다. 그 창을 그대로 쓰고 있다면 다시 타이핑할 필요가 없습니다.
+먼저 값 두 개를 변수에 넣습니다. **손으로 채우는 것은 첫 줄 하나뿐입니다.**
 
 ```powershell
-$BASE   = $env:ANTHROPIC_BASE_URL
+$BASE   = "<from operator - the https:// URL>"
 $MODELS = '["claude-opus-5","claude-opus-4-8","claude-sonnet-5","claude-haiku-4-5-20251001"]'
 $BASE
 ```
 
-마지막 줄이 `https://` 로 시작하는 주소를 찍으면 그대로 다음으로 가십시오.
-
-**아무것도 안 찍히면** 절차 1 과 다른 창입니다(관리자 창을 새로 열었다면 그렇습니다). `$env:` 값은 창마다 따로라 비어 있는 것이니, 운영자에게 받은 주소를 직접 넣으십시오.
-
-```powershell
-$BASE = "<from operator - the https:// URL>"
-```
+`$BASE` 는 절차 1-③ 의 `ANTHROPIC_BASE_URL` **과 같은 값**입니다. 이미 넣었는데 또 넣는 이유는, **절차 4 가 관리자 창**이고 절차 1 은 일반 창이기 때문입니다. `$env:` 로 넣은 값은 **창마다 따로**라 여기서는 비어 있습니다.
 
 `$MODELS` 는 이 배포의 기본 목록이라 그대로 두시면 됩니다. 운영자가 다른 목록을 줬다면 그것으로 바꾸십시오 — 운영자는 `00-preflight-check.sh` 의 ACTIVE 목록에서 확인합니다.
 
 ⚠️ alias 는 **DB 에 등록된 문자열 그대로** 여야 합니다. 예를 들어 Haiku 는 `claude-haiku-4-5` 가 아니라 `claude-haiku-4-5-20251001` 입니다. 한 글자만 달라도 그 모델만 404 가 납니다.
+
+마지막 줄이 `https://` 로 시작하는 주소를 찍는지 보고 넘어가십시오.
 
 이제 아래는 **그대로** 붙여넣으면 됩니다.
 
