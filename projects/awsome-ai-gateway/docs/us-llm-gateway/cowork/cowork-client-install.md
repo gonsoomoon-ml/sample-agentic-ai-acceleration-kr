@@ -7,7 +7,7 @@ Claude Code 가 아니라 **Cowork(Claude Desktop 3P)** 를 게이트웨이에 �
 
 ---
 
-## 한눈에
+## 1. 한눈에
 
 직원 PC 의 **Cowork 를 회사 게이트웨이에 연결**하는 작업입니다. 연결되면 Cowork 는 claude.ai 대신 회사 게이트웨이로 요청을 보내고, 그때 필요한 열쇠는 매번 자동으로 발급받습니다. 직원이 따로 로그인하거나 키를 관리할 일은 없습니다.
 
@@ -45,7 +45,7 @@ gateway-cli 설치·로그인 → helper 작성 → Cowork 설치 → 관리형 
 
 ---
 
-## 전제
+## 2. 전제
 
 **게이트웨이 쪽** — `update-scripts/README.md` 의 실행 순서가 끝나 있어야 합니다.
 
@@ -70,7 +70,7 @@ gateway-cli 설치·로그인 → helper 작성 → Cowork 설치 → 관리형 
 
 
 
-## 먼저 정할 것 세 가지
+## 3. 먼저 정할 것 세 가지
 
 "설치 모드"라고 불리는 축이 세 개고, 서로 독립입니다.
 
@@ -90,7 +90,7 @@ gateway-cli 설치·로그인 → helper 작성 → Cowork 설치 → 관리형 
 
 
 
-## 절차
+## 4. 절차
 
 명령 블록 앞에는 **어느 창에서 돌리는지** 표시가 붙습니다. 창을 잘못 고르면 오류 없이 조용히 빗나가므로, 매번 확인하십시오.
 
@@ -104,7 +104,7 @@ gateway-cli 설치·로그인 → helper 작성 → Cowork 설치 → 관리형 
 
 ⚠️ 🔵 자리에서 🔴 창을 쓰면 **관리자 계정의 폴더**에 설치되고 토큰도 그쪽에 저장됩니다. 명령은 성공한 것처럼 보이는데 Cowork 는 아무것도 못 찾습니다.
 
-### 1. `gateway-cli` 설치 + 로그인
+### 절차 1. `gateway-cli` 설치 + 로그인
 
 Cowork 는 VK 를 직접 만들지 못합니다. `api-key-helper` 가 대신 받아오므로 이것이 먼저입니다.
 
@@ -259,7 +259,7 @@ api-key-helper 2>$null | Select-String "^vk-"
 
 
 
-### 2. credential helper 작성
+### 절차 2. credential helper 작성
 
 Cowork 는 요청할 때마다 이 스크립트를 실행해서 열쇠(VK)를 받아옵니다. `gateway-cli` 의 `api-key-helper` 를 감싸 `vk-` **로 시작하는 한 줄만** 내보내는 것이 전부입니다.
 
@@ -328,7 +328,7 @@ set ADMIN_API_URL=$admin
 
 ⚠️ `api-key-helper` 출력 끝에 빈 줄이 붙는 경우가 있어 `findstr /b` 로 **첫 줄만** 뽑습니다.
 
-### 3. Cowork 설치
+### 절차 3. Cowork 설치
 
 🔴 **여기부터는 관리자 권한이 필요합니다.** PowerShell 을 **"관리자 권한으로 실행"** 으로 여십시오(제목 표시줄에 `관리자:` 가 보입니다). 모든 사용자에게 앱을 깔고 시스템 설정을 쓰기 때문입니다. 절차 1 과 달리 여기서는 어느 관리자 계정으로 승격해도 상관없습니다 — 내 계정 폴더에 쓰는 것이 아니라 시스템 영역에 쓰기 때문입니다.
 
@@ -382,7 +382,7 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
 
 ⚠️ **회사가 중앙에서 관리하는 PC 라면 IT 담당자에게 문의하십시오.** 이 값은 회사 전체 정책이 쓰이는 자리라, 직접 바꿔도 다음 정책 적용 때 되돌아갑니다.
 
-### 4. 관리형 설정
+### 절차 4. 관리형 설정
 
 🔴 **관리자 PowerShell** 에서 진행합니다(절차 3 과 같은 창을 쓰면 됩니다).
 
@@ -407,7 +407,7 @@ Set-ItemProperty $K inferenceModels             '["claude-opus-5","claude-opus-4
 
 
 
-### 설정 키
+#### 설정 키
 
 
 | 키                                 | 값                                                |
@@ -422,7 +422,7 @@ Set-ItemProperty $K inferenceModels             '["claude-opus-5","claude-opus-4
 
 ⚠️ alias 는 **DB 에 등록된 문자열 그대로** 써야 합니다. 예를 들어 Haiku 는 `claude-haiku-4-5` 가 아니라 `claude-haiku-4-5-20251001` 입니다. 현재 목록은 `00-preflight-check.sh` 가 보여줍니다.
 
-### 5. 실행 및 검증
+### 절차 5. 실행 및 검증
 
 앱 실행 → **Help → Troubleshooting → Copy Managed Configuration Report**.
 
@@ -440,7 +440,7 @@ Set-ItemProperty $K inferenceModels             '["claude-opus-5","claude-opus-4
 
 
 
-## 문제 판별
+## 5. 문제 판별
 
 
 | 증상                                 | 원인                                                                                     |
@@ -461,7 +461,7 @@ Set-ItemProperty $K inferenceModels             '["claude-opus-5","claude-opus-4
 
 
 
-## 조직 배포
+## 6. 조직 배포
 
 테스트가 끝나면 관리형 설정을 MDM 으로 밀어넣습니다 — Windows 는 GPO 또는 Intune 으로 같은 레지스트리 값을 배포합니다. 설정 내용은 위와 동일하고, 전달 수단만 바뀝니다.
 
