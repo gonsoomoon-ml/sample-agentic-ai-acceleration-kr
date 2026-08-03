@@ -95,6 +95,7 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 | `04-verify.sh`              | **없음** — 검증                                            | 없음                         |
 | `05-allow-client-ip.sh`     | Ingress `inbound-cidrs` 어노테이션                          | 낮음                         |
 | `06-persist-annotations.sh` | **helm values 파일** (`05-allow-client-ip.sh` 의 IP 허용목록을 영구화)               | 낮음. helm 을 돌리지 않음          |
+| `07-client-values.sh`       | **없음** — 직원에게 줄 env 4줄 출력                              | 없음                         |
 | `99-rollback.sh`            | 위 변경 되돌리기                                              | —                          |
 | `_lib.sh`                   | 공통 함수 (직접 실행하지 않음)                                     | —                          |
 | `config.env`                | 설정값 (부작용 없음)                                           | —                          |
@@ -141,6 +142,8 @@ bash 06-persist-annotations.sh --apply     # 05 의 IP 허용목록을 values �
 
 bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 #                                                    ↑ 「VK 얻기」 참고
+
+bash 07-client-values.sh                   # 직원에게 전달할 env 4줄
 ```
 
 ⏱ **DB 를 건드리는 스크립트는 조회 중에 화면이 멈춥니다 — 정상입니다.** DB 가 프라이빗 VPC 안이라 조회할 때마다 클러스터에 임시 psql 파드를 띄우는데, Fargate 가 파드 하나를 스케줄하는 데 **1~2분**을 씁니다. 그동안 아무 출력도 없으니 hang 으로 오해하기 쉽습니다. dry-run 은 조회가 더 적습니다.
@@ -152,7 +155,7 @@ bash 04-verify.sh --base-url https://<cf-domain> --vk <VK>
 | `01-fix-cowork-routing.sh` | 최대 3회 | 2~5분           |
 | `02-add-opus5-model.sh`    | 최대 5회 | 3~8분           |
 | `04-verify.sh`             | 2회    | 2~4분 + 종단 curl |
-| `03` · `05` · `06`         | 없음    | 수 초            |
+| `03` · `05` · `06` · `07`  | 없음    | 수 초            |
 
 
 `Ctrl+C` 로 끊지 마십시오 — `--apply` 중이라면 스냅샷만 남고 변경이 반쯤 들어갈 수 있습니다.
