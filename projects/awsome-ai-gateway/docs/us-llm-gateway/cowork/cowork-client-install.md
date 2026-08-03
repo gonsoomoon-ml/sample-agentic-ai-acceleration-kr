@@ -23,7 +23,7 @@ gateway-cli 설치·로그인 → helper 작성 → Cowork 설치 → 관리형 
 | **2** | helper 파일 작성 — 열쇠 한 줄만 내보내는 스크립트             | 🔵 → 🔴 → 🔵 | helper 를 직접 실행해 `vk-` 한 줄        |
 | **3** | Cowork 앱 설치 (`.msix`, 모든 사용자)                | 🔴           | `Get-AppxPackage` 가 이름·버전을 출력    |
 | **4** | 관리형 설정 기록 — 게이트웨이 주소·helper 경로·모델 목록         | 🔴           | 다음 절차의 리포트에서 확인                  |
-| **5** | 앱 실행 → 설정이 관리형으로 잡혔는지 확인 → 짧은 대화             | —            | 설정 창이 **읽기 전용**이고 응답이 옴          |
+| **5** | 앱 실행 → 짧은 대화 → 운영자가 게이트웨이 기록 확인                | —            | 응답이 오고 `usage_logs` 에 `client=cowork` |
 
 
 🔵 일반 PowerShell · 🔴 관리자 PowerShell — 아래 「절차」 앞의 표에 설명이 있습니다.
@@ -516,7 +516,7 @@ Get-ItemProperty $K | Format-List inference*
 
 여섯 개가 다 보이고 `inferenceGatewayBaseUrl` 에 **실제 주소**가 들어 있어야 합니다. `<from operator...>` 가 보이거나 값이 비어 있으면 `$BASE` 가 안 잡힌 것입니다 — 위로 돌아가 채우고 다시 돌리면 덮어써집니다.
 
-> ❓ `inferenceModels` 를 JSON 문자열로 넣을지 `REG_MULTI_SZ` 로 넣을지는 **첫 실행 때 Managed Configuration Report 로 확인**해야 합니다. 리포트에 배열로 파싱돼 보이면 맞습니다.
+> ✅ `inferenceModels` 는 **JSON 문자열**(`REG_SZ`)이 맞습니다 — 위 형태로 넣고 나서 앱이 실제로 그 목록의 alias 로 요청을 보낸 것을 게이트웨이 기록에서 확인했습니다(Windows 1.24012.9). `REG_MULTI_SZ` 는 필요 없습니다.
 
 
 
@@ -537,17 +537,51 @@ Get-ItemProperty $K | Format-List inference*
 
 ### 절차 5. 실행 및 검증
 
-앱 실행 → **Help → Troubleshooting → Copy Managed Configuration Report**.
+시작 메뉴에서 **Claude** 를 실행합니다.
 
-리포트에서 확인할 것:
+#### ① 첫 화면
 
-- 위 키들이 **관리형(managed) 출처**로 잡혀 있는가 — 로컬 값으로 잡히면 레지스트리/프로파일이 안 읽힌 것
-- `inferenceModels` 가 배열로 파싱됐는가
-- 설정 창이 **읽기 전용**인가 (관리형이 걸리면 잠깁니다)
+**claude.ai 로그인 화면이 뜨면 거기서 멈추십시오.** 개인 계정으로 들어가지 마시고 「5. 문제 판별」로 가십시오 — 관리형 설정을 못 읽었다는 뜻입니다.
 
-그다음 모델을 골라 짧은 메시지를 보냅니다.
+**바로 쓸 수 있는 상태면 관리형 설정이 읽힌 것입니다.** 로그인을 요구하지 않는다는 것 자체가 증거입니다.
+
+#### ② 모델 목록
+
+모델 선택기를 열어 절차 4 의 `inferenceModels` 에 넣은 이름들이 보이는지 봅니다. 목록이 비어 있거나 다른 이름이면 그 값이 안 읽힌 것입니다.
+
+#### ③ 짧은 대화
+
+아무 모델이나 골라 `hi` 를 보냅니다. 응답이 오면 **직원 PC → CloudFront → 게이트웨이 → Bedrock** 이 전부 통한 것입니다.
 
 ⚠️ 게이트웨이 쪽 변경 직후라면 **캐시 5분**이 지나야 합니다. 그 전에는 신규 모델이 404 로 보입니다.
+
+#### ④ 게이트웨이 쪽 확인 — 운영자
+
+앱 화면만으로는 **어느 client 로 기록됐는지** 알 수 없습니다. `cowork` 로 분류되지 않으면 라우팅·예산이 Claude Code 와 섞입니다.
+
+▶ 🟢 **실행 · 배포 EC2** — 운영자
+
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 04-verify.sh
+```
+
+C 섹션의 최근 행에서 봅니다.
+
+
+| 열                 | 기대값                              |
+| ----------------- | -------------------------------- |
+| `client`          | `cowork`                         |
+| `status`          | `SUCCESS`                        |
+| `cost_usd`        | 0 이 아닐 것                         |
+| `ws`              | 실시간 질문을 했다면 1 이상 (서버측 웹서치가 붙은 것) |
+
+
+DB 조회라 임시 파드가 뜨는 데 1~2분 걸립니다. 화면이 멈춘 것처럼 보이는 게 정상입니다.
+
+⚠️ **비용을 검산할 때 캐시 토큰을 빼먹지 마십시오.** `input_tokens`·`output_tokens` 만으로 계산하면 `cost_usd` 보다 훨씬 작게 나옵니다. Cowork 가 큰 시스템 프롬프트를 캐시로 보내기 때문이며, 단가 오류가 아닙니다.
+
+> **벤더 문서의 `Help → Troubleshooting → Copy Managed Configuration Report` 는 이 빌드에 없습니다**(Windows 1.24012.9 실측). 좌측 하단 계정 메뉴에는 Settings·Language·View change log·Learn more·Sign out 만 있고, Settings 안에도 General·Privacy·Usage·Claude Code·Cowork 다섯 개뿐입니다. 그래서 위 ①~④ 로 갈음합니다 — ④ 는 리포트보다 강한 증거입니다. 리포트는 "앱이 설정을 어떻게 읽었나"를 보여주지만, ④ 는 **요청이 실제로 게이트웨이를 통과해 기록됐다**는 사실 자체입니다.
 
 ---
 
@@ -559,7 +593,7 @@ Get-ItemProperty $K | Format-List inference*
 | 증상                                 | 원인                                                                                     |
 | ---------------------------------- | -------------------------------------------------------------------------------------- |
 | 앱이 claude.ai 로그인 화면을 띄움            | 관리형 설정이 안 읽힘 (레지스트리 하이브/경로 확인)                                                         |
-| 설정 창이 편집 가능                        | 위와 동일                                                                                  |
+| 모델 목록이 비었거나 다른 이름              | `inferenceModels` 를 못 읽음 — JSON 형식·따옴표 확인 (절차 4)                                        |
 | helper 는 VK 를 뱉는데 앱은 인증 실패         | helper 를 관리형이 아닌 레이어에 넣었거나, 출력이 개행으로 안 끝남                                              |
 | 터미널에서는 helper 가 되는데 앱에서만 실패        | 앱이 보는 PATH 에 `api-key-helper` 가 없음 → 절대경로로                                             |
 | VK 발급 타임아웃 (로그인은 성공)               | 클라이언트 공인 IP 가 `inbound-cidrs` 에 없음 → `05-allow-client-ip.sh`                           |
@@ -644,7 +678,7 @@ Set-ItemProperty $K disabledBuiltinTools '["WebSearch","WebFetch"]'
 Set-ItemProperty $K builtinToolPolicy '{"Bash":"ask"}'
 ```
 
-⚠️ 도구 이름은 **앱이 쓰는 이름 그대로** 여야 합니다. 정확한 이름은 **Help → Troubleshooting → Copy Managed Configuration Report** 에 나오니, 거기서 확인하고 넣으십시오. 틀린 이름은 조용히 무시됩니다.
+⚠️ 도구 이름은 **앱이 쓰는 이름 그대로** 여야 합니다. **틀린 이름은 오류 없이 무시됩니다.** 확인 방법은 하나뿐입니다 — 값을 넣고 앱을 재시작한 뒤 그 도구가 실제로 사라졌는지 보는 것입니다. 남아 있으면 철자가 틀린 것입니다.
 
 ### 확인과 되돌리기
 
