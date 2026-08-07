@@ -232,6 +232,8 @@ verify() {
 
     hdr "파드가 실제로 해석하는 주소"
     note "게이트웨이와 같은 DNS 경로를 타도록 네임스페이스 '$NS' 안에서 조회합니다."
+    note "엔드포인트는 State=available 이 된 뒤에도 잠깐 연결을 안 받으므로,"
+    note "443 확인은 한 번 실패로 단정하지 않고 최대 60초 재시도합니다."
     local pod out phase=""
     pod="vpce-check-$(date +%s)-$RANDOM"
     kubectl run "$pod" -n "$NS" --restart=Never --image="$PROBE_IMAGE" \
@@ -240,7 +242,12 @@ verify() {
           echo \"== \$h\"
           nslookup \"\$h\" 2>/dev/null | grep -i '^Address' | tail -n +2
           if command -v nc >/dev/null 2>&1; then
-            nc -z -w 5 \"\$h\" 443 && echo '   tcp/443 도달' || echo '   tcp/443 FAILED'
+            r=1
+            for i in 1 2 3 4 5 6; do
+              nc -z -w 5 \"\$h\" 443 2>/dev/null && { r=0; break; }
+              sleep 10
+            done
+            [ \$r -eq 0 ] && echo '   tcp/443 도달' || echo '   tcp/443 FAILED (60초 재시도 후)'
           else
             echo '   tcp/443 확인 생략 (이미지에 nc 없음)'
           fi
