@@ -276,8 +276,15 @@ verify() {
     fi
 
     hdr "다음"
-    note "파드 재시작은 필요 없습니다. 새 커넥션마다 DNS 를 다시 해석하고, 놀고 있던"
-    note "커넥션은 350초 idle timeout 에 끊기므로 몇 분 안에 알아서 넘어갑니다."
+    note "🔴 검증 전에 gateway-proxy 를 한 번 재시작하십시오:"
+    note "     kubectl rollout restart deploy/<release>-gateway-proxy -n $NS"
+    note ""
+    note "경로 이전 자체는 재시작 없이도 됩니다 — 새 커넥션마다 DNS 를 다시"
+    note "해석하니까요. 문제는 botocore 풀에 남아 있는 **죽은 커넥션**입니다."
+    note "idle 350초에 조용히 끊긴 소켓을 재사용하면 502 ConnectionClosedError"
+    note "가 나는데, 하필 이 변경 직후에 터지므로 '엔드포인트가 깨뜨렸다' 로"
+    note "읽힙니다. 실제로 이 배포에서 2회 연속 502 를 겪었고, 파드를 새로"
+    note "띄우자마자 200 이었습니다(풀에 죽은 소켓이 여러 개였음)."
     note ""
     note "추론이 멀쩡한지는 실제 /v1/messages 호출로 확인하십시오."
     note "⚠️ smoke-test.sh --with-bedrock 으로는 확인되지 않습니다 — 그 함수는"
