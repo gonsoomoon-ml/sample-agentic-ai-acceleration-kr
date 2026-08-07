@@ -1,7 +1,7 @@
 # US LLM Gateway — 운영 참조 (§8 설치 후 운영 작업)
 
 > **설치 중엔 이 문서를 볼 일이 없다.** 설치는 [README.md](README.md) → [install-guide.md](install-guide.md) 순서로 한다.
-> 이 문서는 **설치가 끝난 뒤** 하는 **운영 작업**(업데이트·직원 온보딩·보안 하드닝·teardown·TTL·prod 승격·멀티계정)을 할 때 본다.
+> 이 문서는 **설치가 끝난 뒤** 하는 **운영 작업**(업데이트·직원 온보딩·보안 하드닝·네트워크 경로·teardown·TTL·prod 승격·멀티계정)을 할 때 본다.
 >
 > 📌 본문의 `§0`**~`§6` 은 다른 문서의 절 번호**다 — `§0` = [README.md](README.md)의 범위, `§1`~`§6` = [install-guide.md](install-guide.md). (옛 §7 배포 후 보안은 이 문서 [§8-S](#8-s-배포-후-보안-하드닝-직원-오픈-전-필수) 로 옮겨왔다.)
 
@@ -9,7 +9,7 @@
 
 ## 8. 설치 후 운영 작업
 
-> 순서 = **POC 사용 빈도순** — 자주(업데이트·온보딩·보안) → 가끔(teardown·TTL) → POC 이후(prod 승격·멀티계정).
+> 순서 = **POC 사용 빈도순** — 자주(업데이트·온보딩·보안) → 가끔(네트워크 경로·teardown·TTL) → POC 이후(prod 승격·멀티계정).
 
 ---
 
@@ -350,10 +350,120 @@ done
 admin-ui 에는 **실제 로그인(OIDC)이 없다** — 유일한 경로가 dev-login 이고 `DEV_LOGIN_ENABLED=false` 면 **404 로 아무도 못 들어간다**(admin-api 도 dev 토큰 거부, `auth.py:100`). 그래서 이 배포는 **dev-login 을 켠 채, admin 콘솔을 네트워크로 가둔다**:
 
 - **admin-ui·admin-api 는 관리자 IP/VPN 대역만** 닿게 한다. 데이터 플레인(gateway)은 직원 대역으로 넓혀도 컨트롤 플레인은 관리자만.
-- ⚠️ **기본 차트는 3 ALB(gateway·admin-ui·admin-api)가 `inbound-cidrs` 를 공유**한다 — 그냥 두면 직원 대역이 admin 콘솔에도 닿아 dev-login 우회를 누구나 쓸 수 있다. **admin-ui/admin-api 만 따로 좁히는 전용 설정은 없다 — 필요하면 차트에 per-ingress override 를 별도 개발해야 한다(현재 미구현).**
+- ⚠️ **차트 기본값은 3 ALB(gateway·admin-ui·admin-api)가 `inbound-cidrs` 를 공유**한다 — 그냥 두면 직원 대역이 admin 콘솔에도 닿아 dev-login 우회를 누구나 쓸 수 있다.
+- ✅ **Ingress 별로 따로 좁힐 수 있다.** `templates/common/ingress.yaml` 이 어노테이션을 두 겹으로 읽는다 — 우선순위는 **Ingress 전용 > 템플릿 기본값 > 공통**. 공통 맵엔 직원 대역을 두고(gateway 가 상속), admin 두 개만 관리자 대역으로 덮는다:
+
+  ```yaml
+  ingress:
+    annotations:
+      alb.ingress.kubernetes.io/inbound-cidrs: "<직원 대역>"        # 공통 → gateway 가 상속
+    adminUi:
+      annotations:
+        alb.ingress.kubernetes.io/inbound-cidrs: "<관리자 대역>"     # 공통값을 덮어씀
+    adminApi:
+      annotations:
+        alb.ingress.kubernetes.io/inbound-cidrs: "<관리자 대역>"
+  ```
+
+  적용은 `./deployment/scripts/install-eks.sh <env>`.
+
+  > ℹ️ `fill-org-values.sh` 는 **공통 줄만** 고치므로(`fill-org-values.sh:106`) 나중에 IP 를 넓히려고 다시 돌려도 위 전용 값은 그대로 남는다. 순서는 상관없다.
+  >
+  > 🔴 단 **저장소를 갱신하지 않은 설치**에서는 아니다. 예전 버전은 `sed` 로 `inbound-cidrs:` 가 들어간 **모든 줄**을 같은 값으로 덮어, 좁혀 둔 관리자 대역이 아무 경고 없이 공통값으로 되돌아갔다. 이 하드닝을 하기 전에 [§8-U](#8-u-업데이트-코드-변경-반영) 로 저장소를 먼저 갱신할 것.
 - POC 로 **allowlist 전체가 신뢰된 관리자/VPN** 이면 공유해도 된다 — dev-login 이 그 신뢰 경계 안에서만 노출된다.
 
 > 🔴 admin-ui·admin-api 를 `**0.0.0.0/0` 이나 광범위 대역에 두지 말 것** — dev-login 이 **서명 없는 admin 토큰**을 즉시 내주므로 닿는 사람 = admin 이다.
+
+---
+
+### 8-N. Bedrock 을 NAT 대신 VPC Endpoint(PrivateLink)로
+
+> **신규 설치는 할 일이 없다.** `deployment/terraform/modules/vpc/main.tf` 가 `bedrock-runtime`·`bedrock`·`sts` 인터페이스 엔드포인트를 조건 없이 선언하므로, 지금 `terraform apply` 로 만든 VPC 엔 처음부터 들어 있다.
+>
+> **그 선언이 추가되기 전에 만든 VPC** 만 이 절의 대상이다. 코드는 이미 저장소에 있고 apply 만 안 된 상태이며, **아무도 알려주지 않는다** — Bedrock 호출은 계속 성공하고, 다만 NAT 를 거쳐 퍼블릭 인터넷을 지날 뿐이다.
+
+**무엇이 바뀌나**
+
+
+| | 지금 (엔드포인트 없음) | 적용 후 |
+| --- | --- | --- |
+| Bedrock 호출 | 파드 → NAT GW → IGW → **퍼블릭 인터넷** → Bedrock | 파드 → 내 서브넷의 엔드포인트 ENI → PrivateLink |
+| STS (IRSA 자격증명 갱신) | 위와 동일하게 NAT 경유 | 엔드포인트 경유 |
+| ECR pull · Cognito · 타 리전 AgentCore web search | NAT | **NAT 그대로** (엔드포인트 없음) |
+| 데이터 처리료 | $0.045/GB (NAT) | $0.01/GB + ENI 시간당 요금 |
+
+
+> 🔴 **NAT 는 없어지지 않는다.** 위 표의 3행 때문에 NAT 게이트웨이는 그대로 필요하다. 따라서 이 변경은 **비용 절감이 아니라 순증**이다 — ENI 6개(서비스 3 × AZ 2) × 시간당 $0.01 ≈ **월 $44**(us-west-2). 얻는 것은 **Bedrock 트래픽이 퍼블릭 인터넷을 지나지 않는다**는 컴플라이언스 쪽 가치다. 그게 요구사항이 아니라면 안 해도 되는 변경이다.
+
+**(1) 대상인지 확인** — 읽기 전용이다.
+
+▶ **실행** · 배포 EC2
+
+```bash
+cd ~/awsome-ai-gateway
+bash deployment/scripts/enable-bedrock-vpce.sh dev
+```
+
+세 엔드포인트의 존재 여부와 private 서브넷의 기본 경로를 찍고, 이어서 `terraform plan` 을 타깃 지정으로 떠서 무엇이 생기는지 보여준다. 여기까지 아무것도 바꾸지 않는다.
+
+**(2) plan 이 `0 to change, 0 to destroy` 가 아니면 멈춘다**
+
+스크립트가 이 조건을 강제하고, 어긋나면 진행을 거부한다. 실제로 이 배포에서 타깃 없이 plan 을 떴을 때 나온 것:
+
+```
+Plan: 5 to add, 0 to change, 1 to destroy.
+  # module.aurora.aws_secretsmanager_secret_version.db[0] must be replaced
+  ~ secret_string = (sensitive value) # forces replacement
+```
+
+VPC 엔드포인트와 아무 상관 없는 **DB 자격증명 시크릿**이다. 원인은 `modules/aurora-postgresql/secrets.tf` 가 Aurora 관리형 master secret 을 data source 로 읽어 `/llm-gateway/<env>/db` 의 `master_password` 키에 **복사**해 두는 구조인데, Aurora 쪽이 로테이트되면 그 복사본이 낡는다는 것이다. 모듈 주석은 *"자동 rotation 은 AWS default 가 아니므로 실질적 rotation 없음"* 이라고 단정하지만 실제로는 `RotationEnabled: true` 였다.
+
+다만 **런타임은 이 복사본을 쓰지 않는다** — `fill-org-values.sh` 가 values 의 `masterPasswordRemoteKey` 를 RDS 관리형 시크릿(`rds!cluster-<uuid>`)으로 걸어두므로 ExternalSecrets 가 로테이션되는 원본을 직접 읽는다. 즉 이건 terraform state 상의 드리프트이지 장애 요인이 아니다. 그래도 **엔드포인트를 켜는 김에 DB 시크릿을 같이 건드리는 것은 다른 결정**이므로, 스크립트는 `-target` 으로 VPC 엔드포인트 4개만 잡는다.
+
+> ℹ️ `-target` 은 terraform 이 "예외적 상황에서만 쓰라"고 경고하는 옵션이 맞다. 여기서 정당한 이유는 **오래 운영한 배포에 리소스를 추가**하는 작업이기 때문이다. 타깃 없이 돌리면 그동안 쌓인 무관한 드리프트가 같이 적용되고, 그게 평범한 변경을 장애로 만든다.
+
+**(3) 적용**
+
+▶ **실행** · 배포 EC2
+
+```bash
+cd ~/awsome-ai-gateway
+bash deployment/scripts/enable-bedrock-vpce.sh dev --apply
+```
+
+> 🔴 **위험한 쪽은 Bedrock 이 아니라 STS 다.** 엔드포인트가 생기는 순간 VPC 전체에서 private DNS 가 뒤집히고, `sts.<region>.amazonaws.com` 도 같이 옮겨간다. **모든 파드가 IRSA 자격증명을 이 경로로 갱신**하므로, 여기가 막히면 Bedrock 호출이 전부 실패한다.
+>
+> 확인점은 하나다 — 엔드포인트 보안그룹이 **private 서브넷 CIDR 에서 443 을 허용**하는가. 차트의 terraform 이 그렇게 만들고 Fargate 파드는 전부 그 서브넷에 뜨므로 무중단이 기대값이다. `--apply` 전에 plan 출력의 `ingress` 블록에서 CIDR 이 실제 private 서브넷과 일치하는지 눈으로 확인하면 된다.
+
+**(4) 검증**
+
+```bash
+cd ~/awsome-ai-gateway
+bash deployment/scripts/enable-bedrock-vpce.sh dev --verify
+```
+
+네임스페이스 안에 일회용 파드를 띄워 **게이트웨이와 같은 DNS 경로로** `bedrock-runtime`·`sts` 를 조회하고, VPC 대역(`10.30.x`) 으로 해석되는지와 443 도달 여부를 찍는다. 파드는 끝나면 지운다.
+
+추론이 멀쩡한지는 별도로:
+
+```bash
+cd ~/awsome-ai-gateway && ./deployment/scripts/smoke-test.sh --with-bedrock
+```
+
+**(5) 되돌리기**
+
+```bash
+cd ~/awsome-ai-gateway
+bash deployment/scripts/enable-bedrock-vpce.sh dev --rollback
+```
+
+엔드포인트 3개와 보안그룹만 지운다. 새 커넥션은 즉시 NAT 로 복귀하고 그 밖에는 아무것도 건드리지 않는다.
+
+**함정 3가지**
+
+- **파드 재시작은 필요 없다.** 새 커넥션마다 DNS 를 다시 해석하고, 놀고 있던 커넥션은 350초 idle timeout 에 끊긴다. 몇 분 안에 알아서 넘어간다. `kubectl rollout restart` 를 돌릴 이유가 없다.
+- **간헐적 502/504 는 이걸로 안 고쳐진다.** 원인인 idle timeout 이 인터페이스 엔드포인트에서도 **똑같이 350초**다(NLB 기반). 경로가 사설로 바뀔 뿐 죽은 커넥션 문제는 그대로다 — 그건 클라이언트 쪽에서 잡아야 한다.
+- **타 리전 AgentCore web search 는 영향이 없다.** 서비스도(`bedrock-agentcore`) 리전도 다르므로 이 엔드포인트와 무관하고, 계속 NAT 를 쓴다.
 
 ---
 
