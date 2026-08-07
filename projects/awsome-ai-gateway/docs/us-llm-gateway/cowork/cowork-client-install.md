@@ -70,6 +70,24 @@ Claude Code 가 아니라 **Cowork(Claude Desktop 3P)** 를 게이트웨이에 �
 
 ⚠️ **Windows 는 하드웨어 가상화가 필요합니다.** 일반 EC2 인스턴스에서는 Cowork 가 실행되지 않습니다 — 상세는 `windows-test-machine-setup.md`.
 
+**망 쪽** — 회사 방화벽이 아래 호스트를 막고 있으면 안 됩니다. 사내망에서 하는 설치라면 **시작하기 전에** 네트워크 담당자와 맞춰 두십시오.
+
+
+| 호스트                             | 언제 쓰나                                                   | 막혀 있으면                              |
+| ------------------------------- | ------------------------------------------------------- | ----------------------------------- |
+| 게이트웨이 주소 (운영자가 준 `https://` URL) | 추론 요청 전부                                                 | 앱이 응답을 못 받습니다                        |
+| 로그인 주소 (운영자가 준 `OIDC_ISSUER_URL`) | 절차 1 의 로그인, VK 갱신                                        | 로그인이 안 됩니다                           |
+| `claude.ai`                     | 절차 0·3 에서 점검 도구와 설치 파일을 받을 때                             | 내려받기가 안 됩니다 (설치 후에는 불필요)            |
+| `downloads.claude.ai`           | 앱이 **작업 환경 번들과 Claude CLI 를 받을 때** — offline 설치판은 내장하고 있어 필요 없습니다 | **앱은 켜지는데 Cowork 세션만 안 열립니다**        |
+| `releases.claude.com`           | 자동 업데이트 확인                                               | 업데이트가 멈춥니다 (앱 사용에는 지장 없음)           |
+
+
+⚠️ **네 번째 줄이 가장 헷갈리는 실패입니다.** 이 호스트는 설치할 때가 아니라 **Cowork 를 켤 때마다** 쓰입니다. 그래서 설치도 성공하고 앱도 뜨고 관리형 설정도 읽히는데 **Cowork 세션만 시작되지 않습니다.** 폐쇄망이면 offline 설치판(절차 3)을 쓰고, 함께 자동 업데이트를 끄십시오(§7 「자동 업데이트 끄기」) — 업데이트 서버에 닿지 못하는 망에서 업데이트를 켜 둘 이유가 없습니다.
+
+> 조직 전체에 배포할 때는 **허용 목록을 직접 적지 말고 앱이 만들어 주는 것을 쓰십시오.** 앱의 설정 창에 **Egress Requirements** 항목이 있어, 지금 설정에 맞는 호스트 목록을 `.txt` 로 내보내고 연결 시험까지 해 줍니다 (§6).
+
+> 📖 [설정별 필요 호스트 전체 목록](https://claude.com/docs/third-party/claude-desktop/telemetry#required-egress-paths) — 텔레메트리를 켜면 호스트가 늘어납니다. `downloads.claude.ai` 가 실행에 필요하다는 근거는 [MDM — 네트워크 개방](https://claude.com/docs/third-party/claude-desktop/mdm#3-allow-required-network-egress).
+
 ---
 
 
@@ -79,16 +97,19 @@ Claude Code 가 아니라 **Cowork(Claude Desktop 3P)** 를 게이트웨이에 �
 "설치 모드"라고 불리는 축이 세 개고, 서로 독립입니다.
 
 
-| 축           | 선택지                            | 이 배포의 선택        |
-| ----------- | ------------------------------ | --------------- |
-| ① 앱 설치 범위   | per-user / **per-machine**     | **per-machine** |
-| ② 설정 레이어    | 앱 UI / configLibrary / **관리형** | **관리형**         |
-| ③ 관리형 전달 방식 | 수동 / **MDM** / Bootstrap 서버    | 테스트=수동, 배포=MDM  |
+| 축           | 선택지                                | 이 배포의 선택        |
+| ----------- | ---------------------------------- | --------------- |
+| ① 앱 설치 범위   | per-user / **per-machine**         | **per-machine** |
+| ② 설정 소스     | Local(앱 UI·configLibrary) / **관리형** | **관리형**         |
+| ③ 관리형 전달 방식 | 수동 / **MDM** / Bootstrap 서버        | 테스트=수동, 배포=MDM  |
 
 
-**② 는 선택이 아닙니다.** credential helper(`inferenceCredentialHelper`)는 **관리형 레이어에서만 honor 됩니다** — 앱 UI 나 configLibrary 에 넣으면 조용히 무시됩니다(Seoul 실측). helper 방식을 쓰는 이상 관리형이 필수입니다.
+**② 의 "앱 UI"는 별도 소스가 아닙니다.** 앱의 설정 창(**Developer → Configure Third-Party Inference…**)은 값이 저장되는 곳이 아니라 **작성·내보내기 도구**입니다 — `Apply locally` 는 Local(`configLibrary`)에 쓰고, `Export` 는 관리형으로 배포할 `.reg`(Windows)·`.mobileconfig`(macOS) 파일을 만들어 냅니다. 그래서 실제로 고를 수 있는 소스는 **Local 과 관리형 둘뿐**이고, Windows 에서 관리형은 `HKLM\SOFTWARE\Policies\Claude` 입니다(절차 4).
 
-**③ Bootstrap 은 필요 없습니다.** Bootstrap 의 명분인 "사용자별 자격 증명"은 helper 가 이미 해결합니다 
+**그리고 ② 는 선택이 아닙니다.** credential helper(`inferenceCredentialHelper`)는 공식 문서의 **MDM-Only Keys** 목록에 있습니다 — *"can only be set via MDM (not available in bootstrap or local configuration)"*. Local 에 넣으면 조용히 무시됩니다. 실측 증상은 **helper 는 실행되는데 그 출력만 적용되지 않는** 형태라, helper 를 직접 돌려 확인하면 정상으로 보여 용의선상에서 빠집니다. helper 방식을 쓰는 이상 관리형이 필수입니다.
+→ [Configuration reference — `inferenceCredentialHelper`](https://claude.com/docs/third-party/claude-desktop/configuration#inferencecredentialhelper)
+
+**③ Bootstrap 은 필요 없습니다.** Bootstrap 의 명분인 "사용자별 자격 증명"은 helper 가 이미 해결합니다. 그리고 애초에 **Bootstrap 은 helper 키를 실을 수 없습니다** — 바로 위 MDM-Only 조항이 bootstrap 도 함께 배제합니다. helper 방식에서 Bootstrap 은 취향 문제가 아니라 불가능입니다.
 
 ---
 
@@ -118,6 +139,12 @@ Claude Code 가 아니라 **Cowork(Claude Desktop 3P)** 를 게이트웨이에 �
 https://claude.ai/api/desktop/win32/x64/cowork-readiness-check/latest/redirect
 ```
 
+**Arm 프로세서 PC**(Snapdragon 계열 노트북)라면 이 주소입니다. 어느 쪽인지 모르면 `설정 → 시스템 → 정보`의 「시스템 종류」를 보십시오.
+
+```
+https://claude.ai/api/desktop/win32/arm64/cowork-readiness-check/latest/redirect
+```
+
 ⚠️ `Invoke-WebRequest` 로는 못 받습니다(403). 절차 3 의 앱 설치 파일과 같은 제약입니다 — **실제 브라우저로만** 받힙니다.
 
 받은 파일을 실행하면 항목별로 통과 여부가 나옵니다.
@@ -141,6 +168,8 @@ Virtual Machine Platform   Windows 기능이 안 켜져 있음
 ⚠️ **Windows Server 에서는 도구의 안내만으로 부족합니다.** 도구는 Windows 10·11 기준으로 처방을 알려주는데, Server 는 `VirtualMachinePlatform` 만 켜서는 필요한 서비스가 안 깔립니다. **Hyper-V 역할**을 설치해야 합니다. 직원 PC 가 아니라 서버에 시연·검증 환경을 만드는 경우에만 해당합니다.
 
 ⚠️ **가상 머신 위에서는 대개 실패합니다.** 일반 클라우드 인스턴스처럼 가상화 기능을 손님에게 넘겨주지 않는 환경에서는 통과할 수 없습니다.
+
+> 📖 [기기 요구사항과 점검 도구](https://claude.com/docs/third-party/claude-desktop/installation#check-device-readiness) — macOS 용 점검 도구 주소도 여기 있습니다.
 
 ### 절차 1. `gateway-cli` 설치 + 로그인
 
@@ -464,9 +493,19 @@ set ADMIN_API_URL=$admin
 https://claude.ai/api/desktop/win32/x64/offline/latest/redirect
 ```
 
+**Arm 프로세서 PC** 라면 이 주소입니다(절차 0 에서 고른 것과 같은 쪽).
+
+```
+https://claude.ai/api/desktop/win32/arm64/offline/latest/redirect
+```
+
 ⚠️ **반드시 이 주소의** `.msix` **를 받으십시오.** `claude.com/download` 는 `setup`(`.exe`) 을 주는데, **그것으로 깔면 Claude Desktop 은 설치되지만 Cowork 가 빠집니다.** 위 offline 판만 Cowork 가 들어 있고, 작업 환경 번들이 파일 안에 있어 설치 중 추가 다운로드도 없습니다.
 
 받은 파일이 **어느 폴더에 있는지 전체 경로를 확인해 두십시오.** 다음 단계는 🔴 관리자 창에서 도는데, 그 창은 관리자 계정을 기준으로 폴더를 찾기 때문에 `내 다운로드` 같은 줄임 표현이 통하지 않습니다.
+
+⚠️ **404 가 나면 잠시 뒤 다시 받으십시오.** 새 버전이 나온 직후에는 위 주소가 이미 새 버전을 가리키는데 그 버전의 offline 판이 아직 안 올라온 구간이 있습니다. 이때는 예전 버전으로 물러나지 않고 **404 로 실패**합니다 — 벤더가 문서에 명시한 동작이며, 고장이 아닙니다. 이전에 받아 둔 설치 파일이 있으면 버리지 마십시오.
+
+> 📖 [Offline installation](https://claude.com/docs/third-party/claude-desktop/installation#offline-installation) — 플랫폼별 offline 주소 전체(macOS 포함)와 404 동작의 근거.
 
 #### ② 설치
 
@@ -510,7 +549,24 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
 
 설정을 **레지스트리**(Windows 가 프로그램 설정을 모아두는 시스템 저장소)의 `HKLM\SOFTWARE\Policies\Claude` 에 씁니다. 값은 전부 문자열(`REG_SZ`)입니다.
 
-`HKLM` 은 컴퓨터 전체 설정, `HKCU` 는 사용자별 설정입니다. `HKLM` **에 값이 있으면** `HKCU` **는 통째로 무시됩니다** — 조직이 정한 설정을 사용자가 못 바꾸게 하는 구조입니다.
+`HKLM` 은 컴퓨터 전체 설정, `HKCU` 는 사용자별 설정입니다. `HKLM` **에 값이 있으면** `HKCU` **는 통째로 무시됩니다** — 조직이 정한 설정을 사용자가 못 바꾸게 하는 구조입니다. (앱 v1.19367.0 미만은 두 곳을 섞어 읽었습니다. 그보다 낮은 버전이 남아 있는 조직이라면 설정을 한쪽에 몰아넣고 올리십시오.)
+
+##### 값을 쓰는 자리와 형식 — 여기서 조용히 실패합니다
+
+아래 명령을 그대로 쓰면 전부 맞게 들어가므로 읽고 넘어가셔도 됩니다. **직접 레지스트리 편집기나 MDM 콘솔로 넣을 때** 걸리는 함정입니다.
+
+| 이렇게 하면 | 무슨 일이 나나 |
+| --- | --- |
+| 값을 **하위 키 안에** 넣음 | 안 읽힙니다. 일부 ADMX·Intune 도구가 이렇게 쓰는데, 앱은 `...\Policies\Claude` **바로 아래** 값만 봅니다 |
+| `REG_EXPAND_SZ` 로 넣음 | **가장 나쁩니다.** 앱은 "머신 정책 있음"으로 세어 `HKCU` 를 죽이는데, 정작 내용은 못 읽습니다 → 설정이 하나도 없는 상태가 됩니다 |
+| `REG_QWORD`·`REG_MULTI_SZ`·`REG_BINARY` | 앱에 아예 안 보입니다 |
+| 키 이름에 오타, 또는 **빈 문자열** | 그래도 "머신 정책 있음"으로 셉니다 |
+
+쓸 수 있는 형식은 **`REG_SZ`** 이고, 참/거짓·숫자 키는 `REG_DWORD` 도 됩니다. 위 명령의 `Set-ItemProperty` 는 문자열을 `REG_SZ` 로 넣으므로 안전합니다.
+
+⚠️ 마지막 줄 때문에 **앱의 설정 창이 읽기 전용으로 잠긴 것은 설정이 제대로 읽혔다는 증거가 아닙니다.** 오타 난 키 하나만 있어도 잠깁니다. 실제로 무엇이 읽혔는지는 절차 5 의 확인으로만 알 수 있습니다.
+
+> 📖 [설정을 읽는 위치와 우선순위](https://claude.com/docs/third-party/claude-desktop/mdm#4-deploy-the-configuration) — 위 표의 근거. [배포 확인 방법](https://claude.com/docs/third-party/claude-desktop/installation#verifying-the-deployment) 도 함께.
 
 ▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
 
@@ -558,14 +614,14 @@ Get-ItemProperty $K | Format-List inference*
 #### 설정 키
 
 
-| 키                                 | 값                                                |
-| --------------------------------- | ------------------------------------------------ |
-| `inferenceProvider`               | `"gateway"`                                      |
-| `inferenceGatewayBaseUrl`         | `https://<03 이 출력한 CloudFront 도메인>`              |
-| `inferenceGatewayAuthScheme`      | `"bearer"`                                       |
-| `inferenceCredentialHelper`       | helper **절대경로**                                  |
-| `inferenceCredentialHelperTtlSec` | `1800`                                           |
-| `inferenceModels`                 | `config.env` 의 `MODEL_ALIAS` + 기존 ACTIVE alias 들 |
+| 키                                                                                                                       | 값                                                |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| [`inferenceProvider`](https://claude.com/docs/third-party/claude-desktop/configuration#inferenceprovider)                 | `"gateway"`                                      |
+| [`inferenceGatewayBaseUrl`](https://claude.com/docs/third-party/claude-desktop/configuration#inferencegatewaybaseurl)     | `https://<03 이 출력한 CloudFront 도메인>`              |
+| [`inferenceGatewayAuthScheme`](https://claude.com/docs/third-party/claude-desktop/configuration#inferencegatewayauthscheme) | `"bearer"`                                       |
+| [`inferenceCredentialHelper`](https://claude.com/docs/third-party/claude-desktop/configuration#inferencecredentialhelper) | helper **절대경로**                                  |
+| [`inferenceCredentialHelperTtlSec`](https://claude.com/docs/third-party/claude-desktop/configuration#inferencecredentialhelperttlsec) | `1800`                                           |
+| [`inferenceModels`](https://claude.com/docs/third-party/claude-desktop/configuration#inferencemodels)                     | `config.env` 의 `MODEL_ALIAS` + 기존 ACTIVE alias 들 |
 
 
 ⚠️ alias 는 **DB 에 등록된 문자열 그대로** 써야 합니다. 예를 들어 Haiku 는 `claude-haiku-4-5` 가 아니라 `claude-haiku-4-5-20251001` 입니다. 현재 목록은 `00-preflight-check.sh` 가 보여줍니다.
@@ -637,6 +693,24 @@ DB 조회라 임시 파드가 뜨는 데 1~2분 걸립니다. 화면이 멈춘 �
 | `py` 를 인식할 수 없다고 나옴                | Python 런처 미설치 → python.org 설치 파일을 다시 실행해 `py launcher` 를 체크                            |
 | 특정 모델만 404                         | alias 오타, 또는 등록 후 5분 미경과                                                               |
 | 전 요청 502                           | `01` 미적용 또는 CloudFront→ALB 경로 미개방(`03 --allow-cloudfront`)                             |
+| 앱은 켜지고 대화도 되는데 **Cowork 세션만** 시작 안 됨 | `downloads.claude.ai` 가 막힘 → offline 설치판으로 다시 설치 (§2 「망 쪽」)                             |
+| 위와 같은데 방화벽은 열려 있음                   | 백신·EDR 이 Cowork 에이전트를 막음 → 아래 「EDR·백신에 막히는 경우」                                          |
+| 원인이 안 보일 때                          | 앱 로그를 봅니다 — `%LOCALAPPDATA%\Claude-3p\Logs\main.log`                                   |
+
+
+### EDR·백신에 막히는 경우
+
+회사가 CrowdStrike Falcon·Microsoft Defender ASR·AppLocker 같은 보안 소프트웨어를 쓰면, Cowork 가 내부적으로 실행하는 프로그램이 차단될 수 있습니다. **앱은 정상으로 보이고 설정도 읽히는데 Cowork 세션만 시작되지 않는** 형태라 방화벽 문제와 구분이 안 됩니다.
+
+차단되는 대상은 이 파일입니다.
+
+```
+%LOCALAPPDATA%\Claude-3p\claude-code\<버전>\claude.exe
+```
+
+⚠️ **경로가 아니라 서명자로 허용하십시오.** 게시자는 `Anthropic, PBC` 입니다. 경로에는 버전 번호가 들어 있어서, 경로로 예외를 걸면 앱이 업데이트될 때마다 다시 막힙니다.
+
+> 📖 [Endpoint security software](https://claude.com/docs/third-party/claude-desktop/installation#endpoint-security-software) — macOS(Santa Team ID `Q6L2SF6YDW`) 쪽 값도 여기 있습니다.
 
 
 ---
@@ -646,6 +720,30 @@ DB 조회라 임시 파드가 뜨는 데 1~2분 걸립니다. 화면이 멈춘 �
 ## 6. 조직 배포
 
 테스트가 끝나면 관리형 설정을 MDM 으로 밀어넣습니다 — Windows 는 GPO 또는 Intune 으로 같은 레지스트리 값을 배포합니다. 설정 내용은 위와 동일하고, 전달 수단만 바뀝니다.
+
+**PC 수십 대 이상이면 레지스트리를 손으로 쓰지 마십시오.** 벤더가 권하는 절차는 **앱 안에서 설정을 만들고 배포 파일로 내보내는** 것입니다. 절차 4 에서 한 일을 화면으로 하는 것이고, 사람이 타이핑하지 않으니 오타·형식 사고가 사라집니다.
+
+1. **관리형 설정이 없는 PC** 에서 앱을 켜고 **로그인하지 않은 채** `Help → Troubleshooting → Enable Developer Mode` → `Developer → Configure Third-Party Inference…`
+2. 좌측 항목을 위에서부터 채웁니다 — `Connection`(게이트웨이 주소·모델 목록·helper 경로) → `Workspace restrictions` → `Telemetry & updates`
+3. `Apply locally` 로 그 PC 에서 먼저 확인하고, 되면 `Export`
+4. 나온 파일을 MDM 으로 배포한 뒤 앱을 배포합니다 — **설정이 먼저입니다**
+
+⚠️ **관리형 설정이 이미 깔린 PC 에서는 이 창이 읽기 전용입니다.** 절차 4 를 마친 테스트 머신에서는 저작을 못 합니다 — 아직 설정하지 않은 PC 를 쓰십시오.
+
+
+| 내보내기 형식             | 어디에 쓰나                                  |
+| ------------------- | --------------------------------------- |
+| `.reg`              | 그룹 정책(GPO) 가져오기, Intune 스크립트            |
+| `.zip` (ADMX 템플릿)   | Intune·GPO 관리 콘솔에서 값을 직접 입력할 때 (틀만 나옵니다) |
+| `.mobileconfig`     | macOS — Jamf·Intune 등 Apple MDM         |
+| `.plist` (Profile Manifest) | macOS — Jamf·ProfileCreator 용 틀     |
+
+
+이 창에는 **Egress Requirements** 항목이 있어, 지금 만든 설정에 필요한 **방화벽 허용 호스트 목록을 그대로 만들어 줍니다** — `.txt` 로 내보내 네트워크 담당자에게 넘기면 되고, **Test connectivity** 로 그 자리에서 시험도 됩니다. §2 「망 쪽」 표를 손으로 옮겨 적는 것보다 이쪽이 정확합니다.
+
+⚠️ **Windows 에서 부서마다 설정을 다르게 하려면 주의가 필요합니다.** MDM 이 사용자 단위로 배포하면 값이 `HKCU` 에 들어가는데, `HKLM` 에 값이 하나라도 있으면 `HKCU` 는 통째로 무시됩니다(절차 4). 그룹별로 나누려면 **전부 `HKCU` 로 배포하고 `HKLM\SOFTWARE\Policies\Claude` 를 비워 두십시오.**
+
+> 📖 절차 원문은 [Deploy with MDM](https://claude.com/docs/third-party/claude-desktop/mdm), Intune·SCCM·GPO 로 MSIX 를 미는 방법은 [Windows 배포 가이드](https://support.claude.com/en/articles/12622703-deploy-claude-desktop-for-windows). 나머지 문서는 **§9 참고**에 모아 뒀습니다.
 
 
 ---
@@ -664,12 +762,33 @@ DB 조회라 임시 파드가 뜨는 데 1~2분 걸립니다. 화면이 멈춘 �
 
 | 키                      | 값을 넣으면 무엇이 바뀌나                       | 안 넣었을 때 (지금 상태)     |
 | ---------------------- | ------------------------------------ | ------------------- |
-| `chatTabEnabled`       | **Chat 탭**이 화면에 생깁니다                  | 탭이 안 보입니다           |
-| `autoModeEnabled`      | **"Act without asking"** 가 승인 선택지에 생깁니다 | 선택지가 안 보입니다         |
-| `disabledBuiltinTools` | 여기 적은 내장 도구를 앱에서 **뺍니다**              | 내장 도구를 전부 쓸 수 있습니다  |
-| `builtinToolPolicy`    | 도구별로 **매번 물어보게** 만들 수 있습니다            | 대부분 안 묻고 바로 실행합니다   |
-| `managedMcpServers`    | 조직이 정한 **MCP 서버**가 앱에 나타납니다           | 없습니다                |
-| `disableBundledSkills` | 앱에 딸린 **Skills**(deep-research 등)를 끕니다 | 그대로 쓸 수 있습니다        |
+| [`chatTabEnabled`](https://claude.com/docs/third-party/claude-desktop/configuration#chattabenabled) | **Chat 탭**이 화면에 생깁니다 | 탭이 안 보입니다 |
+| [`autoModeEnabled`](https://claude.com/docs/third-party/claude-desktop/configuration#automodeenabled) | **"Act without asking"** 가 승인 선택지에 생깁니다 | 선택지가 안 보입니다 |
+| [`disabledBuiltinTools`](https://claude.com/docs/third-party/claude-desktop/configuration#disabledbuiltintools) | 여기 적은 내장 도구를 앱에서 **뺍니다** | 내장 도구를 전부 쓸 수 있습니다 |
+| [`builtinToolPolicy`](https://claude.com/docs/third-party/claude-desktop/configuration#builtintoolpolicy) | 도구별로 **매번 물어보게** 만들 수 있습니다 | 대부분 안 묻고 바로 실행합니다 |
+| [`managedMcpServers`](https://claude.com/docs/third-party/claude-desktop/configuration#managedmcpservers) | 조직이 정한 **MCP 서버**가 앱에 나타납니다 | 없습니다 |
+| [`disableBundledSkills`](https://claude.com/docs/third-party/claude-desktop/configuration#disablebundledskills) | 앱에 딸린 **Skills**(deep-research 등)를 끕니다 | 그대로 쓸 수 있습니다 |
+| [`allowedWorkspaceFolders`](https://claude.com/docs/third-party/claude-desktop/configuration#allowedworkspacefolders) | Cowork 가 **열 수 있는 폴더를 정해진 곳으로 묶습니다** | 어느 폴더든 열 수 있습니다 |
+| [`isDesktopExtensionEnabled`](https://claude.com/docs/third-party/claude-desktop/configuration#isdesktopextensionenabled) | 직원이 **확장(`.mcpb`·`.dxt`)을 깔 수 있게 됩니다** | 못 깝니다 |
+| [`disableAutoUpdates`](https://claude.com/docs/third-party/claude-desktop/configuration#disableautoupdates) | 앱이 **스스로 업데이트하지 않습니다** | 자동으로 받아서 재시작합니다 |
+| [`autoUpdaterEnforcementHours`](https://claude.com/docs/third-party/claude-desktop/configuration#autoupdaterenforcementhours) | 업데이트 후 **강제 재시작까지의 시간**을 줄입니다(1~72) | 72시간 |
+
+
+**아래 세 개는 기본값이 「켜짐」이라 성격이 반대입니다** — **끌 때만** 넣습니다.
+
+
+| 키                                                                                                                      | `"false"` 를 넣으면              | 안 넣었을 때 (지금 상태) |
+| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- | -------------- |
+| [`coworkTabEnabled`](https://claude.com/docs/third-party/claude-desktop/configuration#coworktabenabled)                 | **Cowork 탭이 없어집니다**          | Cowork 를 씁니다   |
+| [`isClaudeCodeForDesktopEnabled`](https://claude.com/docs/third-party/claude-desktop/configuration#isclaudecodefordesktopenabled) | **Code 탭이 없어집니다**            | Code 탭을 씁니다    |
+| [`isLocalDevMcpEnabled`](https://claude.com/docs/third-party/claude-desktop/configuration#islocaldevmcpenabled)         | 직원이 **자기 MCP 서버를 못 붙입니다**     | 붙일 수 있습니다      |
+
+
+⚠️ **`coworkTabEnabled` 를 끄면 이 문서가 하려는 것 자체가 사라집니다.** 거꾸로 **Cowork 가 안 보인다면 회사 정책이 이 값을 이미 꺼 뒀는지 확인할 자리**입니다. 관리자용 지원 문서는 같은 목적의 키를 `secureVmFeaturesEnabled` 로 적고 있는데, **설정 레퍼런스에는 그 이름이 없습니다** — 둘 다 넣지 말고 위 이름을 쓰십시오.
+
+ℹ️ 지원 문서에만 있고 **설정 레퍼런스에는 없는** 키가 둘 있습니다 — `effortLevel`(기본 사고 강도 `low`~`max`, **앱 1.25927.0 이상**)과 `forceLoginOrgUUID`(지정 조직 계정으로만 로그인). 쓰기 전에 [Enterprise configuration](https://support.claude.com/en/articles/12622667-enterprise-configuration) 에서 현재 표기를 확인하십시오.
+
+> 📖 위 키 이름을 누르면 [Configuration reference](https://claude.com/docs/third-party/claude-desktop/configuration) 의 해당 항목으로 갑니다. 여기 없는 키들(텔레메트리·사용량 상한·배너·플러그인 마켓플레이스 등)도 그 문서에 있습니다.
 
 ⚠️ **기본값이 off 인 것은 앱에 옵션 자체가 안 뜹니다.** Chat 탭이 안 보이거나 "Act without asking" 이 선택지에 없는 것은 고장이 아니라 이 상태입니다.
 
@@ -731,6 +850,46 @@ Set-ItemProperty $K disabledBuiltinTools '["WebSearch","WebFetch"]'
 
 ⚠️ 이 둘은 **앱에 딸린 도구**이지 게이트웨이의 서버측 웹서치가 아닙니다. 게이트웨이 웹서치는 여기서 끄지 못하고, 운영자가 `routing_profiles.web_search_enabled` 로 끕니다.
 
+### 자동 업데이트 끄기
+
+**폐쇄망에서 offline 설치판을 쓴다면 이걸 함께 넣으십시오.** 닿을 수 없는 업데이트 서버를 계속 두드리게 둘 이유가 없습니다.
+
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
+
+```powershell
+$K = "HKLM:\SOFTWARE\Policies\Claude"
+Set-ItemProperty $K disableAutoUpdates "true"
+```
+
+끄면 **새 버전은 IT 가 직접 배포해야 합니다** — 새 offline 설치판을 받아 절차 3 을 다시 돌리는 방식입니다.
+
+**켜 둘 때 알아야 할 것.** 앱은 업데이트를 미리 받아 두고 다음 재시작 때 적용합니다. **72시간 안에 재시작하지 않으면 스스로 재시작합니다** — 사용자가 10분쯤 손을 놓기를 기다렸다가 실행하며, 「나중에」 버튼은 없습니다. 이 강제는 끌 수 없고, `autoUpdaterEnforcementHours` 는 72시간을 **줄이는** 용도입니다.
+
+⚠️ `autoUpdaterEnforcementHours` **를 넣으면 기다림이 없어집니다.** 시간이 되는 즉시 재시작하며, 사용자가 작업 중인지 보지 않습니다. 짧게 잡을수록 작업 중 재시작이 늘어납니다.
+
+ℹ️ **이 두 키만은 예외적으로 취급됩니다.** 둘만 배포하면 나머지 설정을 관리형이 가져가지 않아, 직원이 앱에서 만든 설정과 설정 창이 그대로 남습니다. 업데이트 정책만 따로 밀어넣고 싶을 때 쓰라는 장치입니다. 다른 키를 하나라도 함께 넣으면 그 순간 전체가 관리형이 됩니다.
+
+> 📖 [Updates](https://claude.com/docs/third-party/claude-desktop/installation#updates) · [`disableAutoUpdates`](https://claude.com/docs/third-party/claude-desktop/configuration#disableautoupdates) · [업데이트 키의 예외 규칙](https://claude.com/docs/third-party/claude-desktop/mdm#update-keys-and-managed-precedence)
+
+### Cowork 가 열 수 있는 폴더 제한
+
+Cowork 는 지정한 폴더를 작업 공간으로 열어 그 안의 파일을 다룹니다. 기본값은 **제한 없음** 이라 직원이 OS 권한이 닿는 아무 폴더나 붙일 수 있습니다. 사내 규정상 특정 폴더 밖은 못 열게 해야 한다면 여기서 묶습니다.
+
+▶ 🔴 **실행 · 관리자 PowerShell** — 직원 PC
+
+```powershell
+$K = "HKLM:\SOFTWARE\Policies\Claude"
+Set-ItemProperty $K allowedWorkspaceFolders '[{"path":"C:\\Work"}]'
+```
+
+⚠️ **값의 형태에 주의하십시오.** 경로만 나열한 `["C:\\Work"]` 가 아니라 **`path` 를 가진 객체의 목록**입니다. 그리고 JSON 이라 역슬래시는 두 번 씁니다(`C:\Work` → `C:\\Work`). 형태가 틀린 값은 오류 없이 무시됩니다.
+
+빈 배열 `[]` 을 넣으면 **어떤 폴더도 못 붙입니다** — 에이전트는 자기 임시 공간만 쓰게 됩니다.
+
+⚠️ **이것으로 막히는 것은 Claude 쪽뿐입니다.** 에이전트가 스스로 지정 폴더 밖을 읽고 쓰는 것은 확실히 막히지만, **직원이 📎 로 바깥 파일을 직접 올리는 것은 막지 못합니다** — 그런 관리형 키가 없습니다. 거기까지 막으려면 OS·MDM 레이어가 필요합니다. 판정 근거와 실측은 `docs/deploy/cowork-workspace-folder-access-control.md` 에 있습니다.
+
+> 📖 [`allowedWorkspaceFolders`](https://claude.com/docs/third-party/claude-desktop/configuration#allowedworkspacefolders)
+
 ### 값이 여러 개인 키의 형식
 
 `disabledBuiltinTools`·`builtinToolPolicy`·`managedMcpServers` 는 값이 목록이나 표 형태입니다. 레지스트리에는 **JSON 을 통째로 하나의 문자열**로 넣습니다 — 절차 4 의 `inferenceModels` 와 같은 방식입니다.
@@ -784,4 +943,51 @@ Remove-ItemProperty "HKLM:\SOFTWARE\Policies\Claude" chatTabEnabled
 - 절차 3 에 설치 파일 받는 곳이 없었습니다
 - 절차 4 의 자리표시자가 블록 한가운데 있어 그대로 레지스트리에 들어갔습니다
 - 절차 2 에 helper 파일을 만드는 명령이 없고 내용만 있었습니다
+
+
+
+---
+
+
+
+## 9. 참고 — Anthropic 공식 문서
+
+이 문서의 근거입니다. **값이 어긋나면 아래가 정본**입니다 — 벤더가 갱신하므로, 여기 적힌 주소·기본값이 안 맞으면 원문을 먼저 보십시오.
+
+**기술 문서** (개발자·배포 담당)
+
+
+| 문서                                                                                             | 여기서 인용한 부분                                        |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| [Installation and setup](https://claude.com/docs/third-party/claude-desktop/installation)       | 기기 요구사항·점검 도구(절차 0), offline 설치판(절차 3), EDR 예외(§5), 자동 업데이트 동작(§7) |
+| [Configuration reference](https://claude.com/docs/third-party/claude-desktop/configuration)     | 설정 키 전체 — 절차 4 의 `inference*` 6개와 §7 토글의 원문 정의     |
+| [Deploy with MDM](https://claude.com/docs/third-party/claude-desktop/mdm)                       | 레지스트리 위치·우선순위·형식(절차 4), 조직 배포 절차와 내보내기 형식(§6)      |
+| [Telemetry and egress](https://claude.com/docs/third-party/claude-desktop/telemetry#required-egress-paths) | 방화벽 허용 호스트(§2 「망 쪽」)                     |
+| [Bootstrap server](https://claude.com/docs/third-party/claude-desktop/bootstrap)                | §3 에서 **쓰지 않기로** 한 방식 — 판단 근거                      |
+
+
+**지원 문서** (IT 관리자)
+
+
+| 문서                                                                                                     | 내용                              |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| [Windows 배포](https://support.claude.com/en/articles/12622703-deploy-claude-desktop-for-windows)          | Intune·SCCM·GPO 로 MSIX 대량 배포    |
+| [macOS 배포](https://support.claude.com/en/articles/12611117-deploy-claude-desktop-for-macos)              | MDM 배포 (이 문서는 Windows 전용)       |
+| [Enterprise configuration](https://support.claude.com/en/articles/12622667-enterprise-configuration)     | 조직 정책 키 요약 — §7 토글의 관리자용 대응표    |
+
+
+**설치 파일 주소** — 사람이 보는 다운로드 페이지가 아니라 **항상 최신판으로 연결되는 고정 주소**라, 배포 자동화에 그대로 씁니다.
+
+
+| 용도                | 주소                                                                  |
+| ----------------- | ------------------------------------------------------------------- |
+| 점검 도구 (x64)       | `https://claude.ai/api/desktop/win32/x64/cowork-readiness-check/latest/redirect`   |
+| 점검 도구 (arm64)     | `https://claude.ai/api/desktop/win32/arm64/cowork-readiness-check/latest/redirect` |
+| offline 설치판 (x64)   | `https://claude.ai/api/desktop/win32/x64/offline/latest/redirect`   |
+| offline 설치판 (arm64) | `https://claude.ai/api/desktop/win32/arm64/offline/latest/redirect` |
+
+
+⚠️ **`https://claude.com/download` 는 쓰지 마십시오.** 그 페이지는 Windows 에 `.exe` 를 주는데, **그것으로 깔면 Cowork 가 빠집니다**(절차 3). 개인 사용자용 안내 페이지라 조직 배포 경로가 아닙니다.
+
+ℹ️ `downloads.claude.ai` 와 `releases.claude.com` 은 **다운로드 안내 주소가 아닙니다** — 각각 설치 파일이 실제로 전송되는 CDN 과 업데이트 확인 전용 호스트입니다. 직원에게 알려줄 주소가 아니라 **방화벽에 넣을 이름**입니다(§2).
 
