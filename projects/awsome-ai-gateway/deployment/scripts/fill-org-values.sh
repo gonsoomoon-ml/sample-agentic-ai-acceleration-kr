@@ -96,8 +96,15 @@ sed -i "s/123456789012/$ACCOUNT/g; s/ap-northeast-2/$REGION/g" "$V"
 sed -i 's#\(COGNITO_USER_POOL_ID: \).*#\1"'"$POOL_ID"'"#' "$V"
 sed -i 's#\(^    COGNITO_REGION: \).*#\1"'"$REGION"'"#' "$V"
 awk -v e="$EMAIL" '/^    emails:$/{print;f=1;next} f&&/^      - /{print "      - \"" e "\"";f=0;next}{print}' "$V" > "$V.tmp" && mv "$V.tmp" "$V"
-if grep -q 'inbound-cidrs' "$V"; then
-  sed -i 's#\(inbound-cidrs: \).*#\1"'"$CIDRS"'"#' "$V"
+# ⚠️ 공통 맵(`ingress.annotations` — 4칸 들여쓰기)의 줄만 바꾼다.
+#    차트는 어노테이션을 두 겹으로 읽는다(`templates/common/ingress.yaml`).
+#    Ingress 전용 겹(`ingress.adminUi|adminApi.annotations` — 6칸)에는 admin
+#    콘솔을 관리자 대역으로 좁혀 둔 값이 들어 있을 수 있는데, 들여쓰기를 안
+#    가리면 sed 가 그 줄까지 같은 값으로 덮어 **보안 통제가 조용히 풀린다**
+#    (operations.md §8-S). 아래 else 의 awk 도 같은 자리(4칸)에 넣으므로
+#    두 분기가 일관된다.
+if grep -qE '^    alb\.ingress\.kubernetes\.io/inbound-cidrs: ' "$V"; then
+  sed -i 's#^\(    alb\.ingress\.kubernetes\.io/inbound-cidrs: \).*#\1"'"$CIDRS"'"#' "$V"
 else
   awk -v c="$CIDRS" '/^  annotations:$/&&!d{print;print "    alb.ingress.kubernetes.io/inbound-cidrs: \"" c "\"";d=1;next}{print}' "$V" > "$V.tmp" && mv "$V.tmp" "$V"
 fi
