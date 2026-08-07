@@ -435,7 +435,18 @@ bash deployment/scripts/enable-bedrock-vpce.sh dev --apply
 >
 > 확인점은 하나다 — 엔드포인트 보안그룹이 **private 서브넷 CIDR 에서 443 을 허용**하는가. 차트의 terraform 이 그렇게 만들고 Fargate 파드는 전부 그 서브넷에 뜨므로 무중단이 기대값이다. `--apply` 전에 plan 출력의 `ingress` 블록에서 CIDR 이 실제 private 서브넷과 일치하는지 눈으로 확인하면 된다.
 
-**(4) 검증**
+**(4) 커넥션 풀 비우기 — 검증 전에 반드시**
+
+```bash
+kubectl rollout restart deploy/llm-gateway-gateway-proxy -n llm-gateway
+kubectl rollout status  deploy/llm-gateway-gateway-proxy -n llm-gateway --timeout=5m
+```
+
+> 🔴 **이 단계를 건너뛰면 멀쩡한 변경을 장애로 오진한다.** 경로 이전 자체엔 재시작이 필요 없지만(새 커넥션마다 DNS 를 다시 해석한다), botocore 풀에 **죽은 커넥션**이 남아 있으면 그걸 재사용하는 요청이 502 `ConnectionClosedError` 로 실패한다. idle 350초에 조용히 끊긴 소켓들이고, 풀은 호스트당 여러 개를 들고 있어서 **연속으로** 실패한다.
+>
+> 이 배포에서 실제로 겪었다 — 적용 후 종단 호출이 **2회 연속 502**, 예외는 둘 다 `ConnectionClosedError`. 엔드포인트가 요청을 거절하는 것처럼 보였지만, 파드를 새로 띄우자 **첫 호출에 200**이었다. 원인은 3일 전(마지막 트래픽) 이후 방치된 소켓들이었고 엔드포인트와 무관했다. 레플리카가 1개여도 기본 롤링 전략이 새 파드를 먼저 Ready 로 만들므로 무중단이다.
+
+**(5) 검증**
 
 ```bash
 cd ~/awsome-ai-gateway
@@ -450,7 +461,7 @@ bash deployment/scripts/enable-bedrock-vpce.sh dev --verify
 cd ~/awsome-ai-gateway && ./deployment/scripts/smoke-test.sh --with-bedrock
 ```
 
-**(5) 되돌리기**
+**(6) 되돌리기**
 
 ```bash
 cd ~/awsome-ai-gateway
@@ -461,7 +472,7 @@ bash deployment/scripts/enable-bedrock-vpce.sh dev --rollback
 
 **함정 3가지**
 
-- **파드 재시작은 필요 없다.** 새 커넥션마다 DNS 를 다시 해석하고, 놀고 있던 커넥션은 350초 idle timeout 에 끊긴다. 몇 분 안에 알아서 넘어간다. `kubectl rollout restart` 를 돌릴 이유가 없다.
+- **경로 이전에는 재시작이 필요 없지만, 검증 전에는 반드시 한다** — 위 (4). 이전 자체는 새 커넥션이 DNS 를 다시 해석하며 저절로 되지만, 풀에 남은 죽은 커넥션이 502 를 뿜어 **변경이 깨뜨린 것처럼 보인다.**
 - **간헐적 502/504 는 이걸로 안 고쳐진다.** 원인인 idle timeout 이 인터페이스 엔드포인트에서도 **똑같이 350초**다(NLB 기반). 경로가 사설로 바뀔 뿐 죽은 커넥션 문제는 그대로다 — 그건 클라이언트 쪽에서 잡아야 한다.
 - **타 리전 AgentCore web search 는 영향이 없다.** 서비스도(`bedrock-agentcore`) 리전도 다르므로 이 엔드포인트와 무관하고, 계속 NAT 를 쓴다.
 
