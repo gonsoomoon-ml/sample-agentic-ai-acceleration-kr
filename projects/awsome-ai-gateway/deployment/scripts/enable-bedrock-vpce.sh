@@ -279,8 +279,10 @@ verify() {
     note "파드 재시작은 필요 없습니다. 새 커넥션마다 DNS 를 다시 해석하고, 놀고 있던"
     note "커넥션은 350초 idle timeout 에 끊기므로 몇 분 안에 알아서 넘어갑니다."
     note ""
-    note "추론이 멀쩡한지 종단 확인:"
-    note "  $DEPLOY_DIR/scripts/smoke-test.sh --with-bedrock"
+    note "추론이 멀쩡한지는 실제 /v1/messages 호출로 확인하십시오."
+    note "⚠️ smoke-test.sh --with-bedrock 으로는 확인되지 않습니다 — 그 함수는"
+    note "   (test_bedrock_e2e) 수동 절차를 화면에 출력할 뿐 호출하지 않습니다."
+    note "   VK 는 api-key-helper, 주소는 gateway Ingress 의 ALB DNS 를 씁니다."
     note "문제가 생긴다면 볼 곳은 Bedrock 이 아니라 STS 입니다 — 같이 옮겨갔습니다:"
     note "  kubectl logs -n $NS deploy/llm-gateway-gateway-proxy | grep -i 'credential\\|assumerole'"
 }
