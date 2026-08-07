@@ -218,25 +218,35 @@ bash 09-update-admin-ui.sh --rollback                  # 09 → 이전 이미지
 
 
 
-## ⚠️ `helm upgrade` 를 함부로 돌리지 마십시오
+## `helm upgrade` 전에 어노테이션을 영구화하십시오
 
-이 차트는 세 Ingress(gateway·admin-api·admin-ui)를 **하나의 어노테이션 맵**에서 렌더링합니다. 그래서 클러스터에만 존재하고 values 파일에는 못 넣는 규칙이 둘 있습니다.
+`helm upgrade` 는 values 로부터 Ingress 를 다시 만들고, AWS Load Balancer Controller 가 그 Ingress 로부터 SG 를 다시 만듭니다. **values 에 없는 규칙은 그때 사라집니다.** 클러스터에서만 `kubectl annotate` 로 넣은 값이 대표적입니다.
 
-- **`security-group-prefix-lists=pl-…`** (gateway Ingress) — CloudFront 가 오리진에 닿는 통로입니다. values 에 넣으면 admin-api·admin-ui 까지 CloudFront 전체에 열려 IP 제한이 무력화되므로 일부러 안 넣습니다.
-- **`05-allow-client-ip.sh` 로 나중에 추가한 CIDR** — `06-persist-annotations.sh` 로 values 에 영구화하기 전까지는 클러스터에만 있습니다.
+특히 위험한 것이 gateway Ingress 의 **`security-group-prefix-lists`** 입니다. CloudFront 가 오리진에 닿는 통로라, 이게 없어지면 **CloudFront 경유 요청이 전부 502** 가 되어 데이터플레인이 멈춥니다.
 
-`helm upgrade` 는 values 로부터 Ingress 를 다시 만들고, AWS Load Balancer Controller 가 그 Ingress 로부터 SG 를 다시 만듭니다. 두 규칙 모두 사라집니다 — **CloudFront 를 통한 모든 요청이 502** 가 되어 데이터플레인이 멈춥니다.
+**차트는 이 값을 안전하게 담을 수 있습니다.** 어노테이션이 두 겹입니다.
 
-그래서 `09-update-admin-ui.sh` 는 이미지만 바꿀 때 helm 대신 `kubectl set image` 를 씁니다. 대시보드 하나 바꾸자고 추론 경로를 끊을 이유가 없습니다.
+| values 위치 | 적용 대상 |
+|---|---|
+| `ingress.annotations` | 세 Ingress **공통** |
+| `ingress.gateway.annotations` | gateway **전용** |
+| `ingress.adminUi.annotations` | admin-ui **전용** |
+| `ingress.adminApi.annotations` | admin-api **전용** |
 
-**helm 을 꼭 돌려야 한다면** 순서는 이렇습니다.
+우선순위는 **전용 > 템플릿 기본값 > 공통** 입니다. prefix-list 처럼 data-plane 에만 필요한 규칙은 반드시 `ingress.gateway.annotations` 에 넣으십시오. 공통 맵에 넣으면 admin-api·admin-ui 까지 임의의 CloudFront 배포에 열려 IP 제한이 무력화됩니다.
+
+`06-persist-annotations.sh` 가 두 키를 각각 맞는 자리에 씁니다 — CIDR 은 공통, prefix-list 는 gateway 전용. 전용 맵이 없는 옛 차트에서는 prefix-list 를 쓰지 않고 경고만 합니다(위험한 곳에 쓰느니 안 쓰는 편이 낫습니다).
+
+**정상 순서**
 
 ```bash
-bash 06-persist-annotations.sh --apply       # CIDR 을 values 에 먼저 넣고
-# … helm upgrade …
-bash 03-create-cloudfront.sh --allow-cloudfront   # prefix-list 를 손으로 되살린다
-bash 04-verify.sh                            # 종단 확인
+bash 06-persist-annotations.sh              # dry-run — 무엇이 빠져 있는지
+bash 06-persist-annotations.sh --apply      # 두 키를 values 에 영구화
+helm upgrade …                              # 이제 안전
+bash 04-verify.sh                           # 종단 확인
 ```
+
+> `09-update-admin-ui.sh` 는 helm 대신 `kubectl set image` 를 씁니다. 차트를 아직 못 고친 설치(고객사 기존 배포 등)에서 이미지만 급히 바꿔야 할 때의 우회로입니다. **차트가 고쳐졌고 06 을 돌렸다면 `helm upgrade` 가 정공법입니다** — helm 이 기억하는 상태와 클러스터가 갈라지지 않습니다.
 
 원복 값은 문서나 기억이 아니라 **적용 시점에 실제 DB에서 읽어** `snapshots/` **에 남긴 SQL** 입니다.
 
