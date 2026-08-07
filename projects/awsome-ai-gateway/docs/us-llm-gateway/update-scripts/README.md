@@ -96,6 +96,7 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 | `05-allow-client-ip.sh`     | Ingress `inbound-cidrs` 어노테이션                          | 낮음                         |
 | `06-persist-annotations.sh` | **helm values 파일** (`05-allow-client-ip.sh` 의 IP 허용목록을 영구화)               | 낮음. helm 을 돌리지 않음          |
 | `07-client-values.sh`       | **없음** — 직원에게 줄 env 4줄 출력                              | 없음                         |
+| `09-update-admin-ui.sh`     | admin-ui **이미지 빌드→ECR→롤아웃** + values 태그                | 낮음. 대시보드만. helm 을 돌리지 않음   |
 | `99-rollback.sh`            | 위 변경 되돌리기                                              | —                          |
 | `_lib.sh`                   | 공통 함수 (직접 실행하지 않음)                                     | —                          |
 | `config.env`                | 설정값 (부작용 없음)                                           | —                          |
@@ -210,6 +211,31 @@ bash 99-rollback.sh --routing       # 01 → 시드 상태로
 bash 99-rollback.sh --model         # 02 → INACTIVE 로
 bash 99-rollback.sh --cloudfront    # 03 → 절차 출력 (전파 대기 때문에 수동)
 bash 05-allow-client-ip.sh --remove <IP>/32 --apply    # 05 되돌리기
+bash 09-update-admin-ui.sh --rollback                  # 09 → 이전 이미지로
+```
+
+---
+
+
+
+## ⚠️ `helm upgrade` 를 함부로 돌리지 마십시오
+
+이 차트는 세 Ingress(gateway·admin-api·admin-ui)를 **하나의 어노테이션 맵**에서 렌더링합니다. 그래서 클러스터에만 존재하고 values 파일에는 못 넣는 규칙이 둘 있습니다.
+
+- **`security-group-prefix-lists=pl-…`** (gateway Ingress) — CloudFront 가 오리진에 닿는 통로입니다. values 에 넣으면 admin-api·admin-ui 까지 CloudFront 전체에 열려 IP 제한이 무력화되므로 일부러 안 넣습니다.
+- **`05-allow-client-ip.sh` 로 나중에 추가한 CIDR** — `06-persist-annotations.sh` 로 values 에 영구화하기 전까지는 클러스터에만 있습니다.
+
+`helm upgrade` 는 values 로부터 Ingress 를 다시 만들고, AWS Load Balancer Controller 가 그 Ingress 로부터 SG 를 다시 만듭니다. 두 규칙 모두 사라집니다 — **CloudFront 를 통한 모든 요청이 502** 가 되어 데이터플레인이 멈춥니다.
+
+그래서 `09-update-admin-ui.sh` 는 이미지만 바꿀 때 helm 대신 `kubectl set image` 를 씁니다. 대시보드 하나 바꾸자고 추론 경로를 끊을 이유가 없습니다.
+
+**helm 을 꼭 돌려야 한다면** 순서는 이렇습니다.
+
+```bash
+bash 06-persist-annotations.sh --apply       # CIDR 을 values 에 먼저 넣고
+# … helm upgrade …
+bash 03-create-cloudfront.sh --allow-cloudfront   # prefix-list 를 손으로 되살린다
+bash 04-verify.sh                            # 종단 확인
 ```
 
 원복 값은 문서나 기억이 아니라 **적용 시점에 실제 DB에서 읽어** `snapshots/` **에 남긴 SQL** 입니다.
