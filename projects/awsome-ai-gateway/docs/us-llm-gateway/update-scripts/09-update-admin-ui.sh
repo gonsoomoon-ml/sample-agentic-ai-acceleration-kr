@@ -9,16 +9,21 @@
 #       new image; the repo alone changes nothing.
 # UNDO: bash 09-update-admin-ui.sh --rollback   (uses the snapshot below)
 #
-# It deliberately does NOT run helm. This chart renders all three Ingresses
-# from one shared annotations map, and two rules live only in the cluster:
-#   - security-group-prefix-lists=pl-… on the gateway Ingress (CloudFront path)
-#   - CIDRs added later with `kubectl annotate` (05)
-# A `helm upgrade` rebuilds the Ingresses from values and drops both — every
-# request through CloudFront then returns 502, which takes the data plane down
-# for a change that only touches the dashboard. `kubectl set image` touches the
-# Deployment and nothing else.
+# ⚠️ This is the FALLBACK path, not the preferred one.
 #
-# The values file is still updated, so the next real `helm upgrade` carries the
+# `kubectl set image` leaves helm's stored release pointing at the old tag, so
+# the declared state and the cluster disagree until someone runs helm again.
+# Use it only where `helm upgrade` is unsafe: charts without per-Ingress
+# annotations (`ingress.gateway.annotations`) cannot hold the gateway's
+# security-group-prefix-lists, so an upgrade drops it and every request through
+# CloudFront returns 502 — the data plane goes down for a dashboard change.
+#
+# If the chart HAS the per-Ingress map and `06-persist-annotations.sh` has been
+# run, prefer:
+#     helm upgrade <release> <chart> -f <values> --set adminUi.image.tag=<tag>
+# The script warns when it detects that case.
+#
+# Either way the values file is updated, so the next `helm upgrade` carries the
 # same tag instead of reverting the rollout.
 # ---------------------------------------------------------------------------
 set -uo pipefail
@@ -95,7 +100,7 @@ printf '  build context    %s\n' "$BUILD_CTX"
 printf '  new image        %s\n' "$NEW_IMAGE"
 
 # The reason this script avoids helm — report it every run, not just on failure.
-hdr "Cluster-only Ingress rules (a helm upgrade would drop these)"
+hdr "Is helm safe here? (what values holds vs what the cluster runs)"
 PL=$(kubectl get ingress "$ING_GATEWAY" -n "$NS" \
      -o jsonpath='{.metadata.annotations.alb\.ingress\.kubernetes\.io/security-group-prefix-lists}' 2>/dev/null)
 if [ -n "$PL" ]; then
@@ -109,10 +114,28 @@ FILE_CIDRS=$(grep -E "^[[:space:]]*alb\.ingress\.kubernetes\.io/inbound-cidrs:[[
              | grep -vE '^[[:space:]]*#' | head -1 | sed -E 's/^[^:]*:[[:space:]]*//; s/^"//; s/"[[:space:]]*$//')
 printf '  live  inbound-cidrs  %s\n' "${LIVE_CIDRS:-<unset>}"
 printf '  file  inbound-cidrs  %s\n' "${FILE_CIDRS:-<unset>}"
-if [ "$LIVE_CIDRS" != "$FILE_CIDRS" ]; then
-  warn "these differ — a future 'helm upgrade' would narrow the allow-list"
-  note "Fix it first (this script does not need it, helm does):"
+
+# Is helm actually unsafe here, or is this script just the habit? Decide from
+# the chart and the values file, and say which, rather than assuming the worst.
+ING_TPL="$LIB_DIR/../../../deployment/charts/llm-gateway/templates/common/ingress.yaml"
+PER_INGRESS=0
+[ -f "$ING_TPL" ] && grep -q 'Values\.ingress\.gateway\.annotations' "$ING_TPL" && PER_INGRESS=1
+PL_IN_FILE=0
+grep -qE '^[[:space:]]*alb\.ingress\.kubernetes\.io/security-group-prefix-lists:' "$VALUES_FILE" \
+  && PL_IN_FILE=1
+
+if [ "$LIVE_CIDRS" != "$FILE_CIDRS" ] || { [ -n "$PL" ] && [ "$PL_IN_FILE" = "0" ]; }; then
+  warn "values does not yet hold everything the cluster has"
+  note "A 'helm upgrade' right now would drop the difference. Fix it with:"
   note "  bash 06-persist-annotations.sh --apply"
+  note "This script does not need it — kubectl set image ignores Ingresses."
+elif [ "$PER_INGRESS" = "1" ]; then
+  ok "values already holds them, and this chart has per-Ingress annotations"
+  warn "so 'helm upgrade' is safe here — prefer it over this script"
+  note "  helm upgrade $HELM_RELEASE <chart> -f $(basename "$VALUES_FILE") \\"
+  note "       --set adminUi.image.tag=$TAG"
+  note "kubectl set image leaves helm's stored release stale. Continue only if"
+  note "you specifically want to avoid re-rendering the other resources."
 fi
 
 # ── --status ────────────────────────────────────────────────────────────────
