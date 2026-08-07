@@ -19,8 +19,12 @@
 # CloudFront returns 502 — the data plane goes down for a dashboard change.
 #
 # If the chart HAS the per-Ingress map and `06-persist-annotations.sh` has been
-# run, prefer:
-#     helm upgrade <release> <chart> -f <values> --set adminUi.image.tag=<tag>
+# run, prefer the normal path — build the image, put the tag in values, then:
+#     ./deployment/scripts/install-eks.sh <env>
+# NOT a raw `helm upgrade -f <values>`: the values file still holds placeholders
+# (<RDS_PROXY_ENDPOINT>, <ELASTICACHE_ENDPOINT>, IRSA ARNs, Cognito issuer) that
+# install-eks.sh fills from `terraform output` via --set. Passing values alone
+# overwrites the live endpoints with those placeholders.
 # The script warns when it detects that case.
 #
 # Either way the values file is updated, so the next `helm upgrade` carries the
@@ -131,9 +135,12 @@ if [ "$LIVE_CIDRS" != "$FILE_CIDRS" ] || { [ -n "$PL" ] && [ "$PL_IN_FILE" = "0"
   note "This script does not need it — kubectl set image ignores Ingresses."
 elif [ "$PER_INGRESS" = "1" ]; then
   ok "values already holds them, and this chart has per-Ingress annotations"
-  warn "so 'helm upgrade' is safe here — prefer it over this script"
-  note "  helm upgrade $HELM_RELEASE <chart> -f $(basename "$VALUES_FILE") \\"
-  note "       --set adminUi.image.tag=$TAG"
+  warn "so the normal helm path is safe here — prefer it over this script"
+  note "  1. build+push the image (steps 1-2 below, or rebuild-image.sh)"
+  note "  2. set adminUi.image.tag: \"$TAG\" in $(basename "$VALUES_FILE")"
+  note "  3. ./deployment/scripts/install-eks.sh $DEPLOY_ENV"
+  note "Use install-eks.sh, never a bare 'helm upgrade -f values' — the values"
+  note "file has placeholders that install-eks.sh fills from terraform output."
   note "kubectl set image leaves helm's stored release stale. Continue only if"
   note "you specifically want to avoid re-rendering the other resources."
 fi
