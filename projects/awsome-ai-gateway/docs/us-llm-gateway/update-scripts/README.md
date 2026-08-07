@@ -242,11 +242,13 @@ bash 09-update-admin-ui.sh --rollback                  # 09 → 이전 이미지
 ```bash
 bash 06-persist-annotations.sh              # dry-run — 무엇이 빠져 있는지
 bash 06-persist-annotations.sh --apply      # 두 키를 values 에 영구화
-helm upgrade …                              # 이제 안전
+./deployment/scripts/install-eks.sh <env>   # 이제 안전 (아래 ⚠️ 참고)
 bash 04-verify.sh                           # 종단 확인
 ```
 
-> `09-update-admin-ui.sh` 는 helm 대신 `kubectl set image` 를 씁니다. 차트를 아직 못 고친 설치(고객사 기존 배포 등)에서 이미지만 급히 바꿔야 할 때의 우회로입니다. **차트가 고쳐졌고 06 을 돌렸다면 `helm upgrade` 가 정공법입니다** — helm 이 기억하는 상태와 클러스터가 갈라지지 않습니다.
+> ⚠️ **`helm upgrade` 를 직접 치지 마십시오.** values 파일에는 `<RDS_PROXY_ENDPOINT>` 같은 placeholder 가 남아 있고, 실값은 `install-eks.sh` 가 `terraform output` 에서 읽어 `--set` 으로 주입합니다. values 만 넘긴 업그레이드는 DB·Redis·OIDC 를 placeholder 로 덮어씁니다. 상세는 아래 「`helm upgrade` 는 `install-eks.sh` 로만」.
+
+> `09-update-admin-ui.sh` 는 helm 대신 `kubectl set image` 를 씁니다. 차트를 아직 못 고친 설치(고객사 기존 배포 등)에서 이미지만 급히 바꿔야 할 때의 우회로입니다. **차트가 고쳐졌고 06 을 돌렸다면 `install-eks.sh` 가 정공법입니다** — helm 이 기억하는 상태와 클러스터가 갈라지지 않습니다.
 
 원복 값은 문서나 기억이 아니라 **적용 시점에 실제 DB에서 읽어** `snapshots/` **에 남긴 SQL** 입니다.
 
@@ -440,23 +442,21 @@ values 파일           ← helm 이 읽는 정본
 
 | 어노테이션 | 넣는 스크립트 | values 에 기록 | `helm upgrade` 후 |
 |---|---|---|---|
-| `inbound-cidrs` | `05-allow-client-ip.sh` | `06-persist-annotations.sh` 가 함 | 유지 |
-| `security-group-prefix-lists` | `03-create-cloudfront.sh` | **일부러 안 함** | **사라짐** |
+| `inbound-cidrs` | `05-allow-client-ip.sh` | `06-persist-annotations.sh` → 세 Ingress 가 같으면 `ingress.annotations`, 다르면 각자 `ingress.<이름>.annotations` | 유지 |
+| `security-group-prefix-lists` | `03-create-cloudfront.sh` | `06-persist-annotations.sh` → `ingress.gateway.annotations` | 유지 |
 
-⚠️ **`helm upgrade` 를 돌렸다면 반드시 다시 실행하십시오.** 안 하면 CloudFront 경유 요청이 전부 502 입니다.
+`06` 은 **합집합을 쓰지 않습니다.** 합집합이면 admin-api 하나 때문에 추가한 IP 가 gateway 까지 열어버립니다. 공통분만 공유 맵에 넣고, 다른 Ingress 는 자기 목록을 전용 맵에 그대로 씁니다 — values 가 클러스터 현재 상태와 정확히 같아집니다. (전용 맵이 없는 옛 차트에서는 합집합밖에 표현할 수 없어, 그 사실과 넓어지는 범위를 출력하고 진행합니다.)
+
+⚠️ **단, `06` 을 먼저 돌린 경우에만 유지됩니다.** 안 돌린 상태로 업그레이드하면 prefix-list 가 사라져 CloudFront 경유 요청이 전부 502 입니다. 그렇게 됐다면 아래로 되살립니다(배포는 그대로 두고 어노테이션만 다시 걸어 수 초).
 
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 03-create-cloudfront.sh --allow-cloudfront
 ```
 
-배포는 그대로 두고 어노테이션만 다시 겁니다(수 초). `06-persist-annotations.sh` 도 실행할 때마다 이 사실을 알려줍니다.
+**왜 prefix-list 를 공통 맵에 넣으면 안 되는가.** values 의 `ingress.annotations` 는 세 Ingress 에 **모두** 적용됩니다. 거기 넣으면 gateway 뿐 아니라 admin-api·admin-ui 에도 붙고, 그러면 누구든 자기 CloudFront 배포의 오리진을 그 ALB 로 지정해 IP 제한을 우회할 수 있습니다. gateway 는 그 상태를 승인하고 쓰는 것이지만(「참고 · `03 --allow-cloudfront` 의 보안 성격 변경」), 컨트롤 플레인까지 그럴 이유는 없습니다. 그래서 `06` 은 이 값을 **gateway 전용 맵**에만 씁니다.
 
-**왜 prefix-list 만 빼는가.** 이 차트는 세 Ingress 를 `ingress.annotations` **하나로** 렌더합니다(`templates/common/ingress.yaml:22,58,100`). values 에 넣으면 gateway 뿐 아니라 **admin-api·admin-ui 에도 붙습니다.** 그러면 누구든 자기 CloudFront 배포의 오리진을 그 ALB 로 지정해 IP 제한을 우회할 수 있습니다. gateway 는 그 상태를 승인하고 쓰는 것이지만(「참고 · `03 --allow-cloudfront` 의 보안 성격 변경」), 컨트롤 플레인까지 그럴 이유는 없습니다.
-
-같은 제약 때문에 `06` 은 세 Ingress 의 `inbound-cidrs` **합집합**을 씁니다 — 공유 맵으로 표현할 수 있는 것이 그것뿐입니다.
-
-근본 해결은 차트에 per-Ingress 어노테이션을 넣는 것입니다.
+> **옛 차트를 쓰는 설치라면** 이야기가 다릅니다. 전용 맵(`ingress.gateway.annotations`)이 없는 차트에서는 prefix-list 를 values 에 담을 방법이 아예 없어, `06` 이 쓰지 않고 경고만 합니다. 그 경우 **업그레이드할 때마다** 위 `03 --allow-cloudfront` 를 손으로 다시 걸어야 합니다. `06` 이 실행할 때마다 어느 쪽인지 알려줍니다.
 
 ### ⚠️ `helm upgrade` 는 `install-eks.sh` 로만
 
