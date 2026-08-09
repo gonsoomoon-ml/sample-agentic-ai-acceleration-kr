@@ -99,7 +99,7 @@ OpenTelemetry(OTEL)는 프로그램이 **"내가 뭘 했는지"를 지표·추�
 
 **① otel-collector 가 클러스터 내부 전용(ClusterIP)** — Service 에 타입 지정이 없어 밖에서 못 닿는다. Ingress/LoadBalancer 로 외부에 내보내야 한다.
 
-**② 프로토콜이 gRPC → HTTPS 가 선결** — Claude Code 는 `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` 로 4317(gRPC)에 쏜다. gRPC 는 **HTTP/2 전용**이고, ALB 의 gRPC 는 **HTTPS(TLS) 필수**(평문 HTTP 불가)다. 그런데 이 배포는 [§0](README.md#0-이번-배포의-범위-확정)에서 **HTTPS 를 안 쓰기로** 결정했다(도메인·ACM 없음, IP 제한만). → **정면충돌**: 텔레메트리를 밖에 열려면 HTTPS 부터 도입해야 한다.
+**② 프로토콜이 gRPC → HTTPS 가 선결** — Claude Code 는 `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` 로 4317(gRPC)에 쏜다. gRPC 는 **HTTP/2 전용**이고, ALB 의 gRPC 는 **HTTPS(TLS) 필수**(평문 HTTP 불가)다. 그런데 이 배포는 [§0](install-overview.md#0-이번-배포의-범위-확정)에서 **HTTPS 를 안 쓰기로** 결정했다(도메인·ACM 없음, IP 제한만). → **정면충돌**: 텔레메트리를 밖에 열려면 HTTPS 부터 도입해야 한다.
 
 **③ 인증이 없다** — 그대로 열면 **누구나 가짜 지표를 쏠 수 있다.** `setup` 에 `--otel-auth-token` 파라미터가 있지만(`managed.py:123` → `OTEL_EXPORTER_OTLP_HEADERS: Authorization=Bearer …`) onboard 스크립트가 그걸 **안 넘긴다.** 토큰 발급·주입 체계를 따로 세워야 한다.
 
