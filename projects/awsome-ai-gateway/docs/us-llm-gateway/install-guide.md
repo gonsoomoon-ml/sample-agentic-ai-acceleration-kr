@@ -1,6 +1,6 @@
 # US LLM Gateway 설치 — 실행 런북 (§1~§6)
 
-> 개요·범위·설치 흐름은 **[README.md](README.md)** 에 있다. 이 문서는 **위에서 아래로 실행**한다.
+> 개요·범위·설치 흐름은 **[install-overview.md](install-overview.md)** 에 있다. 이 문서는 **위에서 아래로 실행**한다.
 > `§8`(재배포·prod 승격·teardown·보안 하드닝) 은 **[operations.md](operations.md)** 로 분리했다.
 
 ---

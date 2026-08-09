@@ -1,95 +1,114 @@
-# US LLM Gateway 설치 가이드 (Claude Code on Amazon Bedrock)
+# US AWSome AI Gateway
 
-> **목적**: 시스템 운영자가 **직접 명령을 실행**해 단일 계정에 게이트웨이를 설치합니다. 시스템 관리자가 LLM-Gateway 의 설치와 동시에 이 시스템을 배우기 위해서, 명령어의  복사-실행용으로 많이 구성했습니다.  
->
-> **코드베이스**: 저장소 `sample-agentic-ai-acceleration-kr`([aws-samples](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr)) 의 `projects/awsome-ai-gateway` 를 사용합니다.
->
-> 🔴 **단, clone 은 원본이 아니라 [fork](https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr) 의** `us/deploy-fixes` **브랜치**에서 합니다([§1-4](install-guide.md#1-4-git-저장소-세팅)). 원본에 아직 없는 **배포 픽스**(안 하면 `terraform apply`·이미지 빌드가 실패)와 **벤더 버그 픽스**(안 하면 클라이언트가 **에러 없이 게이트웨이를 우회**)가 들어 있습니다. US 특화 소스 편집은 **0** 이고, 이 픽스들은 전부 **upstream PR 후보**입니다([§2](install-guide.md#2-배포-전-코드-준비-us-특화-소스-편집-0)) — 머지되면 fork 없이 원본을 그냥 clone 하면 됩니다.
+**사내 Claude Code · Cowork 를 Amazon Bedrock 으로 연결하는 LLM 게이트웨이**
+설치(최초 1회)와 그 이후의 업데이트를 한자리에서 관리합니다.
 
----
+**한국어** · [English](README.en.md)
 
+- 🔴 **코드는 fork 에서 clone 합니다** — [`gonsoomoon-ml/sample-agentic-ai-acceleration-kr`](https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway) 브랜치 `us/deploy-fixes`
+- **upstream** — [`aws-samples/sample-agentic-ai-acceleration-kr`](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr/tree/main/projects/awsome-ai-gateway). 원본으로서  US AWSome AI Gateway는 원본의 US 를 위한 커스터마이즈 버전 입니다. 
+- **리전** — 이 배포는 `us-west-2` (인프라). 추론은 **US Geo** 라 us-east-1/2 · us-west-2 로 분산됩니다
+  - ⚠️ **리전 변경은 파라미터 하나로 끝나지 않습니다** — `terraform.tfvars` 의 `aws_region`·`azs`·`bedrock_model_arns`(리전 스코프 ARN)를 함께 고치고, 가이드 본문의 `us-west-2`(install-guide 51곳 등)를 치환해야 합니다.
+  - ⚠️ **US 밖(예: 유럽)에 설치하려면 설정을 바꿔야 합니다** — 추론 프로파일을 `eu.anthropic.`* 로 교체하고 모델 ID·IAM 리소스 ARN 을 함께 조정해야 하며, 그 리전의 모델 제공 여부를 먼저 확인해야 합니다. 서버측 web search 커넥터는 **us-east-1 전용**이라 cross-region 호출이 됩니다.
+- **추론 백엔드** — `bedrock-runtime` + US Geo 추론 프로파일 (`us.anthropic.`*). Bedrock **Mantle 아님**
+- **클라이언트** — Claude Code (Mac · Windows · Linux) · Cowork (`US-02` 적용 후)
+- **모델** — Opus 4.8 · Sonnet 5 · Haiku 4.5 (+ **Opus 5** = `US-02`)
 
-
-## 0. 이번 배포의 범위 (확정)
-
-
-| 항목     | 값                                                                                                           |
-| ------ | ----------------------------------------------------------------------------------------------------------- |
-| AWS 계정 | **단일 계정**, Administrative Access                                                                            |
-| Region | **us-west-2** (인프라·추론) — 추론은 US Geo라 us-east-1/us-east-2/us-west-2 분산                                       |
-| 클라이언트  | **Claude Code** (Mac, Windows, Linux)                                                                       |
-| 추론 백엔드 | `bedrock-runtime` **+ US Geo 추론 프로파일** (`us.anthropic.`*) — us-west-2 In-Region 미지원이라 Geo 사용. **Mantle 아님** |
-| 모델     | **Opus 4.8 · Sonnet 5 · Haiku 4.5** (Geo ID `us.anthropic.`*)                                               |
-| 핵심 기능  | **서버측 Web Search** (AgentCore 관리형 커넥터, **us-east-1 전용 → cross-region 호출**)                                  |
-| 보안(입구) | **IP 제한**(`inbound-cidrs`)                                                                                  |
-
+> fork 는 upstream 위로 **리베이스**되므로 커밋 해시가 바뀝니다 — 그래서 이 문서는 버전을 해시가 아니라 `US-NN` 으로 셉니다. 전체 확정 범위는 [install-overview.md §0](install-overview.md#0-이번-배포의-범위-확정).
 
 ---
 
 
 
-## 설치 흐름 한눈에
+## 1. 작업별 진입점
+
+
+| 구분            | 수행 작업                                 | 참조 문서                                                                                                       |
+| ------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **신규 설치**     | 인프라 프로비저닝 → 앱 배포 → 라우팅·웹서치 → 클라이언트 연결 | [install-overview.md](install-overview.md) → [install-guide.md](install-guide.md)                           |
+| **운영 중 업데이트** | 현재 적용 상태를 점검하고 미적용 항목만 반영             | [2. 최신 업데이트](#2-최신-업데이트) — `status.sh` 점검 후 미적용 항목만                                                                  |
+| **클라이언트 배포**  | 직원 PC 에 Claude Code · Cowork 설치       | [client-install.md](client-install.md) · [cowork/cowork-client-install.md](cowork/cowork-client-install.md) |
+
+
+> ⚠️ **신규 설치도** `US-02` **적용이 필요합니다.** 설치 마이그레이션이 Cowork 라우팅 행을 존재하지 않는 계정으로 심기 때문에, `install-guide.md` 를 끝내도 Cowork 는 동작하지 않습니다 — [최신 업데이트](#2-최신-업데이트) 참조.
+
+---
+
+
+
+## 2. 최신 업데이트
+
+🔥 새 업데이트는 위로 쌓입니다. `US-NN` 은 리베이스에 영향받지 않는 고정 ID 입니다.
+
+▶ **먼저 내 배포 상태를 확인하십시오** · 배포 EC2 (1~2분, 구성 변경 없음)
+
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && bash status.sh
+```
+
+아래에서 **점검 결과가 미적용인 것만** 적용합니다. 출력 읽는 법과 유의사항은 [3. 적용 상태 점검](#3-적용-상태-점검).
+
+> 등급 — **필수**: 반드시 적용(컴플라이언스·필수 기능) · **권장**: 해당 기능이 동작하지 않음 · **선택**: 요구가 있을 때만
+
+- **[2026/08]** `US-04` **Bedrock·STS 를 NAT 대신 VPC Endpoint 로** — **필수**(컴플라이언스) · 신규 설치 **이미 포함**
+Bedrock·STS 호출이 퍼블릭 인터넷을 지나지 않고 VPC 내부 PrivateLink 로만 흐르게 합니다. 기존 배포는 엔드포인트가 없어 NAT 를 거치므로 적용해야 합니다.
+→ [operations.md §8-N](operations.md#8-n-bedrock-을-nat-대신-vpc-endpointprivatelink로)
+- **[2026/08]** `US-03` **Admin UI 한/영 토글** — **필수**(영문 지원) · 신규 설치 **이미 포함**
+관리 화면 전체가 i18n 으로 전환돼 헤더의 KO/EN 토글이 실제로 번역합니다. 기존 배포는 admin-ui 이미지를 다시 빌드해야 반영됩니다.
+→ [operations.md §8-U](operations.md#8-u-업데이트-코드-변경-반영) 의 **A. 서비스 코드** — `rebuild-image.sh admin-ui <env>` → `install-eks.sh <env>` (선행: `06-persist-annotations.sh` dry-run)
+- **[2026/08]** `US-02` **Cowork 연결 + Opus 5 등록** — **권장**(Cowork 사용 시 필수) · 🔴 **신규 설치도 해당**
+설치 마이그레이션이 Cowork 라우팅 행을 **존재하지 않는 계정**으로 심어, 그대로 두면 Cowork 요청이 전부 502 로 실패합니다. 라우팅 교정 · Opus 5 등록 · HTTPS(CloudFront) 를 함께 처리합니다.
+→ [update-scripts 실행 순서](update-scripts/README.md#실행-순서)
+- **[2026/07]** `US-01` **최초 설치** — 기준선
+단일 계정 · `us-west-2` · Claude Code · US Geo 추론으로 게이트웨이를 세웁니다.
+→ [install-overview.md](install-overview.md)
+
+---
+
+
+
+## 3. 적용 상태 점검
+
+`status.sh` 는 [최신 업데이트](#2-최신-업데이트)의 각 업데이트가 이 배포에 반영돼 있는지를 **라이브 시스템을 조회해** 판정합니다. 판정 근거는 코드 버전이 아니라 실제 배포 상태입니다 — DB 라우팅 행, CloudFront 배포, VPC 엔드포인트, 실행 중인 컨테이너 이미지.
+
+출력 예시 — 일부 업데이트만 적용된 배포:
 
 ```
-준비 → terraform(인프라) → install-eks(앱) → 라우팅·웹서치 → 클라이언트·보안
+ US AWSome AI Gateway — 업데이트 적용 상태
+ ────────────────────────────────────────────────────────────
+ 계정 <ACCOUNT_ID> / us-west-2 · release llm-gateway · ns llm-gateway
+
+   OK   US-01  최초 설치 (기준선)
+   !!   US-02  Cowork 연결 + Opus 5 등록 — 일부 적용
+        routing=invoke · claude-opus-5 ACTIVE · CloudFront 없음
+   XX   US-03  Admin UI 한·영 토글 — 미적용
+        이미지 tag 1.0.12 (푸시 2026-08-04 03:11 UTC) — i18n 반입 이전 빌드
+   XX   US-04  Bedrock·STS VPC Endpoint — 미적용 (필수)
+        엔드포인트 없음 → Bedrock·STS 호출이 NAT 경유
+
+ 다음 작업 (update-scripts 디렉터리에서 실행)
+ ────────────────────────────────────────────────────────────
+   bash 03-create-cloudfront.sh        # Cowork 를 사용하는 경우에만 필요
+   bash 09-update-admin-ui.sh          # 선행: bash 06-persist-annotations.sh
 ```
 
-**A. 준비 (1회) — ⏱️ ~1시간**
+**실행 조건 및 유의사항**
 
-1. AWS Account 를 준비 - AWS Console 에 Admin 으로 접속할 IAM User 준비
-2. 설치 작업 환경 (작업자 Laptop)
-3. 명령 돌릴 **작업 서버(EC2)를 만든다**(IAM 역할 부여까지. 도구 설치는 6번) … [§1-2](install-guide.md#1-2-배포-작업용-ec2-deployment-ec2-us-west-2)
-4. 계정에서 Bedrock **Claude 3개의 모델을 켠다**(안 켜면 403) — 콘솔 Bedrock ▸ Model catalog(us-west-2) … [§1-3](install-guide.md#1-3-bedrock-모델-액세스-us-west-2-먼저-확인-대개-불필요)
-5. **게이트웨이 코드를 받는다** — fork 에서 `us/deploy-fixes` 브랜치를 clone(픽스 포함) … [§1-4](install-guide.md#1-4-git-저장소-세팅) (내용 설명 [§2-1](install-guide.md#2-배포-전-코드-준비-us-특화-소스-편집-0))
-6. EC2 에 **도구를 설치한다**(스크립트가 5번 clone 안에 있어 순서가 뒤) — `bash deployment/scripts/bootstrap-ec2.sh` … [§2-2](install-guide.md#2-2-배포-ec2-도구-설치-1-4-clone-이후에-실행)
-
-**B. 인프라 프로비저닝 (terraform) — ⏱️ ~2시간** 
-
-1. terraform **상태 저장소(S3/DynamoDB)를 만든다** — `bootstrap-tfstate.sh` … [§3-1](install-guide.md#3-1-tfstate-창고)
-2. **이 배포의 값(리전·역할 ARN·모델 ARN)을 지정** — `terraform.tfvars` 작성 … [§3-2](install-guide.md#3-2-tfvars-채우기)
-3. **VPC·EKS·Aurora·Redis·Cognito 인프라를 실제 생성** — `terraform apply` ⏳ **30분** … [§3-3](install-guide.md#3-3-terraform-apply-인프라-약-30분)
-
-**C. 앱 배포 (build → install → 검증) — ⏱️ ~2시간** 
-
-1. 앱이 쓸 **암호키·DB/Redis 비번을 Secrets Manager에 넣는다** … [§3-4](install-guide.md#3-4-시크릿-손으로-만드는-건-2개-app-redis)
-2. **서비스 컨테이너를 빌드해 ECR에 올린다** ⏳ **20분** … [§3-5](install-guide.md#3-5-이미지-빌드-ecr)
-3. terraform으로 못 구하는 **조직 값(이메일·Cognito)을 채운다** — values 편집 … [§3-6](install-guide.md#3-6-values-org-값만-채우기-web-search-키)
-4. **앱(파드)을 클러스터에 배포** — `install-eks.sh dev` … [§3-7](install-guide.md#3-7-설치-실행)
-5. **첫 운영자 계정 생성 + 동작 확인** — Cognito 온보딩 + smoke test … [§3-8](install-guide.md#3-8-cognito-온보딩-스모크)
-
-**D. 배선·기능 — ⏱️ ~30분**
-
-1. **Claude Code 를 US Geo 프로파일로 연결** — Aurora 에 alias·routing SQL … [§4](install-guide.md#4-claude-code-bedrock-runtime-us-geo-프로파일-배선-us-핵심)
-2. **서버측 웹검색 게이트웨이를 만들고 URL 연결** — 프로비저닝 → values → install 재실행 … [§5](install-guide.md#5-서버측-web-search-us-east-1)
-
-**E. 클라이언트·오픈 — ⏱️ ~35분**
-
-1. **직원 PC 가 게이트웨이 통해 쓰게 설정** — Claude Code 배포 … [§6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli) (운영자는 §6-0 까지, **직원 PC 는 [client-install.md](client-install.md)**)
-2. **IP 제한·로그인 우회 차단 후 재배포** — 보안 하드닝(직원 오픈 전 필수) … [operations.md §8-S](operations.md#8-s-배포-후-보안-하드닝-직원-오픈-전-필수)
-
-> ⏱️ 대기의 대부분은 **9번**(terraform apply)과 **11번**(이미지 빌드)이다.
+- **배포 EC2 에서만 동작합니다.** DB 가 프라이빗 VPC 안에 있어 해당 호스트를 경유해야 하며, 클러스터 접근에 필요한 kubeconfig 도 그곳에 있습니다.
+- **구성을 변경하지 않습니다.** 다만 엄밀한 의미의 읽기 전용은 아닙니다 — DB 조회를 위해 클러스터에 일회용 psql 파드를 생성한 뒤 삭제합니다. Fargate 스케줄링 때문에 **1~2분**이 소요됩니다(실측 1분 20~30초).
+- 판정 근거 원문이 필요하면 `bash status.sh --verbose` 로 실행합니다.
 
 ---
 
 
 
-## 📍 문서 지도
+## 4. 시스템 개요
 
+사용자의 Claude Code · Cowork 요청을 인증하고, 팀·사용자별 예산과 레이트리밋을 적용한 뒤 Amazon Bedrock 으로 전달하는 게이트웨이입니다. 요청 경로(데이터 플레인)와 관리 기능(컨트롤 플레인)이 분리된 별도 서비스로 동작하며, 사용량과 비용은 요청 시점에 기록됩니다.
 
-| 문서                                                                 | 무엇                                                                             | 언제 본다                         |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ----------------------------- |
-| **README.md** (이 문서)                                               | 범위 · 설치 흐름 · 문서 지도                                                             | **시작할 때 한 번**                 |
-| **[install-guide.md](install-guide.md)**                           | **§1~§6-0 실행 런북** (운영자용. §7 보안은 operations.md)                              | **설치하는 4시간 내내 — 여기만 본다**      |
-| **[client-install.md](client-install.md)**                         | **§6-1~§6-3 직원 PC 설치** (macOS · Windows) — 직원에게 그대로 전달                    | 직원 온보딩할 때 (**직원이 받는 문서**)     |
-| [operations.md](operations.md)                                     | §8 **설치 후 운영 작업** — 업데이트·직원 온보딩·**§8-S 보안 하드닝(직원 오픈 전)**·teardown·prod 승격·멀티계정 | **설치가 끝난 뒤 · 직원 오픈 전**        |
-| [prd.md](prd.md)                                                   | 요구사항 · 확정 범위 · out-of-scope                                                    | 시작 전 · 고객사와 범위 합의할 때          |
-| [architecture.md](architecture.md)                                 | **전체 그림 1장** — ASCII 아키텍처 · 요청 흐름 5개 · 벤더 레퍼런스 대비                              | 시작 전 · 구조를 한눈에 보고 싶을 때        |
-| [web-search-explained.md](web-search-explained.md)                 | 서버측 web search 가 동작하는 원리 (초보자용 ASCII 흐름)                                       | §5 를 개념부터 이해하고 싶을 때           |
-| [client-setup-explained.md](client-setup-explained.md)             | 클라이언트 설치·인증 흐름 (초보자용 ASCII 흐름)                                                 | §6 을 개념부터 이해하고 싶을 때           |
-| [telemetry-explained.md](telemetry-explained.md)                   | Claude Code 텔레메트리(OTEL) — 무엇을 수집·어디로·켤까끌까                                      | §6 setup 이 켜는 텔레메트리를 이해·결정할 때 |
+- **인증** — Cognito OIDC 로그인으로 가상 키(VK)를 발급하고, 요청마다 VK 를 검증
+- **제어** — 예산·레이트리밋을 요청마다 원자적으로 검사하고, 초과 시 차단 또는 모델 하향
+- **추론** — `bedrock-runtime` US Geo 추론 프로파일로 전달 (us-east-1/2 · us-west-2 분산)
+- **집계** — 요청별 토큰·비용을 기록하고 Admin UI 에서 팀·사용자 단위로 조회
 
-
-> **처음이라면**: 이 문서를 끝까지 읽고 → [install-guide.md](install-guide.md) 를 위에서 아래로 실행한다.
-
->
-
+구조도와 요청 흐름은 [architecture.md](architecture.md), 이 배포의 확정 범위는 [install-overview.md §0](install-overview.md#0-이번-배포의-범위-확정) 에 있습니다.
