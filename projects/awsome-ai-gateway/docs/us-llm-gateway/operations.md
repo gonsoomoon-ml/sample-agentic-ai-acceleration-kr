@@ -9,7 +9,7 @@
 
 ## 8. 설치 후 운영 작업
 
-> 순서 = **POC 사용 빈도순** — 자주(업데이트·온보딩·보안) → 가끔(네트워크 경로·teardown·TTL) → POC 이후(prod 승격·멀티계정).
+> 순서 = **POC 사용 빈도순** — 자주(업데이트·모델·온보딩·보안) → 가끔(네트워크 경로·teardown·TTL) → POC 이후(prod 승격·멀티계정).
 
 ---
 
@@ -89,7 +89,7 @@ git pull --ff-only
 
 `git stash list` 로 남아 있으니 필요하면 `git stash pop` 으로 되살린다. 확인 후 `git stash drop`.
 
-⚠️ 저장소 갱신에 **`git reset --hard` 를 쓰지 말 것.** `values-eks-fargate-*.yaml` 이 함께 날아가고, 그 파일은 어디에도 백업이 없다.
+⚠️ **백업 없이** `git reset --hard` 를 쓰지 말 것 — `values-eks-fargate-*.yaml` 이 함께 날아가고, 그 파일은 어디에도 백업이 없다. 다만 이 브랜치는 리베이스되므로 위 `git pull --ff-only` 가 실패하는 경우가 있다. 그때는 **백업을 뜨고 `reset --hard` 로 원격에 맞추는** 정본 절차를 쓴다 — [README.md 「3. 적용하기」](README.md#3-적용하기).
 
 ---
 
@@ -199,9 +199,110 @@ helm -n llm-gateway rollback llm-gateway <REV>     # 그 번호로
 
 ---
 
+### 8-M. 모델 추가와 교체
+
+> 📒 `US-02` 의 일부 — [README.md 「최신 업데이트」](README.md#2-최신-업데이트). **Cowork 와 무관하며 Claude Code 만 쓰는 배포에도 해당**한다.
+
+`02-add-opus5-model.sh` 는 이름과 달리 **범용**이다. `config.env` 의 `MODEL_ALIAS`·`MODEL_PROVIDER_ID` 를 바꾸면 어떤 모델이든 등록한다. 시드에는 **Opus 4.8 까지만** 들어 있으므로(마이그레이션 `0006`), 그 이후 모델은 전부 이 절차를 거친다.
+
+---
+
+#### 실행
+
+▶ **배포 EC2**
+
+**0) 저장소를 최신으로 맞춘다** — 스크립트가 갱신됐을 수 있다.
+
+```bash
+cd ~/awsome-ai-gateway
+V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cp $V ~/values.bak
+git fetch origin && git reset --hard origin/us/deploy-fixes
+cp ~/values.bak $V
+```
+
+⚠️ 이 브랜치는 리베이스되므로 `git pull` 은 통하지 않는다. `values-*.yaml` 백업·복구를 빠뜨리면 다음 `helm upgrade` 에서 **ALB 허용목록이 통째로 빠진다.** 원격 확인과 `cmp` 복구 검증을 포함한 전체 절차는 [README.md 「3. 적용하기」](README.md#3-적용하기).
+
+**1) 사전 점검** — 읽기 전용. `team_allowed_models has 0 rows` 를 확인한다(행이 있으면 아래 ⓐ).
+
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 00-preflight-check.sh
+```
+
+**2) 등록할 모델을 정한다**
+
+**Opus 5 라면 고칠 것이 없다.** `config.env.example` 에 alias·모델 ID·단가 5종이 이미 들어 있고, 설치 때 만든 `config.env` 가 그 값을 그대로 갖고 있다. 이 파일에서 실제로 채우는 값은 `AWS_ACCOUNT_ID` 한 줄뿐이다. **3) 으로 바로 간다.**
+
+**다른 모델**을 등록할 때만 아래를 고친다.
+
+```bash
+vi config.env
+```
+
+
+| 값                                     | 무엇                                                       |
+| -------------------------------------- | ---------------------------------------------------------- |
+| `MODEL_ALIAS`                          | 클라이언트가 요청할 이름                                    |
+| `MODEL_PROVIDER_ID`                    | Bedrock 모델 ID. `INFERENCE_PROFILE` 전용이면 `us.` 접두사 필수 (↓ ⓒ) |
+| `MODEL_DISPLAY_NAME` · `MODEL_DESCRIPTION` | admin-ui 표시용                                          |
+| 단가 5종 + `MODEL_PRICE_ASOF`          | 빠뜨리면 비용이 `$0` 으로 기록된다 (↓ ⓑ)                    |
+
+
+**3) dry-run → 적용**
+
+```bash
+bash 02-add-opus5-model.sh
+```
+```bash
+bash 02-add-opus5-model.sh --apply
+```
+
+**4) 5분 기다린다** — `model:list` 캐시 TTL 이 300초다. 파드를 재시작해도 소용없다(캐시가 외부 ElastiCache).
+
+**5) 검증**
+
+```bash
+bash 04-verify.sh
+```
+
+**되돌리기** — `INACTIVE` 로 바꾼다. `model_aliases` 를 참조하는 FK 가 여럿이고 `ON DELETE` 가 없어 **삭제는 실패한다.**
+
+```bash
+bash 99-rollback.sh --model
+```
+
+---
+
+#### 알아둘 것
+
+**ⓐ 🔴** `team_allowed_models` **에 행이 하나라도 있으면 새 모델이 400 을 뱉는다.** 행이 있는 순간 whitelist 모드로 뒤집혀 등록만으로는 못 쓴다. 해당 팀 행을 함께 넣어야 한다 — `bash 02-add-opus5-model.sh --team-id <uuid>`. `00-preflight-check.sh` 가 이걸 검사해 알려준다.
+
+**ⓑ 단가를 빼먹으면 조용히 망가진다.** 가격 행이 없으면 `router_service.py:51-52` 가 0 으로 대체한다. **요청은 성공하고 비용만** `$0` **으로 쌓이며 예산이 우회된다** — 에러가 없어 발견이 늦다. 상세: [update-scripts/README.md 「왜 단가가 필수인가」](update-scripts/README.md#왜-단가가-필수인가).
+
+단가는 **수동**이다. AWS Pricing API(`AmazonBedrock`)는 Claude 3 까지만 싣고 신모델은 공개 가격 페이지에도 없다. 그래서 값이 조용히 낡는다 — `MODEL_PRICE_ASOF` 가 그것을 드러내는 유일한 장치이니 반드시 갱신한다.
+
+**ⓒ 모델 ID 는 리전에서 확인하고 넣는다.** Opus 5 처럼 `INFERENCE_PROFILE` 전용 모델은 `us.` 접두사가 필수다.
+
+```bash
+aws bedrock list-inference-profiles --region us-west-2 \
+  --query "inferenceProfileSummaries[?contains(inferenceProfileId,'opus')]"
+```
+
+**ⓓ 계정에서 그 모델이 켜져 있어야 한다.** 안 켜져 있으면 403 — [install-guide.md §1-3](install-guide.md#1-3-bedrock-모델-액세스-us-west-2--먼저-확인-대개-불필요).
+
+**ⓔ IAM 은 Claude 계열이면 대개 손댈 필요가 없다.** `terraform.tfvars` 의 `bedrock_model_arns` 가 `inference-profile: us.anthropic.*` 와 `foundation-model: anthropic.claude-*` 를 와일드카드로 잡는다. **비-Claude 모델을 넣을 때만** ARN 을 추가하고 `terraform apply` 한다.
+
+**ⓕ 클라이언트에서 보이게 하기**
+
+- **Cowork** — `inferenceModels` 에 이름을 넣어야 모델 선택기에 나타난다([client-install.md](client-install.md)). 넣지 않으면 등록해도 안 보인다.
+- **Claude Code** — 게이트웨이가 내려주는 모델 목록을 따른다. 5분 캐시가 만료된 뒤 반영된다.
+
+---
+
 ### 8-Y. 직원 온보딩 — Cognito 사용자 추가
 
-§3-8 은 **관리자 한 명**만 만든다. 직원이 [§6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli) 의 `gateway-cli login` 을 하려면, 그 전에 **관리자가 직원을 Cognito 에 미리 등록**해둬야 한다. 방법은 두 가지.
+§3-8 은 **관리자 한 명**만 만든다. 직원이 [§6](install-guide.md#6-클라이언트-설치--claude-code-awsome-gateway-cli) 의 `gateway-cli login` 을 하려면, 그 전에 **관리자가 직원을 Cognito 에 미리 등록**해둬야 한다. 방법은 두 가지.
 
 **공통 — 어느 그룹에 넣나**
 
