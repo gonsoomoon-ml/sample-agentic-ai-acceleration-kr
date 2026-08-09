@@ -1,6 +1,14 @@
 # LLM Gateway 업데이트 스크립트 — Cowork 활성화 + 모델 추가
 
-이미 운영 중인 LLM Gateway에 **Cowork(Claude Desktop 3P)를 연결**하고 **신규 모델을 등록**하는 도구 모음입니다.
+이미 운영 중인 LLM Gateway에 **Cowork(Claude Desktop 3P)를 연결**하고 **신규 모델을 등록**하는 도구 모음입니다. 「최신 업데이트」의 **`US-02`** 에 해당합니다 — [README.md](../README.md#2-최신-업데이트).
+
+> 📒 **먼저 `status.sh` 를 돌리십시오.** 이 배포가 어느 업데이트까지 반영돼 있는지 한 화면으로 보여주고, 안 된 것만 알려줍니다. 구성을 변경하지 않습니다.
+>
+> ```bash
+> bash status.sh
+> ```
+>
+> ⚠️ **파일명의 숫자는 업데이트 세대가 아닙니다.** `00`~`09` 는 *한 배치 안의 실행 순서*이고, `US-NN` 은 *업데이트 세대*입니다 — 축이 달라 `US-03` 이 `09-update-admin-ui.sh` 인 식으로 어긋납니다. `status.sh` 에 숫자가 없는 것도 그래서입니다.
 
 `deployment/scripts/install-eks.sh` 로 설치한 게이트웨이라면 `config.env` **에서 계정 ID 한 줄만** 고치면 됩니다. 나머지 값은 설치 기본값이거나 클러스터에서 자동으로 찾아냅니다.
 
