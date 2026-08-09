@@ -59,8 +59,10 @@ Bedrock and STS calls stay on PrivateLink inside the VPC instead of traversing t
 - **[2026/08]** `US-03` **Admin UI Korean/English toggle** — **Required** (English support) · already included in new installs
 The entire admin console was converted to i18n, so the KO/EN toggle in the header actually translates the screens. Existing deployments must rebuild the admin-ui image.
 → [operations.md §8-U](operations.md#8-u-업데이트-코드-변경-반영) path **A (service code)** — `rebuild-image.sh admin-ui <env>` → `install-eks.sh <env>` (prerequisite: `06-persist-annotations.sh` dry-run) (Korean)
-- **[2026/08]** `US-02` **Cowork connectivity + Opus 5 registration** — **Recommended** (required if you use Cowork) · 🔴 **applies to new installs too**
-The install migration seeds the Cowork routing row with **an account that does not exist**, so every Cowork request fails with 502 until it is corrected. This update fixes routing, registers Opus 5 and puts HTTPS (CloudFront) in front.
+- **[2026/08]** `US-02` **Cowork connectivity + Opus 5 registration** — **each part has a different audience** · 🔴 **applies to new installs too**
+  · **Required if you use Cowork** — `01` routing fix, `03` HTTPS (CloudFront). The install migration seeds the Cowork routing row with **an account that does not exist**, so every Cowork request fails with 502 until it is corrected.
+  · **Required if you want Opus 5** — `02` model registration. **Unrelated to Cowork; Claude Code needs it too** (the seed stops at Opus 4.8). ⚠️ Omitting the prices makes cost record as `$0` and silently bypasses budgets. Full procedure and pitfalls: [operations.md §8-M](operations.md#8-m-모델-추가와-교체) (Korean). Despite its name it is the **general-purpose script for registering any model** (`MODEL_ALIAS` / `MODEL_PROVIDER_ID` in `config.env`).
+  · If you only use Claude Code and Opus 4.8 · Sonnet 5 · Haiku 4.5 are enough, you can **skip US-02 entirely.**
 → [update-scripts execution order](update-scripts/README.md#실행-순서) (Korean)
 - **[2026/07]** `US-01` **Initial installation** — baseline
 Stands up the gateway on a single account, `us-west-2`, Claude Code, US Geo inference.
