@@ -5,7 +5,9 @@
 
 **한국어** · [English](README.en.md)
 
-- 🔴 **코드는 fork 에서 clone 합니다** — [`gonsoomoon-ml/sample-agentic-ai-acceleration-kr`](https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway) 브랜치 `us/deploy-fixes`
+- 🔴 **코드는 fork 의 `us/deploy-fixes` 브랜치에서 받습니다**
+  https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway
+  <br>페이지 상단에 `forked from aws-samples/…` 배너가 보이는 것이 정상입니다 — 주소창의 `gonsoomoon-ml` 과 브랜치 `us/deploy-fixes` 로 확인하십시오.
 - **upstream** — [`aws-samples/sample-agentic-ai-acceleration-kr`](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr/tree/main/projects/awsome-ai-gateway). 원본으로서  US AWSome AI Gateway는 원본의 US 를 위한 커스터마이즈 버전 입니다. 
 - **리전** — 이 배포는 `us-west-2` (인프라). 추론은 **US Geo** 라 us-east-1/2 · us-west-2 로 분산됩니다
   - ⚠️ **리전 변경은 파라미터 하나로 끝나지 않습니다** — `terraform.tfvars` 의 `aws_region`·`azs`·`bedrock_model_arns`(리전 스코프 ARN)를 함께 고치고, 가이드 본문의 `us-west-2`(install-guide 51곳 등)를 치환해야 합니다.
@@ -40,13 +42,7 @@
 
 🔥 새 업데이트는 위로 쌓입니다. `US-NN` 은 리베이스에 영향받지 않는 고정 ID 입니다.
 
-▶ **먼저 내 배포 상태를 확인하십시오** · 배포 EC2 (1~2분, 구성 변경 없음)
-
-```bash
-cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && bash status.sh
-```
-
-아래에서 **점검 결과가 미적용인 것만** 적용합니다. 출력 읽는 법과 유의사항은 [3. 적용 상태 점검](#3-적용-상태-점검).
+> ⚠️ **적용하기 전에 [3. 적용하기](#3-적용하기)로 현재 상태를 먼저 확인하십시오.** 이미 적용된 것을 다시 돌리거나 선행 조건을 건너뛰지 않기 위해서입니다.
 
 > 등급 — **필수**: 반드시 적용(컴플라이언스·필수 기능) · **권장**: 해당 기능이 동작하지 않음 · **선택**: 요구가 있을 때만
 
@@ -67,9 +63,57 @@ Bedrock·STS 호출이 퍼블릭 인터넷을 지나지 않고 VPC 내부 Privat
 
 
 
-## 3. 적용 상태 점검
+## 3. 적용하기
 
-`status.sh` 는 [최신 업데이트](#2-최신-업데이트)의 각 업데이트가 이 배포에 반영돼 있는지를 **라이브 시스템을 조회해** 판정합니다. 판정 근거는 코드 버전이 아니라 실제 배포 상태입니다 — DB 라우팅 행, CloudFront 배포, VPC 엔드포인트, 실행 중인 컨테이너 이미지.
+저장소를 최신으로 맞추고, 위 목록 중 무엇이 이 배포에 반영돼 있는지 확인합니다.
+
+> **아래 명령은 모두 「배포 EC2」에서 실행합니다.** `US-01` 최초 설치 때 만든 작업 서버이고, 이미 갖고 계십니다([install-guide.md §1-2](install-guide.md#1-2-배포-작업용-ec2-deployment-ec2-us-west-2)). 랩톱에서는 동작하지 않습니다 — DB 가 프라이빗 VPC 안에 있어 그 호스트를 거쳐야 하고, 클러스터 접근용 kubeconfig 와 게이트웨이 저장소 사본(`~/awsome-ai-gateway`)도 거기에만 있습니다.
+
+▶ **① 저장소를 최신으로 맞춥니다** · 배포 EC2
+
+**먼저 fork 를 보고 있는지 확인합니다.** upstream(`aws-samples`)에는 `us/deploy-fixes` 브랜치가 **없어서**, 원격이 잘못돼 있으면 아래 갱신이 "unknown revision" 으로 실패합니다.
+
+```bash
+cd ~/awsome-ai-gateway && git remote -v
+```
+
+`origin` 이 **`gonsoomoon-ml/sample-agentic-ai-acceleration-kr`** 이어야 합니다. `aws-samples` 로 나오면 upstream 을 clone 한 것이니 원격을 바꿉니다.
+
+```bash
+git remote set-url origin https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr.git
+```
+
+이 브랜치는 upstream 위로 **리베이스**되므로 `git pull` 이 통하지 않습니다 — 히스토리가 갈라져 `--ff-only` 가 실패합니다. 원격에 그대로 맞추되, **이 EC2 에만 있는 실값 파일**을 먼저 백업합니다.
+
+```bash
+cd ~/awsome-ai-gateway
+V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cp $V ~/values.bak
+git fetch origin && git reset --hard origin/us/deploy-fixes
+cp ~/values.bak $V
+```
+
+끝나면 확인합니다 — **마지막 `cp` 를 빠뜨리는 것이 이 절차의 유일한 위험**입니다.
+
+```bash
+V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
+```
+```bash
+git status --short && git log --oneline -1
+```
+
+`values restored OK` 가 나오고 HEAD 가 `origin/us/deploy-fixes` 와 같으면 정상입니다. `RESTORE FAILED` 면 `cp ~/values.bak $V` 를 다시 돌리십시오.
+
+ℹ️ 이 파일에 `<RDS_PROXY_ENDPOINT>`·`<ELASTICACHE_ENDPOINT>` 가 **남아 있는 것이 정상**입니다 — `install-eks.sh` 가 helm 실행 시점에 `terraform output` 에서 읽어 `--set` 으로 주입합니다. 그래서 `helm upgrade -f values` 를 직접 치면 안 됩니다.
+
+⚠️ `values-*.yaml` 은 계정 실값(레지스트리·리전·`inbound-cidrs`·시크릿 키)이라 커밋할 수 없어 **이 EC2 한 대에만** 있습니다. 잃으면 다음 `helm upgrade` 가 placeholder 로 나가 **ALB IP 허용목록이 통째로 빠집니다.**
+ℹ️ `terraform.tfvars`·`.terraform/`·`config.env`·`snapshots/` 는 gitignore 대상이라 `reset --hard` 로 지워지지 않습니다. 반대로 **디렉터리째 지우고 재클론하면 복구되지 않습니다.**
+ℹ️ `.terraform.lock.hcl` 이 함께 되돌아가지만 `terraform init` 이 다시 채우므로 무방합니다.
+
+▶ **② 적용 상태를 확인합니다** · 1~2분, 구성 변경 없음
+
+`status.sh` 는 [2. 최신 업데이트](#2-최신-업데이트)의 각 업데이트가 이 배포에 반영돼 있는지를 **라이브 시스템을 조회해** 판정합니다. 판정 근거는 코드 버전이 아니라 실제 배포 상태입니다 — DB 라우팅 행, CloudFront 배포, VPC 엔드포인트, 실행 중인 컨테이너 이미지.
 
 출력 예시 — 일부 업데이트만 적용된 배포:
 
