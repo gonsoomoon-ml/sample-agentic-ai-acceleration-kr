@@ -4,7 +4,7 @@
 >
 > **코드베이스**: 저장소 `sample-agentic-ai-acceleration-kr`([aws-samples](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr)) 의 `projects/awsome-ai-gateway` 를 사용합니다.
 >
-> 🔴 **단, clone 은 원본이 아니라 [fork](https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr) 의** `us/deploy-fixes` **브랜치**에서 합니다([§1-4](install-guide.md#1-4-git-저장소-세팅)). 원본에 아직 없는 **배포 픽스**(안 하면 `terraform apply`·이미지 빌드가 실패)와 **벤더 버그 픽스**(안 하면 클라이언트가 **에러 없이 게이트웨이를 우회**)가 들어 있습니다. US 특화 소스 편집은 **0** 이고, 이 픽스들은 전부 **upstream PR 후보**입니다([§2](install-guide.md#2-배포-전-코드-준비-us-특화-소스-편집-0)) — 머지되면 fork 없이 원본을 그냥 clone 하면 됩니다.
+> 🔴 **단, clone 은 원본이 아니라 [fork](https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr) 의** `us/deploy-fixes` **브랜치**에서 합니다([§1-4](install-guide.md#1-4-git-저장소-세팅)). 원본에 아직 없는 **배포 픽스**(안 하면 `terraform apply`·이미지 빌드가 실패)와 **벤더 버그 픽스**(안 하면 클라이언트가 **에러 없이 게이트웨이를 우회**)가 들어 있습니다. US 특화 소스 편집은 **0** 이고, 이 픽스들은 전부 **upstream PR 후보**입니다([§2](install-guide.md#2-배포-전-코드-준비-us-특화-소스-편집--0)) — 머지되면 fork 없이 원본을 그냥 clone 하면 됩니다.
 
 ---
 
@@ -39,32 +39,32 @@
 1. AWS Account 를 준비 - AWS Console 에 Admin 으로 접속할 IAM User 준비
 2. 설치 작업 환경 (작업자 Laptop)
 3. 명령 돌릴 **작업 서버(EC2)를 만든다**(IAM 역할 부여까지. 도구 설치는 6번) … [§1-2](install-guide.md#1-2-배포-작업용-ec2-deployment-ec2-us-west-2)
-4. 계정에서 Bedrock **Claude 3개의 모델을 켠다**(안 켜면 403) — 콘솔 Bedrock ▸ Model catalog(us-west-2) … [§1-3](install-guide.md#1-3-bedrock-모델-액세스-us-west-2-먼저-확인-대개-불필요)
-5. **게이트웨이 코드를 받는다** — fork 에서 `us/deploy-fixes` 브랜치를 clone(픽스 포함) … [§1-4](install-guide.md#1-4-git-저장소-세팅) (내용 설명 [§2-1](install-guide.md#2-배포-전-코드-준비-us-특화-소스-편집-0))
+4. 계정에서 Bedrock **Claude 3개의 모델을 켠다**(안 켜면 403) — 콘솔 Bedrock ▸ Model catalog(us-west-2) … [§1-3](install-guide.md#1-3-bedrock-모델-액세스-us-west-2--먼저-확인-대개-불필요)
+5. **게이트웨이 코드를 받는다** — fork 에서 `us/deploy-fixes` 브랜치를 clone(픽스 포함) … [§1-4](install-guide.md#1-4-git-저장소-세팅) (내용 설명 [§2-1](install-guide.md#2-배포-전-코드-준비-us-특화-소스-편집--0))
 6. EC2 에 **도구를 설치한다**(스크립트가 5번 clone 안에 있어 순서가 뒤) — `bash deployment/scripts/bootstrap-ec2.sh` … [§2-2](install-guide.md#2-2-배포-ec2-도구-설치-1-4-clone-이후에-실행)
 
 **B. 인프라 프로비저닝 (terraform) — ⏱️ ~2시간** 
 
 1. terraform **상태 저장소(S3/DynamoDB)를 만든다** — `bootstrap-tfstate.sh` … [§3-1](install-guide.md#3-1-tfstate-창고)
 2. **이 배포의 값(리전·역할 ARN·모델 ARN)을 지정** — `terraform.tfvars` 작성 … [§3-2](install-guide.md#3-2-tfvars-채우기)
-3. **VPC·EKS·Aurora·Redis·Cognito 인프라를 실제 생성** — `terraform apply` ⏳ **30분** … [§3-3](install-guide.md#3-3-terraform-apply-인프라-약-30분)
+3. **VPC·EKS·Aurora·Redis·Cognito 인프라를 실제 생성** — `terraform apply` ⏳ **30분** … [§3-3](install-guide.md#3-3-terraform-apply-인프라--약-30분)
 
 **C. 앱 배포 (build → install → 검증) — ⏱️ ~2시간** 
 
-1. 앱이 쓸 **암호키·DB/Redis 비번을 Secrets Manager에 넣는다** … [§3-4](install-guide.md#3-4-시크릿-손으로-만드는-건-2개-app-redis)
-2. **서비스 컨테이너를 빌드해 ECR에 올린다** ⏳ **20분** … [§3-5](install-guide.md#3-5-이미지-빌드-ecr)
-3. terraform으로 못 구하는 **조직 값(이메일·Cognito)을 채운다** — values 편집 … [§3-6](install-guide.md#3-6-values-org-값만-채우기-web-search-키)
+1. 앱이 쓸 **암호키·DB/Redis 비번을 Secrets Manager에 넣는다** … [§3-4](install-guide.md#3-4-시크릿--손으로-만드는-건-2개-app-redis)
+2. **서비스 컨테이너를 빌드해 ECR에 올린다** ⏳ **20분** … [§3-5](install-guide.md#3-5-이미지-빌드--ecr)
+3. terraform으로 못 구하는 **조직 값(이메일·Cognito)을 채운다** — values 편집 … [§3-6](install-guide.md#3-6-values--org-값만-채우기--web-search-키)
 4. **앱(파드)을 클러스터에 배포** — `install-eks.sh dev` … [§3-7](install-guide.md#3-7-설치-실행)
-5. **첫 운영자 계정 생성 + 동작 확인** — Cognito 온보딩 + smoke test … [§3-8](install-guide.md#3-8-cognito-온보딩-스모크)
+5. **첫 운영자 계정 생성 + 동작 확인** — Cognito 온보딩 + smoke test … [§3-8](install-guide.md#3-8-cognito-온보딩--스모크)
 
 **D. 배선·기능 — ⏱️ ~30분**
 
-1. **Claude Code 를 US Geo 프로파일로 연결** — Aurora 에 alias·routing SQL … [§4](install-guide.md#4-claude-code-bedrock-runtime-us-geo-프로파일-배선-us-핵심)
+1. **Claude Code 를 US Geo 프로파일로 연결** — Aurora 에 alias·routing SQL … [§4](install-guide.md#4-claude-code--bedrock-runtime--us-geo-프로파일-배선-us-핵심)
 2. **서버측 웹검색 게이트웨이를 만들고 URL 연결** — 프로비저닝 → values → install 재실행 … [§5](install-guide.md#5-서버측-web-search-us-east-1)
 
 **E. 클라이언트·오픈 — ⏱️ ~35분**
 
-1. **직원 PC 가 게이트웨이 통해 쓰게 설정** — Claude Code 배포 … [§6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli) (운영자는 §6-0 까지, **직원 PC 는 [client-install.md](client-install.md)**)
+1. **직원 PC 가 게이트웨이 통해 쓰게 설정** — Claude Code 배포 … [§6](install-guide.md#6-클라이언트-설치--claude-code-awsome-gateway-cli) (운영자는 §6-0 까지, **직원 PC 는 [client-install.md](client-install.md)**)
 2. **IP 제한·로그인 우회 차단 후 재배포** — 보안 하드닝(직원 오픈 전 필수) … [operations.md §8-S](operations.md#8-s-배포-후-보안-하드닝-직원-오픈-전-필수)
 
 > ⏱️ 대기의 대부분은 **9번**(terraform apply)과 **11번**(이미지 빌드)이다.

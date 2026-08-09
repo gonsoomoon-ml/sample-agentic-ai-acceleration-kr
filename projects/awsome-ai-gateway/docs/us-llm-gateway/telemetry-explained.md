@@ -1,6 +1,6 @@
 # Claude Code 텔레메트리(OTEL)는 무엇인가 (초보자용)
 
-> [install-guide.md §6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli) 의 `gateway-cli setup` 은 게이트웨이 연결과 **함께 텔레메트리(OpenTelemetry, OTEL)도 켠다.** 이게 뭐고, 내 직원 데이터가 어디로 가는지, 켜고 끄는 결정을 어떻게 하는지 설명한다.
+> [install-guide.md §6](install-guide.md#6-클라이언트-설치--claude-code-awsome-gateway-cli) 의 `gateway-cli setup` 은 게이트웨이 연결과 **함께 텔레메트리(OpenTelemetry, OTEL)도 켠다.** 이게 뭐고, 내 직원 데이터가 어디로 가는지, 켜고 끄는 결정을 어떻게 하는지 설명한다.
 
 ---
 

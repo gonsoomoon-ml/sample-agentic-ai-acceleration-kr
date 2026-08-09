@@ -106,7 +106,7 @@
 
 Bedrock 은 Anthropic 의 네이티브 서버측 web search 를 **지원하지 않는다**. 그래서 게이트웨이가 그걸 **흉내낸다** — 툴을 주입하고, 모델의 호출을 가로채 AWS 검색을 부르고, 여러 번 오간 대화를 **하나의 답변으로 봉합**한다. 직원 눈에는 그냥 Claude 가 알아서 검색해 답한 것처럼 보인다.
 
-이 "흉내" 를 매끄럽게 하려고 두 가지 잠복 버그를 고쳤다(네이티브 툴 정리·thinking 봉합). 상세는 [install-guide.md §6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli) 도입부와 fork `us/deploy-fixes`.
+이 "흉내" 를 매끄럽게 하려고 두 가지 잠복 버그를 고쳤다(네이티브 툴 정리·thinking 봉합). 상세는 [install-guide.md §6](install-guide.md#6-클라이언트-설치--claude-code-awsome-gateway-cli) 도입부와 fork `us/deploy-fixes`.
 
 ---
 
@@ -123,7 +123,7 @@ Bedrock 은 Anthropic 의 네이티브 서버측 web search 를 **지원하지 �
 | 전체 마감 | **90초** | 이 시간을 넘으면 더 검색 안 하고 답한다                   |
 
 
-튜닝은 [§5-5](install-guide.md#5-5-업데이트-무엇을-바꾸느냐에-따라-대부분-재프로비저닝-불필요) (선택).
+튜닝은 [§5-5](install-guide.md#5-5-업데이트-무엇을-바꾸느냐에-따라--대부분-재프로비저닝-불필요) (선택).
 
 ---
 

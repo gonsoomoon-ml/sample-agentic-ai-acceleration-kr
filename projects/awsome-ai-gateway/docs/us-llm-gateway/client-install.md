@@ -4,7 +4,7 @@
 >
 > **시작 전 운영자에게서 받을 것**
 > - **env 4줄** — `OIDC_ISSUER_URL` · `OIDC_CLIENT_ID` · `ADMIN_API_URL` · `ANTHROPIC_BASE_URL`
-> - **Cognito 계정** — 이메일 + 임시 비밀번호 (발급은 [operations.md §8-Y](operations.md#8-y-직원-온보딩-cognito-사용자-추가))
+> - **Cognito 계정** — 이메일 + 임시 비밀번호 (발급은 [operations.md §8-Y](operations.md#8-y-직원-온보딩--cognito-사용자-추가))
 > - **그 PC 의 공인 IP 가 `inbound-cidrs` 에 등록**되어 있을 것 — 빠져 있으면 **로그인은 되는데** 키발급·추론이 타임아웃난다(로그인 = Cognito 공개, 키발급·추론 = IP 제한)
 >
 > **절 번호 규칙**: `§1`~`§6-0` 은 [install-guide.md](install-guide.md) 의 절 번호다. 이 문서는 그 흐름의 **§6-1 ~ §6-3** 을 독자(직원)가 달라 떼어낸 것이라 번호를 그대로 유지한다.
@@ -13,7 +13,7 @@
 
 ### 6-1. Claude Code 설치 (직원 PC — macOS · Windows)
 
-> 💡 관리자는 [install-guide.md §6-0](install-guide.md#6-0-linux-배포-ec2-관리자가-먼저-익힌다) 을 먼저 해보길 권한다 — 배포 EC2 에는 Claude Code 가 이미 깔려 있어 이 설치 절을 건너뛰고 `login`·`setup` 만 익힐 수 있다.
+> 💡 관리자는 [install-guide.md §6-0](install-guide.md#6-0-linux-배포-ec2--관리자가-먼저-익힌다) 을 먼저 해보길 권한다 — 배포 EC2 에는 Claude Code 가 이미 깔려 있어 이 설치 절을 건너뛰고 `login`·`setup` 만 익힐 수 있다.
 
 §6-2·§6-3(직원 PC 로그인·setup)은 **Claude Code 가 이미 깔려 있다고 가정**한다. 직원 PC(macOS·Windows·Linux)엔 §2-2 부트스트랩이 없으니 **여기서 바이너리부터 깐다.**
 
@@ -66,7 +66,7 @@ cd sample-agentic-ai-acceleration-kr/projects/awsome-ai-gateway
 bash scripts/onboard-macos-linux.sh --setup-claude-code
 ```
 
-> ℹ️ **③ 도중 브라우저에 Cognito 로그인 창이 뜬다** — `gateway-cli login` 단계에서 기본 브라우저가 자동으로 열린다. **이메일 + 비밀번호**(운영자가 발급한 그 직원의 Cognito 계정 — 발급은 [operations.md §8-Y](operations.md#8-y-직원-온보딩-cognito-사용자-추가))를 입력한다. **첫 로그인이면** 임시 비밀번호로 들어간 뒤 곧바로 **새 비밀번호 설정**을 요구한다(관리자 생성 계정 기본 상태). 로그인에 성공하면 브라우저에 완료 표시가 뜨고 터미널이 이어서 진행된다.
+> ℹ️ **③ 도중 브라우저에 Cognito 로그인 창이 뜬다** — `gateway-cli login` 단계에서 기본 브라우저가 자동으로 열린다. **이메일 + 비밀번호**(운영자가 발급한 그 직원의 Cognito 계정 — 발급은 [operations.md §8-Y](operations.md#8-y-직원-온보딩--cognito-사용자-추가))를 입력한다. **첫 로그인이면** 임시 비밀번호로 들어간 뒤 곧바로 **새 비밀번호 설정**을 요구한다(관리자 생성 계정 기본 상태). 로그인에 성공하면 브라우저에 완료 표시가 뜨고 터미널이 이어서 진행된다.
 
 **검증**: `claude` → `/status` 에서 base URL = gateway ALB · `Auth token` = `apiKeyHelper`. 그다음 `hi`(추론 §4-5) → 실시간 값 질문(웹서치 §5-4).
 
@@ -138,7 +138,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force   # .ps1 실�
 .\scripts\onboard-windows.ps1 -SetupClaudeCode
 ```
 
-> ℹ️ **④ 도중 브라우저에 Cognito 로그인 창이 뜬다** — `gateway-cli login` 단계에서 기본 브라우저가 자동으로 열린다. **이메일 + 비밀번호**(운영자가 발급한 그 직원의 Cognito 계정 — 발급은 [operations.md §8-Y](operations.md#8-y-직원-온보딩-cognito-사용자-추가))를 입력한다. **첫 로그인이면** 임시 비밀번호로 들어간 뒤 곧바로 **새 비밀번호 설정**을 요구한다(관리자 생성 계정 기본 상태). 로그인에 성공하면 브라우저에 완료 표시가 뜨고 터미널이 이어서 진행된다.
+> ℹ️ **④ 도중 브라우저에 Cognito 로그인 창이 뜬다** — `gateway-cli login` 단계에서 기본 브라우저가 자동으로 열린다. **이메일 + 비밀번호**(운영자가 발급한 그 직원의 Cognito 계정 — 발급은 [operations.md §8-Y](operations.md#8-y-직원-온보딩--cognito-사용자-추가))를 입력한다. **첫 로그인이면** 임시 비밀번호로 들어간 뒤 곧바로 **새 비밀번호 설정**을 요구한다(관리자 생성 계정 기본 상태). 로그인에 성공하면 브라우저에 완료 표시가 뜨고 터미널이 이어서 진행된다.
 
 **검증**: 새 셸에서 `claude` → `/status` 에서 `Anthropic base URL` = gateway ALB · `Auth token` = `apiKeyHelper` 여야 한다(§6-0 검증과 동일). 그다음 `hi`(추론 §4-5) → 실시간 값 질문(웹서치 §5-4).
 
