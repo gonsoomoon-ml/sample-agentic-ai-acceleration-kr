@@ -223,30 +223,34 @@ cp ~/values.bak $V
 
 ⚠️ 이 브랜치는 리베이스되므로 `git pull` 은 통하지 않는다. `values-*.yaml` 백업·복구를 빠뜨리면 다음 `helm upgrade` 에서 **ALB 허용목록이 통째로 빠진다.** 원격 확인과 `cmp` 복구 검증을 포함한 전체 절차는 [README.md 「3. 적용하기」](README.md#3-적용하기).
 
-**1) 사전 점검** — 읽기 전용. `team_allowed_models has 0 rows` 를 확인한다(행이 있으면 아래 ⓐ).
+**1) `config.env` 를 준비한다** — 스크립트는 전부 이 파일을 읽는다. 없으면 다음 단계가 *"config.env not found"* 로 멈춘다.
 
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
-bash 00-preflight-check.sh
+[ -f config.env ] || cp config.env.example config.env
 ```
 
-**2) 등록할 모델을 정한다**
+이 파일은 `.gitignore` 대상이라 **저장소를 갱신해도 지워지지 않는다.** 한 번 만들어 두면 그대로 남는다.
 
-**Opus 5 라면 고칠 것이 없다.** `config.env.example` 에 alias·모델 ID·단가 5종이 이미 들어 있고, 설치 때 만든 `config.env` 가 그 값을 그대로 갖고 있다. 이 파일에서 실제로 채우는 값은 `AWS_ACCOUNT_ID` 한 줄뿐이다. **3) 으로 바로 간다.**
+무엇을 채울지는 경우에 따라 다르다.
 
-**다른 모델**을 등록할 때만 아래를 고친다.
+
+| 상황                        | `vi config.env` 로 고칠 값                                                                                   |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **update-scripts 를 처음 쓴다** | `AWS_ACCOUNT_ID` **한 줄**. 나머지는 설치 기본값이라 그대로 둔다                                            |
+| **Opus 5 를 등록한다**        | **없음** — alias·모델 ID·단가 5종이 `config.env.example` 에 이미 들어 있다                                    |
+| **다른 모델을 등록한다**       | `MODEL_ALIAS`(클라이언트가 요청할 이름) · `MODEL_PROVIDER_ID`(Bedrock 모델 ID, `INFERENCE_PROFILE` 전용이면 `us.` 접두사 필수 ↓ⓒ) · `MODEL_DISPLAY_NAME`·`MODEL_DESCRIPTION`(admin-ui 표시용) · 단가 5종 + `MODEL_PRICE_ASOF`(↓ⓑ) |
+
 
 ```bash
 vi config.env
 ```
 
+**2) 사전 점검** — 읽기 전용. `team_allowed_models has 0 rows` 를 확인한다(행이 있으면 아래 ⓐ).
 
-| 값                                     | 무엇                                                       |
-| -------------------------------------- | ---------------------------------------------------------- |
-| `MODEL_ALIAS`                          | 클라이언트가 요청할 이름                                    |
-| `MODEL_PROVIDER_ID`                    | Bedrock 모델 ID. `INFERENCE_PROFILE` 전용이면 `us.` 접두사 필수 (↓ ⓒ) |
-| `MODEL_DISPLAY_NAME` · `MODEL_DESCRIPTION` | admin-ui 표시용                                          |
-| 단가 5종 + `MODEL_PRICE_ASOF`          | 빠뜨리면 비용이 `$0` 으로 기록된다 (↓ ⓑ)                    |
+```bash
+bash 00-preflight-check.sh
+```
 
 
 **3) dry-run → 적용**
