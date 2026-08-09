@@ -12,7 +12,9 @@ It covers the one-time installation and every update that follows.
 > update scripts). This page tells you *what changed* and *whether this deployment has it*;
 > the runbooks are for the operator who performs the change.
 
-- 🔴 **Clone from the fork** — [`gonsoomoon-ml/sample-agentic-ai-acceleration-kr`](https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway), branch `us/deploy-fixes`
+- 🔴 **Take the code from the fork's `us/deploy-fixes` branch**
+  https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway
+  <br>A `forked from aws-samples/…` banner at the top of that page is expected — confirm you are in the right place by the `gonsoomoon-ml` owner in the URL and the `us/deploy-fixes` branch.
 - **upstream** — [`aws-samples/sample-agentic-ai-acceleration-kr`](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr/tree/main/projects/awsome-ai-gateway). US AWSome AI Gateway is the US-specific customization of that original.
 - **Region** — this deployment runs on `us-west-2` (infrastructure). Inference uses **US Geo**, so it is distributed across us-east-1/2 · us-west-2.
   - ⚠️ **Changing the region is not a one-parameter edit** — `aws_region`, `azs` and `bedrock_model_arns` (region-scoped ARNs) in `terraform.tfvars` must change together, and `us-west-2` must be substituted throughout the guides (51 occurrences in install-guide alone).
@@ -47,13 +49,7 @@ It covers the one-time installation and every update that follows.
 
 🔥 New updates are added at the top. `US-NN` is a fixed identifier that survives rebases.
 
-▶ **Check this deployment first** · on the deployment EC2 (1–2 min, changes nothing)
-
-```bash
-cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && bash status.sh
-```
-
-Apply only the items the check reports as missing. How to read the output is in [3. Checking applied status](#3-checking-applied-status).
+> ⚠️ **Before applying anything, check the current state first — see [3. Applying updates](#3-applying-updates).** That is how you avoid re-running something already applied or skipping a prerequisite.
 
 > Severity — **Required**: must be applied (compliance or essential capability) · **Recommended**: the feature does not work without it · **Optional**: only if requested
 
@@ -74,7 +70,55 @@ Stands up the gateway on a single account, `us-west-2`, Claude Code, US Geo infe
 
 
 
-## 3. Checking applied status
+## 3. Applying updates
+
+Bring the repository up to date, then find out which of the updates above this deployment already has.
+
+> **Every command below runs on the "deployment EC2".** That is the work host created during the `US-01` initial installation, so you already have it ([install-guide.md §1-2](install-guide.md#1-2-배포-작업용-ec2-deployment-ec2-us-west-2), Korean). It will not work from a laptop — the database sits in a private VPC and must be reached through that host, and the kubeconfig plus the gateway repository checkout (`~/awsome-ai-gateway`) exist only there.
+
+▶ **① Bring the repository up to date** · on the deployment EC2
+
+**First confirm you are pointed at the fork.** Upstream (`aws-samples`) has **no** `us/deploy-fixes` branch, so a wrong remote makes the update below fail with "unknown revision".
+
+```bash
+cd ~/awsome-ai-gateway && git remote -v
+```
+
+`origin` must be **`gonsoomoon-ml/sample-agentic-ai-acceleration-kr`**. If it shows `aws-samples`, you cloned upstream — repoint it.
+
+```bash
+git remote set-url origin https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr.git
+```
+
+This branch is **rebased** onto upstream, so `git pull` does not work — the histories diverge and `--ff-only` fails. Match the remote exactly, but back up the file that exists **only on this host** first.
+
+```bash
+cd ~/awsome-ai-gateway
+V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cp $V ~/values.bak
+git fetch origin && git reset --hard origin/us/deploy-fixes
+cp ~/values.bak $V
+```
+
+Verify afterwards — **forgetting the final `cp` is the one real risk in this procedure.**
+
+```bash
+V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
+```
+```bash
+git status --short && git log --oneline -1
+```
+
+`values restored OK` plus a HEAD matching `origin/us/deploy-fixes` means you are done. On `RESTORE FAILED`, run `cp ~/values.bak $V` again.
+
+ℹ️ `<RDS_PROXY_ENDPOINT>` and `<ELASTICACHE_ENDPOINT>` **remaining in this file is correct** — `install-eks.sh` reads the real values from `terraform output` and injects them with `--set` at helm time. That is why you must never run `helm upgrade -f values` directly.
+
+⚠️ `values-*.yaml` holds real account values (registry, region, `inbound-cidrs`, secret keys) and cannot be committed, so it lives on **this one EC2 instance only**. Losing it makes the next `helm upgrade` go out with placeholders and **drops the ALB IP allow-list entirely.**
+ℹ️ `terraform.tfvars`, `.terraform/`, `config.env` and `snapshots/` are gitignored, so `reset --hard` does not remove them. Deleting the directory and re-cloning, on the other hand, does **not** bring them back.
+ℹ️ `.terraform.lock.hcl` is reset too, but `terraform init` repopulates it, so that is harmless.
+
+▶ **② Check what is applied** · 1–2 min, changes nothing
 
 `status.sh` determines whether each update in [2. Latest updates](#2-latest-updates) is present in this deployment by **querying the live system**. It judges from actual deployed state rather than code version — DB routing rows, the CloudFront distribution, VPC endpoints, and the running container image.
 
