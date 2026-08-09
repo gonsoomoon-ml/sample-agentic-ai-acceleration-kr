@@ -1,6 +1,6 @@
 # 클라이언트 설치는 어떻게 동작하나 (초보자용)
 
-> 이 문서는 [install-guide.md §6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli) 를 **개념부터** 이해하려는 사람을 위한 것이다. 설치 명령은 §6 에 있고(OS별), 여기서는 *"왜 이렇게 하는지 · 인증이 어떻게 흐르는지"* 만 그림으로 설명한다.
+> 이 문서는 [install-guide.md §6](install-guide.md#6-클라이언트-설치--claude-code-awsome-gateway-cli) 를 **개념부터** 이해하려는 사람을 위한 것이다. 설치 명령은 §6 에 있고(OS별), 여기서는 *"왜 이렇게 하는지 · 인증이 어떻게 흐르는지"* 만 그림으로 설명한다.
 
 ---
 
@@ -46,7 +46,7 @@ Claude Code 는 `api-key-helper` 를 **매 요청 직전에 자동 실행**해�
 설치 끝. 이제 Claude Code 는 개인 계정이 아니라 게이트웨이를 본다.
 ```
 
-- **[1] login** = "**나는 회사 직원이다**" 를 한 번 증명(브라우저 로그인). 그 증거(OIDC 토큰)를 PC 에 저장해둔다. 관리자는 §3-8 계정으로, 직원은 각자 계정으로 — 직원 계정은 **관리자가 미리 Cognito 에 등록**해둬야 한다([operations.md 8-Y 직원 온보딩](operations.md#8-y-직원-온보딩-cognito-사용자-추가)).
+- **[1] login** = "**나는 회사 직원이다**" 를 한 번 증명(브라우저 로그인). 그 증거(OIDC 토큰)를 PC 에 저장해둔다. 관리자는 §3-8 계정으로, 직원은 각자 계정으로 — 직원 계정은 **관리자가 미리 Cognito 에 등록**해둬야 한다([operations.md 8-Y 직원 온보딩](operations.md#8-y-직원-온보딩--cognito-사용자-추가)).
 - **[2] setup** = Claude Code 에게 "**게이트웨이로 가라 + 열쇠는 helper 로 받아라**" 를 알려준다. 관리 설정(managed-settings)은 최상위 우선순위라, 직원이 다른 설정을 해도 이게 이긴다.
 
 > 🔴 **왜 관리자 권한?** setup 이 쓰는 관리 설정 파일은 시스템 폴더에 있다(OS 마다 위치 다름 — §6 참조). 그래서 sudo(Mac/Linux)·관리자 PowerShell(Windows)이 필요하다.
@@ -169,7 +169,7 @@ helper 는 매 요청 직전 **"만료 직전에 미리"** 갱신한다(요청 �
 
 ## 설치가 깨지는 흔한 지점 (§6 실측)
 
-이 흐름의 각 단계가 어긋나면 이렇게 실패한다 — 상세·해결은 [install-guide.md §6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli):
+이 흐름의 각 단계가 어긋나면 이렇게 실패한다 — 상세·해결은 [install-guide.md §6](install-guide.md#6-클라이언트-설치--claude-code-awsome-gateway-cli):
 
 | 증상 | 어느 단계 | 원인 |
 |---|---|---|
@@ -192,4 +192,4 @@ helper 는 매 요청 직전 **"만료 직전에 미리"** 갱신한다(요청 �
 | 왜 관리자 권한? | setup 이 **시스템 폴더**의 관리 설정을 쓰기 때문. |
 | 개인 API 키 안 쓰는 이유? | VK 는 짧은 수명 + 사용자별 집계 → 유출·예산 통제. |
 | 저장 파일 두 개? | `oidc-tokens.json`(신원) · `vk-cache.json`(열쇠). |
-| 설치가 깨지면? | 위 "흔한 지점" 표 → [§6](install-guide.md#6-클라이언트-설치-claude-code-awsome-gateway-cli). |
+| 설치가 깨지면? | 위 "흔한 지점" 표 → [§6](install-guide.md#6-클라이언트-설치--claude-code-awsome-gateway-cli). |

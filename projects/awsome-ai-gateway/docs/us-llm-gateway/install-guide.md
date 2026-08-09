@@ -643,7 +643,7 @@ kubectl get externalsecret -n llm-gateway
 >
 > 🔑 **여기서 만드는 이메일 + 비번(TEMP_PW)이 나중에 로그인 계정이다** — §5-3 admin-ui(`/models`) 로그인, §6 클라이언트 `gateway-cli login` 팝업에 이걸 쓴다. **AWS 콘솔/CLI 계정과는 별개**(그건 인프라 구축용 IAM, 이건 게이트웨이용 Cognito). 첫 로그인 때 임시비번을 새 비번으로 바꾸라고 강제된다.
 >
-> 여기서는 **관리자 1명**만 만든다. 직원 계정 추가는 [operations.md 8-Y 직원 온보딩](operations.md#8-y-직원-온보딩-cognito-사용자-추가).
+> 여기서는 **관리자 1명**만 만든다. 직원 계정 추가는 [operations.md 8-Y 직원 온보딩](operations.md#8-y-직원-온보딩--cognito-사용자-추가).
 
 ▶ **실행** · 배포 EC2
 
@@ -794,7 +794,7 @@ SQL
 > - `region = us-west-2` → 이 경로에선 안 쓰이지만(실제 리전은 파드의 `AWS_REGION`) 스키마가 `NOT NULL` 이라 채운다.
 > - `backend = invoke` 는 그대로(Mantle 아님).
 >
-> 💡 나중에 **멀티계정으로 확장**(claude-code 를 별도 계정 Bedrock 으로)하려면 이걸 되살린다 → [operations.md 의 "멀티계정 확장"](operations.md#8-x-멀티계정-확장-claude-code-를-별도-계정-bedrock-으로).
+> 💡 나중에 **멀티계정으로 확장**(claude-code 를 별도 계정 Bedrock 으로)하려면 이걸 되살린다 → [operations.md 의 "멀티계정 확장"](operations.md#8-x-멀티계정-확장--claude-code-를-별도-계정-bedrock-으로).
 
 **같은 파일에 이어 붙인다** (`>>`):
 
@@ -945,7 +945,7 @@ echo "http://$(kubectl -n llm-gateway get ingress llm-gateway-admin-ui \
 > ssh -i ~/.ssh/<key>.pem ubuntu@<배포EC2-공인IP> 'echo $SSH_CLIENT'
 > ```
 >
-> **작은따옴표 필수**(원격에서 확장). 출력 **첫 필드**가 그 PC 의 us-west-2 향 출구 IP 다. 이 값을 허용목록에 **넣는 방법**은 [§6-A](#6-a-ip-를-허용목록보안그룹에-추가-자주-쓰는-작업). 직원 PC(SSH 없음)는 `checkip` 값으로 먼저 열어보고, 막히면 운영자가 VPC flow log 의 `srcaddr` 로 찾는다.
+> **작은따옴표 필수**(원격에서 확장). 출력 **첫 필드**가 그 PC 의 us-west-2 향 출구 IP 다. 이 값을 허용목록에 **넣는 방법**은 [§6-A](#6-a-ip-를-허용목록보안그룹에-추가--자주-쓰는-작업). 직원 PC(SSH 없음)는 `checkip` 값으로 먼저 열어보고, 막히면 운영자가 VPC flow log 의 `srcaddr` 로 찾는다.
 
 - 이 배포에서 확인할 건 **claude-code 하나뿐** — `웹서치 ON` 이면 된다(§4-3 에서 이미 켬).
 - ℹ️ 화면에 **cowork · codex 버튼도 함께 뜨고 ON 으로 보인다** — 이 배포는 그 둘을 안 쓰므로(§0) **무시하면 된다.** 정돈하고 싶으면 눌러서 꺼도 되지만, 켜져 있어도 실제 피해는 없다.
@@ -1065,7 +1065,7 @@ export ANTHROPIC_BASE_URL="http://k8s-llmgatew-llmgatew-f6g7h8i9j0-7654321.us-we
 - ingress 는 **3개**(각각 별도 ALB) — `llm-gateway-gateway` = 데이터플레인(추론) → `ANTHROPIC_BASE_URL`, `llm-gateway-admin-api` = 컨트롤플레인(VK 발급) → `ADMIN_API_URL`, `llm-gateway-admin-ui` = 관리 화면(§5-3).
 - ADDRESS 가 빈 값이면 ALB 프로비저닝 중 — 1~2분 후 재시도.
 
-> 로그인·키발급·추론 **전부** ALB 의 `inbound-cidrs` 안에서 한다(§3-6). 이 배포는 VPN 이 아니라 **IP 허용 목록이 입구**다. → 새 PC IP 여는 법은 바로 아래 🔧 **[§6-A](#6-a-ip-를-허용목록보안그룹에-추가-자주-쓰는-작업)** (자주 씀).
+> 로그인·키발급·추론 **전부** ALB 의 `inbound-cidrs` 안에서 한다(§3-6). 이 배포는 VPN 이 아니라 **IP 허용 목록이 입구**다. → 새 PC IP 여는 법은 바로 아래 🔧 **[§6-A](#6-a-ip-를-허용목록보안그룹에-추가--자주-쓰는-작업)** (자주 씀).
 
 > 🔴 **선결 — 팀 예산을 먼저 부여한다. 안 하면 §6 이 통째로 막힌다.**
 > §3-8 온보딩만 마친 상태에서 첫 요청을 보내면 **무조건** `429 Budget limit exceeded` 다. OIDC 가 Cognito 그룹을 보고 팀을 자동 생성할 때 **예산 $0 + HARD_BLOCK** 으로 만들기 때문이다(`oidc_service.py:314` — "admin 이 예산 관리에서 풀어줄 때까지 deny", **의도된 fail-closed**). 게이트웨이 **로그에는 아무것도 안 남아**(budget 미들웨어에 로깅 0건) 원인을 못 찾는다.
