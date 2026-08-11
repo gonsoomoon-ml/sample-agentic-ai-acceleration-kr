@@ -36,7 +36,7 @@ It covers the one-time installation and every update that follows.
 | --------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **New installation**  | Provision infrastructure → deploy apps → routing · web search → connect clients | [install-overview.md](install-overview.md) → [install-guide.md](install-guide.md)                       |
 | **Ongoing updates**   | Check what is applied, then apply only what is missing                   | [2. Latest updates](#2-latest-updates) — run `status.sh` first, then apply only the gaps                     |
-| **Client rollout**    | Install Claude Code · Cowork on employee machines                        | [client-install.md](client-install.md) · [cowork/cowork-client-install.md](cowork/cowork-client-install.md) |
+| **Client rollout**    | Install Claude Code · Cowork on employee machines                        | [client-install.md](client-install.md) · [cowork/cowork-client-install-windows.md](cowork/cowork-client-install-windows.md) |
 
 
 > ⚠️ **A new installation still needs `US-02`.** The install migration seeds the Cowork routing row with an account that does not exist, so Cowork will not work even after `install-guide.md` completes — see [2. Latest updates](#2-latest-updates).

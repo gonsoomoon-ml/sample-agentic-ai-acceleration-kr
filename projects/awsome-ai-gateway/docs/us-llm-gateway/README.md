@@ -29,7 +29,7 @@
 | ------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **신규 설치**     | 인프라 프로비저닝 → 앱 배포 → 라우팅·웹서치 → 클라이언트 연결 | [install-overview.md](install-overview.md) → [install-guide.md](install-guide.md)                           |
 | **운영 중 업데이트** | 현재 적용 상태를 점검하고 미적용 항목만 반영             | [2. 최신 업데이트](#2-최신-업데이트) — `status.sh` 점검 후 미적용 항목만                                                                  |
-| **클라이언트 배포**  | 직원 PC 에 Claude Code · Cowork 설치       | [client-install.md](client-install.md) · [cowork/cowork-client-install.md](cowork/cowork-client-install.md) |
+| **클라이언트 배포**  | 직원 PC 에 Claude Code · Cowork 설치       | [client-install.md](client-install.md) · [cowork/cowork-client-install-windows.md](cowork/cowork-client-install-windows.md) |
 
 
 > ⚠️ **신규 설치도** `US-02` **적용이 필요합니다.** 설치 마이그레이션이 Cowork 라우팅 행을 존재하지 않는 계정으로 심기 때문에, `install-guide.md` 를 끝내도 Cowork 는 동작하지 않습니다 — [최신 업데이트](#2-최신-업데이트) 참조.
