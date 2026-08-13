@@ -2,12 +2,11 @@
 
 ---
 
-## 한눈에 — 3단계
+## 한눈에 — 두 파트
 
 ```
-1부  Cowork Readiness Check      PC 가 Cowork 를 돌릴 수 있는가
-2부  설치기 빌드 · 설치 · 연결      build.ps1 → PATH → login/setup/verify
-3부  Claude Desktop 설치 · 검증    앱 설치 → Cowork 탭 → 실제 대화
+Part A  운영자      설치기를 만든다      값 채우기 → build.ps1 → 산출물 전달
+Part B  최종 사용자  받아서 설치하고 쓴다  Readiness → 설치 → login/setup/verify → 앱
 ```
 
 [수동 설치 가이드](cowork-client-install-windows.md)와 **같은 결과**를 만든다. 차이는 Python·git·uv 를
@@ -15,10 +14,10 @@
 최종 PC 에는 Python 도 인터넷도 필요 없다.
 
 > ⚠️ **빌드 코드(`cowork-installer/`)는 이 저장소에 아직 없다.** 운영자에게 따로 받아
-> `C:\cowork-build\installer\` 에 풀어 두었다고 가정하고 2부를 읽는다.
+> `C:\cowork-build\installer\` 에 풀어 두었다고 가정하고 Part A 를 읽는다.
 
-⚠️ **1부를 먼저 하십시오.** Cowork 는 격리된 가상 환경에서 돌기 때문에, 안 되는 PC 라면
-2·3부를 다 마쳐도 앱이 안 켜진다.
+⚠️ **B-1 을 먼저 하십시오.** Cowork 는 격리된 가상 환경에서 돌기 때문에, 안 되는 PC 라면
+나머지를 다 마쳐도 앱이 안 켜진다.
 
 ### 명령을 어디서 실행하는가
 
@@ -37,46 +36,12 @@
 
 
 
-# 1부. Cowork 실행 가능 여부 확인
+# Part A. 운영자 — 설치기 만들기
 
-**브라우저**로 아래 주소를 열어 점검 도구를 받는다(약 2 MB).
+> 배포 좌표를 아는 사람만 할 수 있다. 최종 사용자는 이 파트를 읽지 않아도 된다 —
+> 산출물(`gateway-cli-cowork-suite` 폴더)만 받으면 Part B 로 바로 간다.
 
-```
-https://claude.ai/api/desktop/win32/x64/cowork-readiness-check/latest/redirect
-```
-
-Arm 프로세서 PC(Snapdragon 계열)라면 이쪽이다. 모르면 `설정 → 시스템 → 정보`의 「시스템 종류」를 본다.
-
-```
-https://claude.ai/api/desktop/win32/arm64/cowork-readiness-check/latest/redirect
-```
-
-받은 파일을 실행하면 항목별 통과 여부가 나온다.
-
-```
-This computer is ready for Cowork              ← 이 문장이 나오면 2부로
-This computer does not meet the requirements for Cowork
-```
-
-**통과하지 못했다면** 도구가 어느 항목이 왜 막혔는지와 고치는 명령까지 알려준다. 자주 걸리는 둘:
-
-```
-Hardware virtualization    펌웨어(BIOS/UEFI)에서 가상화가 꺼져 있음
-Virtual Machine Platform   Windows 기능이 안 켜져 있음
-```
-
-**고친 뒤에는 반드시 재부팅하고 다시 실행한다.** 기능만 켜고 확인하면 여전히 실패로 나온다.
-
-⚠️ **일반 가상 머신 위에서는 대개 실패한다.** 가상화 기능을 손님에게 넘기지 않는 환경에서는
-통과할 수 없다. 
-
----
-
-# 2부. 설치기 빌드 · 설치 · 연결
-
-
-
-## 2-1. 값 — US ( 아래는 값의 예 )
+## A-1. 값 — US ( 아래는 값의 예 )
 
 
 | 항목            | 값                                                                                     |
@@ -125,7 +90,7 @@ URL 3종이 서로 다른 곳에 쓰인다 — 헷갈리면 안 된다.
 
 
 
-## 2-2. 빌드
+## A-2. 빌드
 
 ▶ 🔵 **실행 · 일반 PowerShell** — 본인 PC
 
@@ -152,7 +117,7 @@ dist\installer\gateway-cli-cowork-setup-<version>.exe     ← Inno Setup 이 있
 
 
 
-### 빌드 직후 확인
+## A-3. 빌드 직후 확인
 
 값이 제대로 박혔는지 **설치 전에** 본다.
 
@@ -180,7 +145,52 @@ dist\gateway-cli-cowork-suite\gateway-cli-cowork.exe verify
 
 
 
-## 2-3. 설치
+
+여기까지가 운영자의 몫이다. `dist\gateway-cli-cowork-suite\` 폴더를 최종 사용자에게 전달한다.
+
+---
+
+# Part B. 최종 사용자 — 설치하고 쓰기
+
+> 운영자에게 받은 `gateway-cli-cowork-suite` 폴더가 있으면 시작할 수 있다.
+> 값을 채우거나 빌드할 일은 없다.
+
+## B-1. Cowork 실행 가능 여부 확인
+
+**브라우저**로 아래 주소를 열어 점검 도구를 받는다(약 2 MB).
+
+```
+https://claude.ai/api/desktop/win32/x64/cowork-readiness-check/latest/redirect
+```
+
+Arm 프로세서 PC(Snapdragon 계열)라면 이쪽이다. 모르면 `설정 → 시스템 → 정보`의 「시스템 종류」를 본다.
+
+```
+https://claude.ai/api/desktop/win32/arm64/cowork-readiness-check/latest/redirect
+```
+
+받은 파일을 실행하면 항목별 통과 여부가 나온다.
+
+```
+This computer is ready for Cowork              ← 이 문장이 나오면 B-2 로
+This computer does not meet the requirements for Cowork
+```
+
+**통과하지 못했다면** 도구가 어느 항목이 왜 막혔는지와 고치는 명령까지 알려준다. 자주 걸리는 둘:
+
+```
+Hardware virtualization    펌웨어(BIOS/UEFI)에서 가상화가 꺼져 있음
+Virtual Machine Platform   Windows 기능이 안 켜져 있음
+```
+
+**고친 뒤에는 반드시 재부팅하고 다시 실행한다.** 기능만 켜고 확인하면 여전히 실패로 나온다.
+
+⚠️ **일반 가상 머신 위에서는 대개 실패한다.** 가상화 기능을 손님에게 넘기지 않는 환경에서는
+통과할 수 없다. 
+
+---
+
+## B-2. 설치
 
 `dist\gateway-cli-cowork-suite\` 를 **고정 위치로 옮기고** PATH 에 넣는다.
 
@@ -206,7 +216,7 @@ where.exe gateway-cli-cowork; where.exe api-key-helper
 
 둘 다 `C:\GatewayCLI-Cowork\` 로 나오면 된다.
 
-## 2-4. 연결 — login → setup → verify
+## B-3. 연결 — login → setup → verify
 
 세 명령 모두 **본인 계정의 관리자 창**에서 실행한다.
 
@@ -261,7 +271,7 @@ gateway-cli-cowork verify
 [✓] vk-cache             valid
 ```
 
-기록된 관리 설정 6개 키(2-1 의 주입값과 일치해야 한다):
+기록된 관리 설정 6개 키(A-1 의 주입값과 일치해야 한다):
 
 ```
 inferenceProvider            = gateway
@@ -279,11 +289,7 @@ inferenceModels              = ["claude-opus-5","claude-opus-4-8","claude-sonnet
 
 
 
-# 3부. Claude Desktop 설치 · 실행 · 검증
-
-
-
-## 3-1. 앱 설치
+## B-4. Claude Desktop 설치
 
 먼저 이미 있는지 본다.
 
@@ -293,7 +299,7 @@ inferenceModels              = ["claude-opus-5","claude-opus-4-8","claude-sonnet
 Get-AppxPackage -Name "*laude*" | Select-Object Name, Version
 ```
 
-출력이 있으면 3-2 로 간다. 비어 있으면 **브라우저**로 아래 주소를 열어 약 1.8 GB 를 받는다.
+출력이 있으면 B-5 로 간다. 비어 있으면 **브라우저**로 아래 주소를 열어 약 1.8 GB 를 받는다.
 
 ```
 https://claude.ai/api/desktop/win32/x64/offline/latest/redirect
@@ -321,15 +327,15 @@ Add-AppxPackage -Path "$env:USERPROFILE\Downloads\Claude-offline-win32-x64-1.240
 
 
 
-## 3-2. 실행하고 대화
+## B-5. 실행하고 대화
 
-1. Claude Desktop 을 열고 **Cowork 탭** → 모델 선택기에 2-1 의 alias 4개가 보이는지 확인.
+1. Claude Desktop 을 열고 **Cowork 탭** → 모델 선택기에 A-1 의 alias 4개가 보이는지 확인.
 2. 아무 모델이나 골라 `hi` 를 보낸다. 응답이 오면
   **PC → CloudFront → gateway-proxy → Bedrock(US Geo)** 이 전부 통한 것이다.
 
 
 
-## 되돌리기
+## B-6. 되돌리기
 
 범위가 작은 것부터 고른다.
 
