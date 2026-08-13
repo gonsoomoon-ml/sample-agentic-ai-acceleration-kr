@@ -231,6 +231,20 @@ gateway-cli-cowork login --redirect-port 8091
 브라우저에 Cognito 로그인 화면이 뜬다. 운영자가 준 이메일·비밀번호를 넣는다.
 **포트는 8090·8091·8092 중에서만** 골라야 한다 — US Cognito client 에 등록된 콜백이 그 3개뿐이다.
 
+⚠️ **`Login failed` 와 HTTP 오류 코드가 뜬다면** — Cognito 인증까지는 끝났고 그다음
+**VK 발급**에서 깨진 것이다. 브라우저에 뜬 페이지 자체는 정상 응답이고, 화면에 보이는
+코드는 `adminApiUrl` 쪽에서 돌아온 값을 그대로 옮겨 적은 것이다.
+
+▶ 🔵 **실행 · 일반 PowerShell** — 본인 PC
+
+```powershell
+dir "$env:LOCALAPPDATA\gateway-cli-cowork"
+```
+
+`oidc-tokens.json` 만 있고 `vk-cache.json` 이 없으면 확정이다. 이때는 **`adminApiUrl` 부터
+확인한다** — `gateway-cli-cowork verify` 의 `Admin API:` 줄. 주소가 틀리면 게이트웨이가 아닌
+엉뚱한 대상이 응답해 5xx 로 보인다(2026-08-12 실제 사례).
+
 ### ② 게이트웨이 연결
 
 ▶ 🔴 **실행 · 관리자 PowerShell** — 본인 PC
