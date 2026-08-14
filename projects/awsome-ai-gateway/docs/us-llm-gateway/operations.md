@@ -661,7 +661,12 @@ terraform plan   # 기대: No changes
 
 > ℹ️ `Error: Required plugins are not installed` 가 나오면 `terraform init` 한 번 뒤 재시도한다. §3 ① 의 `reset --hard` 가 `.terraform.lock.hcl` 을 커밋본으로 되돌려 캐시된 프로바이더와 체크섬이 어긋난 것뿐이며, init 은 인프라를 건드리지 않는다.
 
-`No changes` 면 pin 이 실제와 일치하는 것이다. 다른 diff 가 나오면 **여기서 멈춘다** — pin 값이 실측과 다르거나(오타), 이 배포에 무관한 드리프트가 쌓여 있는 것이다. 드리프트라면 기록만 해 두고 업그레이드와 같은 apply 에 싣지 않는다.
+`No changes` 면 pin 이 실제와 일치하는 것이다 — (1) 로 진행한다. 다른 diff 가 나오면 **멈춰서 분류한다**:
+
+- **pin 오타** — 값이 (0) 실측과 다른 것. 고치고 plan 재실행.
+- **무관한 드리프트** — 업그레이드와 같은 apply 에 싣지 않는다. 항목을 전부 읽어 **무해함을 확인했으면 전용 `terraform apply` 한 번으로 정리**하고, 다시 `terraform plan` = `No changes` 를 만든 뒤 (1) 로 간다. 판단이 안 서는 diff 는 적용하지 말고 원인부터 확인한다.
+
+> 실제 사례(2026-08): state 가 과거 콘솔 수동 업그레이드(1.30→1.31)를 모르고 있어 `time_sleep` 교체 + DB 시크릿 사본([§8-N (2)](#8-n-bedrock-을-nat-대신-vpc-endpointprivatelink로) 의 기지 드리프트) + ALB IRSA 재계산이 나왔다. 전용 apply 로 정리하니 IRSA 는 실변경 0 이었고, 직후 plan 은 `No changes`.
 
 **(1) 단계 반복 — 1.32 → 1.33 → 1.34, 한 단계씩**
 
