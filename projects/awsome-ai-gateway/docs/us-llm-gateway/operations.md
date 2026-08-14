@@ -714,6 +714,8 @@ kubectl get nodes   # 2~3분 뒤: 모든 노드 VERSION 이 방금 올린 버전
 
 > ℹ️ 업그레이드 **직후 첫 재시작에선 일부 파드가 이전 버전 kubelet 을 받을 수 있다** — Fargate 데이터 플레인에 새 버전이 전파되는 데 몇 분 걸린다. `get nodes` 에 이전 버전 노드가 남아 있으면, 몇 분 뒤 그 노드에 있는 deployment 만 한 번 더 restart 한다.
 
+> ℹ️ `external-secrets-cert-controller` 가 재시작 후 `0/1` 로 남는 것은 **무해**하다 — 설치 스크립트가 지운 웹훅 설정(VWC) 부재로 readiness 만 실패할 뿐, 시크릿 동기화에는 영향이 없다. `kubectl scale deploy external-secrets-cert-controller -n external-secrets --replicas=0` 뒤 `--replicas=1` 로 정리한다.
+
 여기까지 확인한 뒤 다음 단계로 넘어간다.
 
 **(2) 마무리 — 1.34 도달 후**
