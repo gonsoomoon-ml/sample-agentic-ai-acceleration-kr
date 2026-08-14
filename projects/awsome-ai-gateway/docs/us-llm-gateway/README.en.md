@@ -5,7 +5,7 @@ It covers the one-time installation and every update that follows.
 
 [한국어](README.md) · **English**
 
-> **Synced with the Korean version through `US-04` (2026-08-09).**
+> **Synced with the Korean version through `US-05` (2026-08-14).**
 > If [README.md](README.md) lists a `US-NN` that is missing here, this page is out of date.
 
 > **The linked procedure documents are Korean-only** (install guide, operations runbook,
@@ -36,7 +36,7 @@ It covers the one-time installation and every update that follows.
 | --------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **New installation**  | Provision infrastructure → deploy apps → routing · web search → connect clients | [install-overview.md](install-overview.md) → [install-guide.md](install-guide.md)                       |
 | **Ongoing updates**   | Check what is applied, then apply only what is missing                   | [2. Latest updates](#2-latest-updates) — run `status.sh` first, then apply only the gaps                     |
-| **Client rollout**    | Install Claude Code · Cowork on employee machines                        | [client-install.md](client-install.md) · [cowork/cowork-client-install.md](cowork/cowork-client-install.md) |
+| **Client rollout**    | Install Claude Code · Cowork on employee machines                        | [client-install.md](client-install.md) · [cowork/cowork-client-install-windows.md](cowork/cowork-client-install-windows.md) (manual) · [cowork/cowork-client-install-windows-auto.md](cowork/cowork-client-install-windows-auto.md) (installer) |
 
 
 > ⚠️ **A new installation still needs `US-02`.** The install migration seeds the Cowork routing row with an account that does not exist, so Cowork will not work even after `install-guide.md` completes — see [2. Latest updates](#2-latest-updates).
@@ -53,6 +53,9 @@ It covers the one-time installation and every update that follows.
 
 > Severity — **Required**: must be applied (compliance or essential capability) · **Recommended**: the feature does not work without it · **Optional**: only if requested
 
+- **[2026/08]** `US-05` **EKS 1.34 upgrade** — **Required** (support expiry · cost) · already included in new installs
+Raises the cluster's Kubernetes from 1.31 to 1.34. Standard support for 1.31 has ended, so **extended-support surcharges (~$365/month per cluster)** are already accruing, and after final end of support (2026-11-26) AWS force-upgrades the cluster automatically. Minor versions can only move one step at a time — three applies (1.32→1.33→1.34), following the procedure document with verification at each step rather than a script.
+→ [operations.md §8-E](operations.md#8-e-eks-버전-업그레이드-131--134) (Korean)
 - **[2026/08]** `US-04` **Route Bedrock · STS over VPC Endpoints instead of NAT** — **Required** (compliance) · already included in new installs
 Bedrock and STS calls stay on PrivateLink inside the VPC instead of traversing the public internet. Existing deployments have no endpoints and therefore still go through NAT, so they must apply this.
 → [operations.md §8-N](operations.md#8-n-bedrock-을-nat-대신-vpc-endpointprivatelink로) (Korean)
@@ -140,11 +143,14 @@ Sample output — a deployment where only some updates are applied:
         이미지 tag 1.0.12 (푸시 2026-08-04 03:11 UTC) — i18n 반입 이전 빌드
    XX   US-04  Bedrock·STS VPC Endpoint — 미적용 (필수)
         엔드포인트 없음 → Bedrock·STS 호출이 NAT 경유
+   XX   US-05  EKS 1.34 업그레이드 — 미적용 (필수)
+        컨트롤 플레인 1.31 (목표 1.34) — 표준 지원 만료 시 연장 요금이 붙습니다
 
  다음 작업 (update-scripts 디렉터리에서 실행)
  ────────────────────────────────────────────────────────────
    bash 03-create-cloudfront.sh        # Cowork 를 사용하는 경우에만 필요
    bash 09-update-admin-ui.sh          # 선행: bash 06-persist-annotations.sh
+   (수동) docs/us-llm-gateway/operations.md §8-E — EKS 1.31 → 1.34 를 1단계씩
 ```
 
 **Conditions and caveats**
