@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import structlog
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFound, select_autoescape
 
+from worker.config import get_settings
+
 logger = structlog.get_logger(__name__)
 
-# KST = UTC+9
-_KST = timezone(timedelta(hours=9))
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 _NEWLINE_RE = re.compile(r"[\r\n]")
 
@@ -69,14 +70,17 @@ class TemplateEngine:
     @staticmethod
     def build_context(event: object, recipient_name: str, recipient_email: str) -> dict:
         """핸들러가 템플릿 렌더링에 필요한 공통 컨텍스트를 구성한다 (BR-EMAIL-03)."""
-        now_kst = datetime.now(_KST).strftime("%Y-%m-%d %H:%M:%S KST")
+        # 발송시각 표시 타임존 — REPORTING_TIMEZONE env (기본 "Asia/Seoul") 오버라이드 가능.
+        # %Z 로 실제 tz 약어(KST/EST/PST 등)를 자동 표기 — 하드코딩된 "KST" 문자열 대신.
+        tz = ZoneInfo(get_settings().reporting_timezone)
+        now_local = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S %Z")
         return {
             "event": event,
             "payload": getattr(event, "payload", {}),
             "recipient_name": recipient_name,
             "recipient_email": recipient_email,
             "gateway_name": "LLM Gateway",
-            "timestamp_kr": now_kst,
+            "timestamp_kr": now_local,
         }
 
 

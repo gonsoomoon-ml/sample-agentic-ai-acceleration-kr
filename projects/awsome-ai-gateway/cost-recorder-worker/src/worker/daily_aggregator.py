@@ -6,32 +6,33 @@ admin-api/scheduler/daily_usage_aggregator.py 로부터 이관 (2026-04-21).
 이관 이유: cost-recorder-worker 가 usage_logs 쓰기를 소유하므로, 집계 읽기도
 같은 프로세스가 담당하여 usage_logs 관련 작업을 단일 서비스에 집중.
 
-Granularity: (date KST, user_id, model_alias) per row.
+Granularity: (date, user_id, model_alias) per row — date 는 settings.reporting_timezone
+(기본 "Asia/Seoul"/KST) 기준 캘린더 날짜. admin-api 의 REPORTING_TIMEZONE 과 같은
+값으로 맞춰야 대시보드(usage_logs 실시간 집계)와 이 테이블의 날짜 경계가 일치한다.
 Idempotent: ON CONFLICT DO NOTHING — cron 재실행/중복 run 안전.
 """
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker.config import get_settings
+
 logger = structlog.get_logger(__name__)
 
 
-_KST_OFFSET_HOURS = 9
-
-
-def _yesterday_kst_window() -> tuple[datetime, datetime]:
-    now_utc = datetime.now(timezone.utc)
-    now_kst = now_utc + timedelta(hours=_KST_OFFSET_HOURS)
-    yesterday_kst_date = (now_kst - timedelta(days=1)).date()
-    start_utc = datetime.combine(
-        yesterday_kst_date, datetime.min.time(), tzinfo=timezone.utc
-    ) - timedelta(hours=_KST_OFFSET_HOURS)
-    end_utc = start_utc + timedelta(days=1)
-    return start_utc, end_utc
+def _yesterday_window(tz_name: str) -> tuple[datetime, datetime]:
+    """[어제 00:00, 오늘 00:00) 를 tz_name 기준으로 계산해 UTC 구간으로 반환."""
+    tz = ZoneInfo(tz_name)
+    now_local = datetime.now(tz)
+    yesterday_local_date = (now_local - timedelta(days=1)).date()
+    start_local = datetime.combine(yesterday_local_date, datetime.min.time(), tzinfo=tz)
+    end_local = start_local + timedelta(days=1)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
 
 
 _AGG_SQL = """
@@ -40,7 +41,7 @@ INSERT INTO usage.daily_aggregates
    input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
    total_tokens, total_cost_usd, request_count)
 SELECT
-  DATE((requested_at AT TIME ZONE 'Asia/Seoul')::timestamp) AS date,
+  DATE((requested_at AT TIME ZONE :tz)::timestamp) AS date,
   user_id, team_id, dept_id, model_alias,
   SUM(input_tokens),
   SUM(output_tokens),
@@ -52,7 +53,7 @@ SELECT
 FROM usage.usage_logs
 WHERE requested_at >= :start AND requested_at < :end
 GROUP BY
-  DATE((requested_at AT TIME ZONE 'Asia/Seoul')::timestamp),
+  DATE((requested_at AT TIME ZONE :tz)::timestamp),
   user_id, team_id, dept_id, model_alias
 ON CONFLICT (date, user_id, model_alias) DO NOTHING;
 """
@@ -64,7 +65,7 @@ INSERT INTO usage.daily_aggregates
    input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
    total_tokens, total_cost_usd, request_count)
 SELECT
-  DATE((requested_at AT TIME ZONE 'Asia/Seoul')::timestamp) AS date,
+  DATE((requested_at AT TIME ZONE :tz)::timestamp) AS date,
   user_id, team_id, dept_id, model_alias,
   SUM(input_tokens),
   SUM(output_tokens),
@@ -74,9 +75,9 @@ SELECT
   SUM(cost_usd),
   COUNT(*)
 FROM usage.usage_logs
-WHERE (requested_at AT TIME ZONE 'Asia/Seoul')::date < :today_kst
+WHERE (requested_at AT TIME ZONE :tz)::date < :today_local
 GROUP BY
-  DATE((requested_at AT TIME ZONE 'Asia/Seoul')::timestamp),
+  DATE((requested_at AT TIME ZONE :tz)::timestamp),
   user_id, team_id, dept_id, model_alias
 ON CONFLICT (date, user_id, model_alias) DO NOTHING;
 """
@@ -88,14 +89,16 @@ async def _is_empty(session: AsyncSession) -> bool:
 
 
 async def aggregate_yesterday(session: AsyncSession) -> int:
-    start, end = _yesterday_kst_window()
-    result = await session.execute(text(_AGG_SQL), {"start": start, "end": end})
+    tz_name = get_settings().reporting_timezone
+    start, end = _yesterday_window(tz_name)
+    result = await session.execute(text(_AGG_SQL), {"start": start, "end": end, "tz": tz_name})
     count: int = result.rowcount
     await session.commit()
     logger.info(
         "daily_aggregator.ran",
         start=start.isoformat(),
         end=end.isoformat(),
+        timezone=tz_name,
         inserted=count,
     )
     return count
@@ -105,18 +108,18 @@ async def backfill_if_empty(session: AsyncSession) -> int:
     """첫 기동 시 daily_aggregates 비어있으면 전체 과거 집계. 이미 값 있으면 -1."""
     if not await _is_empty(session):
         return -1
-    now_kst_date: date = (
-        datetime.now(timezone.utc) + timedelta(hours=_KST_OFFSET_HOURS)
-    ).date()
+    tz_name = get_settings().reporting_timezone
+    now_local_date: date = datetime.now(ZoneInfo(tz_name)).date()
     result = await session.execute(
-        text(_BACKFILL_SQL), {"today_kst": now_kst_date}
+        text(_BACKFILL_SQL), {"today_local": now_local_date, "tz": tz_name}
     )
     count: int = result.rowcount
     await session.commit()
     logger.info(
         "daily_aggregator.backfilled",
         inserted=count,
-        cutoff=now_kst_date.isoformat(),
+        cutoff=now_local_date.isoformat(),
+        timezone=tz_name,
     )
     return count
 

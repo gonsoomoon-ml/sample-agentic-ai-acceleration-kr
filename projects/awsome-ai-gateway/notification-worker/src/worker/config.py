@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     notification_buffer_max: int = 1_000
     health_check_interval: int = 60  # seconds
 
+    # 이메일 본문의 "발송시각" 표시 타임존(§59). IANA TZ 이름.
+    # admin-api 의 REPORTING_TIMEZONE 과 동일 값으로 맞추는 것을 권장(운영 기준 통일).
+    reporting_timezone: str = "Asia/Seoul"
+
     # Logging
     log_level: str = "INFO"
     log_format: str = "json"  # json | console
