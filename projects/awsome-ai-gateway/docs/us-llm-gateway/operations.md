@@ -1,7 +1,7 @@
 # US LLM Gateway — 운영 참조 (§8 설치 후 운영 작업)
 
 > **설치 중엔 이 문서를 볼 일이 없다.** 설치는 [install-overview.md](install-overview.md) → [install-guide.md](install-guide.md) 순서로 한다.
-> 이 문서는 **설치가 끝난 뒤** 하는 **운영 작업**(업데이트·직원 온보딩·보안 하드닝·네트워크 경로·teardown·TTL·prod 승격·멀티계정)을 할 때 본다.
+> 이 문서는 **설치가 끝난 뒤** 하는 **운영 작업**(업데이트·직원 온보딩·보안 하드닝·네트워크 경로·EKS 업그레이드·teardown·TTL·prod 승격·멀티계정)을 할 때 본다.
 >
 > 📌 본문의 `§0`**~`§6` 은 다른 문서의 절 번호**다 — `§0` = [install-overview.md](install-overview.md)의 범위, `§1`~`§6` = [install-guide.md](install-guide.md). (옛 §7 배포 후 보안은 이 문서 [§8-S](#8-s-배포-후-보안-하드닝-직원-오픈-전-필수) 로 옮겨왔다.)
 
@@ -9,7 +9,7 @@
 
 ## 8. 설치 후 운영 작업
 
-> 순서 = **POC 사용 빈도순** — 자주(업데이트·모델·온보딩·보안) → 가끔(네트워크 경로·teardown·TTL) → POC 이후(prod 승격·멀티계정).
+> 순서 = **POC 사용 빈도순** — 자주(업데이트·모델·온보딩·보안) → 가끔(네트워크 경로·EKS 업그레이드·teardown·TTL) → POC 이후(prod 승격·멀티계정).
 
 ---
 
@@ -582,6 +582,111 @@ bash deployment/scripts/enable-bedrock-vpce.sh dev --rollback
 - **경로 이전에는 재시작이 필요 없지만, 검증 전에는 반드시 한다** — 위 (4). 이전 자체는 새 커넥션이 DNS 를 다시 해석하며 저절로 되지만, 풀에 남은 죽은 커넥션이 502 를 뿜어 **변경이 깨뜨린 것처럼 보인다.**
 - **간헐적 502/504 는 이걸로 안 고쳐진다.** 원인인 idle timeout 이 인터페이스 엔드포인트에서도 **똑같이 350초**다(NLB 기반). 경로가 사설로 바뀔 뿐 죽은 커넥션 문제는 그대로다 — 그건 클라이언트 쪽에서 잡아야 한다.
 - **타 리전 AgentCore web search 는 영향이 없다.** 서비스도(`bedrock-agentcore`) 리전도 다르므로 이 엔드포인트와 무관하고, 계속 NAT 를 쓴다.
+
+---
+
+### 8-E. EKS 버전 업그레이드 (1.31 → 1.34)
+
+> 📒 **`US-05` · 등급 필수(지원 만료·비용)** — [README.md 「최신 업데이트」](README.md#2-최신-업데이트). 적용 여부는 `update-scripts/status.sh` 로 확인한다.
+
+> **신규 설치는 할 일이 없다.** terraform 기본값이 1.34 이고, `terraform.tfvars.example` 에도 `eks_cluster_version = "1.34"` 가 **보이게 명시**돼 있다 — 지금 만든 클러스터는 처음부터 1.34 이고, tfvars 에 버전 pin 도 설치 시점부터 존재한다(그래서 아래 「pull 직후 함정」은 신규 설치에는 해당 없다).
+>
+> **이 절의 대상은 그 전에 만든 클러스터**다. EKS 는 만들어 둔다고 최신을 따라가지 않는데 Kubernetes 는 해마다 마이너를 세 번 올린다. 1.31 은 2025-11-26 에 표준 지원이 끝나 **연장 지원 요금(클러스터당 월 ~$365 추가)이 이미 붙고 있고**, 최종 지원 종료(1.31 은 2026-11-26)가 지나면 **AWS 가 강제로 자동 업그레이드해 버린다** — 그 전에 우리 손으로, 단계마다 검증하며 올리는 것이 이 절이다.
+
+**제약 3가지가 절차를 결정한다**
+
+- 마이너는 **1단계씩만** 올릴 수 있다 → 1.31→1.34 는 apply 3번(1.32→1.33→1.34).
+- **다운그레이드는 불가**하다 → 각 단계의 `terraform plan` 확인이 유일한 안전장치다.
+- add-on(coredns 등)은 클러스터 버전과 **짝이 맞아야** 한다 → 단계마다 둘을 같이 올린다.
+
+> 🔴 **pull 직후 함정 — 업그레이드를 시작하기 전이라도, 이 업데이트를 받았으면 tfvars 에 현재 버전을 pin 한다.** 이 업데이트로 terraform 기본값이 1.34 로 올라갔다. 클러스터가 1.31 인 채 tfvars 에 `eks_cluster_version` 이 없으면 **다른 목적의 apply 도** 1.31→1.34 점프를 시도하다 실패한다. 아래 (1) 의 tfvars 블록에 현재 버전(과 (0) 에서 실측한 현재 add-on)을 먼저 넣어둔다. 넣은 뒤 `terraform plan` 이 `No changes` 로 나오면 pin 이 맞은 것이고, 이제 어떤 apply 도 안전하다.
+
+**진행 체크리스트** — 복사해 두고 하나씩 지우며 진행한다. 각 항목의 상세는 아래 (0)~(2).
+
+- [ ] **(0) 사전 점검** — insights 에 `ERROR` 없음 · add-on 실측값 기록
+- [ ] **pin** — tfvars 에 현재 버전·add-on 명시 → `terraform plan` = `No changes`
+- [ ] **1.32** — tfvars → plan(4건만) → apply → 파드 재시작 → `get nodes` 확인
+- [ ] **1.33** — tfvars → plan(4건만) → apply → 파드 재시작 → `get nodes` 확인
+- [ ] **1.34** — tfvars → plan(4건만) → apply → 파드 재시작 → `get nodes` 확인
+- [ ] **(2) 마무리** — smoke-test · `status.sh` US-05 OK · add-on pin 제거 후 plan = `No changes`
+
+**(0) 사전 점검** — 읽기 전용이다.
+
+▶ **실행** · 배포 EC2
+
+```bash
+# 현재 클러스터 버전과 건강 상태
+aws eks describe-cluster --name llm-gateway-dev \
+  --query 'cluster.[version,health.issues]' --output json
+# AWS 의 업그레이드 사전 진단 (deprecated API 사용·버전 skew 등을 자동 점검)
+aws eks list-insights --cluster-name llm-gateway-dev \
+  --query 'insights[].[name,insightStatus.status]' --output table
+# add-on 의 실제 버전 — terraform 코드의 값과 다를 수 있다
+for a in coredns kube-proxy vpc-cni; do
+  aws eks describe-addon --cluster-name llm-gateway-dev --addon-name $a \
+    --query 'addon.[addonName,addonVersion]' --output text
+done
+```
+
+`list-insights` 에 `ERROR` 가 있으면 그 항목부터 해결한다 — EKS 가 업그레이드를 거부할 수 있다. `PASSING`·`WARNING` 이면 진행.
+
+**(1) 단계 반복 — 1.32 → 1.33 → 1.34, 한 단계씩**
+
+모든 단계가 같은 4수다: **tfvars 수정 → plan 확인 → apply → 파드 재시작**. 버전과 add-on 짝은 아래 표를 쓴다(2026-08 시점 각 버전의 기본 add-on. 시일이 많이 지났으면 `aws eks describe-addon-versions --kubernetes-version <버전> --addon-name <이름>` 으로 다시 조회).
+
+| 단계 | `eks_cluster_version` | coredns | kube_proxy | vpc_cni |
+|---|---|---|---|---|
+| 1 | `"1.32"` | `v1.11.4-eksbuild.40` | `v1.32.13-eksbuild.21` | `v1.22.4-eksbuild.3` |
+| 2 | `"1.33"` | `v1.12.4-eksbuild.18` | `v1.33.10-eksbuild.18` | `v1.22.4-eksbuild.3` |
+| 3 | `"1.34"` | `v1.12.4-eksbuild.18` | `v1.34.6-eksbuild.18` | `v1.22.4-eksbuild.3` |
+
+▶ **수정** · 배포 EC2 · `~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev/terraform.tfvars`
+
+```hcl
+eks_cluster_version = "1.32" # ← 단계마다 표의 다음 행으로
+eks_addon_versions = {
+  coredns    = "v1.11.4-eksbuild.40"
+  kube_proxy = "v1.32.13-eksbuild.21"
+  vpc_cni    = "v1.22.4-eksbuild.3"
+}
+```
+
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
+terraform plan -out=tfplan
+```
+
+> 🔴 **plan 에서 멈춰 읽는다.** 바뀌는 것이 **클러스터 버전 1건 + add-on 3건**뿐이어야 한다. 다른 리소스가 섞여 있으면 apply 하지 않는다 — 오래 운영한 배포일수록 무관한 드리프트가 쌓여 있고([§8-N (2)](#8-n-bedrock-을-nat-대신-vpc-endpointprivatelink로) 에서 실제로 겪었다), 그것을 업그레이드와 한 apply 에 실으면 평범한 변경이 장애가 된다.
+
+```bash
+terraform apply tfplan   # 컨트롤 플레인 ~10분 + add-on 수 분. 서비스 무중단
+```
+
+apply 가 끝나도 새 버전이 된 것은 **컨트롤 플레인뿐**이다. Fargate 는 상주 노드가 없고 **파드가 곧 노드**라서, 파드를 새로 띄워야 데이터 플레인이 새 버전 kubelet 을 받는다:
+
+```bash
+kubectl rollout restart deployment -n llm-gateway
+kubectl rollout restart deployment coredns -n kube-system
+kubectl rollout status deployment -n llm-gateway --timeout=10m
+kubectl get nodes   # 모든 노드 VERSION 이 방금 올린 버전인지
+```
+
+여기까지 확인한 뒤 다음 단계로 넘어간다.
+
+**(2) 마무리 — 1.34 도달 후**
+
+```bash
+cd ~/awsome-ai-gateway && ./deployment/scripts/smoke-test.sh
+bash docs/us-llm-gateway/update-scripts/status.sh   # US-05 가 OK 인지
+```
+
+tfvars 의 `eks_addon_versions` 블록은 지워도 된다 — 이제 기본값(1.34 호환)과 같다. `eks_cluster_version = "1.34"` 는 **남겨 둔다**. 다음에 기본값이 또 올라갔을 때, 위 「pull 직후 함정」이 재발하지 않는 방어가 된다.
+
+**함정 3가지**
+
+- **apply 3번을 몰아 하고 재시작을 한 번만 하면 안 된다.** 파드(kubelet)가 1.31 인 채 컨트롤 플레인만 1.34 가 되면 허용 skew(3 마이너)의 경계에 걸리고, 그 사이 파드가 어떤 이유로든 재기동되면 중간 버전 노드가 섞인다. 단계마다 재시작이 정석이다.
+- **coredns 재시작을 빼먹기 쉽다.** 애플리케이션 네임스페이스만 굴리면 kube-system 의 coredns 가 옛 버전 노드에 남는다. 위 재시작 두 줄을 항상 같이 돌린다.
+- **버전을 두 단계 이상 적으면 plan 이 아니라 apply 에서 터진다.** plan 은 1.31→1.34 를 그대로 보여주며 통과하고, apply 시점에 EKS API 가 거부한다. plan 의 버전 diff 가 정확히 +1 인지 눈으로 확인한다.
 
 ---
 

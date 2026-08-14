@@ -46,6 +46,9 @@
 
 > 등급 — **필수**: 반드시 적용(컴플라이언스·필수 기능) · **권장**: 해당 기능이 동작하지 않음 · **선택**: 요구가 있을 때만
 
+- **[2026/08]** `US-05` **EKS 1.34 업그레이드** — **필수**(지원 만료·비용) · 신규 설치 **이미 포함**
+클러스터 Kubernetes 를 1.31 → 1.34 로 올립니다. 1.31 은 표준 지원이 끝나 **연장 지원 요금(클러스터당 월 ~$365 추가)** 이 붙고 있고, 최종 종료(2026-11-26) 후에는 AWS 가 강제로 자동 업그레이드합니다. 마이너는 1단계씩만 올릴 수 있어 apply 3번(1.32→1.33→1.34)이며, 스크립트가 아니라 절차 문서를 따라 단계마다 확인하며 진행합니다.
+→ [operations.md §8-E](operations.md#8-e-eks-버전-업그레이드-131--134)
 - **[2026/08]** `US-04` **Bedrock·STS 를 NAT 대신 VPC Endpoint 로** — **필수**(컴플라이언스) · 신규 설치 **이미 포함**
 Bedrock·STS 호출이 퍼블릭 인터넷을 지나지 않고 VPC 내부 PrivateLink 로만 흐르게 합니다. 기존 배포는 엔드포인트가 없어 NAT 를 거치므로 적용해야 합니다.
 → [operations.md §8-N](operations.md#8-n-bedrock-을-nat-대신-vpc-endpointprivatelink로)
@@ -131,11 +134,14 @@ git status --short && git log --oneline -1
         이미지 tag 1.0.12 (푸시 2026-08-04 03:11 UTC) — i18n 반입 이전 빌드
    XX   US-04  Bedrock·STS VPC Endpoint — 미적용 (필수)
         엔드포인트 없음 → Bedrock·STS 호출이 NAT 경유
+   XX   US-05  EKS 1.34 업그레이드 — 미적용 (필수)
+        컨트롤 플레인 1.31 (목표 1.34) — 표준 지원 만료 시 연장 요금이 붙습니다
 
  다음 작업 (update-scripts 디렉터리에서 실행)
  ────────────────────────────────────────────────────────────
    bash 03-create-cloudfront.sh        # Cowork 를 사용하는 경우에만 필요
    bash 09-update-admin-ui.sh          # 선행: bash 06-persist-annotations.sh
+   (수동) docs/us-llm-gateway/operations.md §8-E — EKS 1.31 → 1.34 를 1단계씩
 ```
 
 **실행 조건 및 유의사항**
