@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, require_admin, require_admin_or_team_leader
 from app.core.db import get_db_session
-from app.core.usage_filters import cost_period_filter, kst_month_expr
+from app.core.usage_filters import cost_period_filter, kst_month_expr, reporting_timezone
 from app.models.usage import UsageLog
 
 router = APIRouter(prefix="/admin/analytics", tags=["Analytics"])
@@ -83,7 +83,7 @@ async def get_model_cost_analytics(
         })
 
     # 일별 binning 도 KST(§59) — func.date(timestamptz)는 세션 TZ(UTC)라 KST 변환 후 date.
-    _kst_day = func.date(func.timezone("Asia/Seoul", UsageLog.requested_at))
+    _kst_day = func.date(func.timezone(reporting_timezone(), UsageLog.requested_at))
     daily_stmt = (
         select(
             _kst_day.label("day"),

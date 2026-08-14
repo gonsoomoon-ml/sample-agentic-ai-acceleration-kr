@@ -58,8 +58,6 @@ export interface ModelCreateForm {
   cache_creation_5m_price_per_1k: number;
   cache_creation_1h_price_per_1k: number;
   cache_read_price_per_1k: number;
-  max_tokens: number;
-  context_window: number;
   description?: string;
   display_name?: string;
 }
@@ -76,8 +74,6 @@ export const ModelCreateSchema = z.object({
   // 박혀 1시간 캐시 사용분 청구가 누락되던 버그 수정(deepdive Q-pricing).
   cache_creation_1h_price_per_1k: z.number().nonnegative().default(0),
   cache_read_price_per_1k: z.number().nonnegative().default(0),
-  max_tokens: z.number().int().positive(),
-  context_window: z.number().int().positive(),
   description: z.string().max(512).optional(),
   display_name: z.string().max(128).optional(),
 });

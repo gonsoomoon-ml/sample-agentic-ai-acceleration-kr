@@ -4,7 +4,6 @@ import { adminAPI } from '@/lib/api-client';
 import { KPICard } from '@/components/common/KPICard';
 import { SkeletonCard } from '@/components/common/SkeletonCard';
 import { AlertLevel } from '@/types/enums';
-import type { ModelListItem } from '@/types/entities';
 import {
   DollarSign,
   Key,
@@ -87,7 +86,10 @@ async function DashboardKPIs({ period, client }: { period: string; client: strin
   const [budgetResult, keysResult, modelsResult, summaryResult] = await Promise.allSettled([
     adminAPI.get<BudgetSummaryResponse>('/admin/budgets/summary', { period }),
     adminAPI.get<KeyCountResponse>('/admin/keys/count', { status: 'ACTIVE' }),
-    adminAPI.get<{ items: ModelListItem[] }>('/admin/models'),
+    // /admin/models 는 is_active 가 아니라 status("ACTIVE"|"INACTIVE") 문자열을 반환한다
+    // (admin-api ModelResponse 스키마). ModelListItem(is_active: boolean)으로 잘못
+    // 캐스팅하면 항상 undefined → 활성 모델 수가 0으로 잡히는 버그가 있어 raw shape 사용.
+    adminAPI.get<{ items: Array<{ status: string }> }>('/admin/models'),
     fetchDashboardSummary(period, client),
   ]);
 
@@ -109,7 +111,7 @@ async function DashboardKPIs({ period, client }: { period: string; client: strin
   const budgetUtilization = totalLimitUsd > 0 ? (totalUsageUsd / totalLimitUsd) * 100 : 0;
   const activeKeys = keysData?.count ?? 0;
   const activeModels = modelsData
-    ? (modelsData.items ?? []).filter((m) => m.is_active).length
+    ? (modelsData.items ?? []).filter((m) => m.status === 'ACTIVE').length
     : 0;
   const alertLevel = calcAlertLevel(budgetUtilization);
 

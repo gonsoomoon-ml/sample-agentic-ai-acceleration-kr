@@ -2,9 +2,8 @@
 # ---------------------------------------------------------------------------
 # status.sh — which updates this gateway has applied
 #
-# WHAT: probe the live system and report US-02 / US-03 / US-04 / US-05 as
-#       applied, partially applied, or not applied. Prints the next command
-#       for each.
+# WHAT: probe the live system and report US-02 / US-03 / US-04 as applied,
+#       partially applied, or not applied. Prints the next command for each.
 # WHY:  what an update produces lives OUTSIDE git — a routing_profiles row, a
 #       CloudFront distribution, VPC endpoints. Pulling the latest code does
 #       not apply them, so "not applied" is a normal state for a checkout that
@@ -227,41 +226,6 @@ probe_us04() {
   raw "$found"
 }
 
-# ── US-05 — EKS 1.34 ────────────────────────────────────────────────────────
-# The version comes from the live API server (kubectl version), not from
-# terraform files: tfvars can already say 1.34 while the cluster still runs
-# 1.31 — only the server's own answer proves the upgrade happened.
-probe_us05() {
-  local minor oldest
-  minor=$(kubectl version -o json 2>/dev/null \
-          | sed -n 's/.*"minor": *"\([0-9]\{1,\}\).*/\1/p' | tail -1)
-  if [ -z "$minor" ]; then
-    row warn "US-05" "EKS 1.34 업그레이드 — 판정 불가"
-    detail "kubectl version 으로 API 서버 버전을 읽지 못했습니다"
-    return
-  fi
-
-  # Data plane: on Fargate a pod IS a node, so a pod not restarted since the
-  # upgrade still runs the old kubelet. The oldest node minor tells whether
-  # the restart step of operations.md §8-E was completed.
-  oldest=$(kubectl get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.kubeletVersion}{"\n"}{end}' 2>/dev/null \
-           | sed -n 's/^v1\.\([0-9]\{1,\}\)\..*/\1/p' | sort -n | head -1)
-
-  if [ "$minor" -lt 34 ]; then
-    row bad "US-05" "EKS 1.34 업그레이드 — 미적용 (필수)"
-    detail "컨트롤 플레인 1.$minor (목표 1.34) — 표준 지원 만료 시 연장 요금이 붙습니다"
-    TODO+=("(수동) docs/us-llm-gateway/operations.md §8-E — EKS 1.$minor → 1.34 를 1단계씩")
-  elif [ -n "$oldest" ] && [ "$oldest" -lt "$minor" ]; then
-    row warn "US-05" "EKS 1.34 업그레이드 — 일부 적용"
-    detail "컨트롤 플레인 1.$minor 이지만 가장 오래된 노드가 1.$oldest — §8-E 의 파드 재시작 누락"
-    TODO+=("kubectl rollout restart deployment -n $NS   # coredns(-n kube-system)도 함께 — §8-E")
-  else
-    row ok "US-05" "EKS 1.34 업그레이드"
-    detail "컨트롤 플레인 1.$minor · 노드 최저 1.${oldest:-$minor}"
-  fi
-  raw "server minor=$minor / oldest node minor=${oldest:-?}"
-}
-
 # ── Report ──────────────────────────────────────────────────────────────────
 echo
 printf '%s US AWSome AI Gateway — 업데이트 적용 상태%s\n' "$c_bold" "$c_reset"
@@ -274,7 +238,6 @@ detail "이 스크립트가 도는 것 자체가 설치가 끝났다는 뜻입�
 probe_us02
 probe_us03
 probe_us04
-probe_us05
 
 echo
 if [ "${#TODO[@]}" -eq 0 ]; then

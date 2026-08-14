@@ -36,8 +36,14 @@ class Settings(BaseSettings):
     batch_max_interval_sec: float = 5.0
     xread_block_ms: int = 5_000  # XREADGROUP BLOCK 대기
 
-    # Daily aggregator cron (KST). 기본 매일 00:10.
+    # Daily aggregator cron. 기본 매일 00:10 (reporting_timezone 기준).
     daily_usage_agg_cron: str = "10 0 * * *"
+
+    # daily_aggregates 의 일별 캘린더 경계 + cron 실행 타임존(§59). IANA TZ 이름.
+    # admin-api 의 REPORTING_TIMEZONE 과 동일 값으로 맞춰야 한다 — 안 그러면
+    # daily_aggregates(이 값 기준)와 usage_logs 실시간 집계(admin-api 기준)가
+    # 서로 다른 날짜 경계를 갖게 된다.
+    reporting_timezone: str = "Asia/Seoul"
 
     # Graceful shutdown
     shutdown_grace_period_sec: float = 30.0

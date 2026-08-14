@@ -8,9 +8,10 @@
   1. **SUCCESS 만 합산** — ERROR/TIMEOUT 호출은 비용에서 제외(유효 사용량 관점).
      (실측: 이번 달 ERROR 26건 $2.32 + TIMEOUT 17건 $1.18 이 실패 호출에도 비용으로
       쌓여 있어, status 필터 없으면 Top 사용자/팀이 부풀려졌었다.)
-  2. **KST(Asia/Seoul) 월 경계** — 한국 운영 자산이므로 캘린더 경계는 KST 기준.
-     timestamptz 에 to_char 를 그냥 쓰면 DB 세션 TZ(UTC)로 잘려 KST 6/1 0~9시
-     호출이 5월로 새는 9시간 오차가 생긴다 → 명시적 KST 변환으로 강제.
+  2. **집계 타임존(기본 KST/Asia/Seoul) 월 경계** — 캘린더 경계는 운영 타임존 기준.
+     timestamptz 에 to_char 를 그냥 쓰면 DB 세션 TZ(UTC)로 잘려 KST 기준 6/1 0~9시
+     호출이 5월로 새는 9시간 오차가 생긴다 → 명시적 타임존 변환으로 강제.
+     타임존은 REPORTING_TIMEZONE env(기본 "Asia/Seoul")로 배포 리전에 맞게 오버라이드 가능.
 
 ⚠️ 이 필터는 **비용/사용량 표시용**에만 쓴다. 에러율·모니터링처럼 ERROR/TIMEOUT 을
 세야 하는 쿼리에는 success_only=False 로 쓰거나 쓰지 않는다.
@@ -20,15 +21,25 @@ from __future__ import annotations
 
 from sqlalchemy import ColumnElement, and_, func
 
+from app.core.config import get_settings
 from app.models.usage import UsageLog, UsageStatus
 
 
-def kst_month_expr() -> ColumnElement:
-    """usage_logs.requested_at 을 KST 로 변환한 'YYYY-MM' 문자열 식.
+def reporting_timezone() -> str:
+    """비용/사용량 집계 캘린더 경계에 쓰는 IANA 타임존 이름.
 
-    UI/호출부가 period(YYYY-MM)를 KST 기준으로 넘긴다는 전제 — 이 식과 == 비교.
+    REPORTING_TIMEZONE env 로 오버라이드 (기본 "Asia/Seoul", 기존 동작 유지).
     """
-    return func.to_char(func.timezone("Asia/Seoul", UsageLog.requested_at), "YYYY-MM")
+    return get_settings().REPORTING_TIMEZONE
+
+
+def kst_month_expr() -> ColumnElement:
+    """usage_logs.requested_at 을 집계 타임존으로 변환한 'YYYY-MM' 문자열 식.
+
+    UI/호출부가 period(YYYY-MM)를 집계 타임존(REPORTING_TIMEZONE) 기준으로
+    넘긴다는 전제 — 이 식과 == 비교.
+    """
+    return func.to_char(func.timezone(reporting_timezone(), UsageLog.requested_at), "YYYY-MM")
 
 
 def cost_period_filter(period: str, *, success_only: bool = True) -> ColumnElement:

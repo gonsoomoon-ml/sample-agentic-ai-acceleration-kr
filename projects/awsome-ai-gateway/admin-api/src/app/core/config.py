@@ -146,6 +146,12 @@ class Settings(BaseSettings):
     # 사용로그 "지연(SLOW_REQUEST)" 판정 임계값 (TTFT 기준, ms).
     TTFT_SLOW_MS: int = 3000
 
+    # ── Reporting timezone (§59) ──
+    # 비용/사용량 집계의 "월/일 경계" 기준 타임존. IANA TZ database 이름
+    # (예: "Asia/Seoul", "UTC", "America/Los_Angeles"). 기본값은 기존 하드코딩된
+    # 한국 운영 기준(KST)을 그대로 유지하되, 다른 리전에 배포할 땐 env로 바꿀 수 있게 함.
+    REPORTING_TIMEZONE: str = "Asia/Seoul"
+
     # ── Scheduler ──
     ROI_AGGREGATION_CRON: str = "*/15 * * * *"
     KEY_EXPIRY_CRON: str = "0 * * * *"

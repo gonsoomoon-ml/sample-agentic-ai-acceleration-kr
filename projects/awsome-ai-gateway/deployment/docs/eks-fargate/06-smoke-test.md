@@ -1,4 +1,4 @@
-# 05. Smoke Test — 배포 후 E2E 검증
+# 06. Smoke Test — 배포 후 E2E 검증
 
 **목적**: 배포된 시스템이 실제로 동작하는지 확인.
 **소요**: 10분
@@ -274,4 +274,4 @@ Redis Stream 소비 로그가 보여야 합니다.
 
 ---
 
-[👈 04-helm-install.md](./04-helm-install.md) | [다음: 06-upgrade-rollback.md 👉](./06-upgrade-rollback.md)
+[👈 05-https-custom-domain.md](./05-https-custom-domain.md) | [다음: 07-upgrade-rollback.md 👉](./07-upgrade-rollback.md)
