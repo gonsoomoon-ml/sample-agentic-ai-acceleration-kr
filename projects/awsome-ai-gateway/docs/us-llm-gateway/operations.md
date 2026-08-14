@@ -634,6 +634,15 @@ done
 
 **(pin) 현재 버전을 tfvars 에 고정** — 위 「pull 직후 함정」의 처방이다.
 
+먼저 pin 이 이미 있는지 확인한다 — 같은 변수를 두 번 적으면 terraform 이 중복 정의 에러를 낸다:
+
+```bash
+grep -n "eks_cluster_version" \
+  ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev/terraform.tfvars
+```
+
+이미 있으면 그 줄의 값을 고치고, 없으면 아래 블록을 파일 끝에 추가한다.
+
 ▶ **수정** · 배포 EC2 · `~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev/terraform.tfvars`
 
 ```hcl
