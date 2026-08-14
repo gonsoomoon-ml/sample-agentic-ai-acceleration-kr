@@ -599,7 +599,9 @@ bash deployment/scripts/enable-bedrock-vpce.sh dev --rollback
 - **다운그레이드는 불가**하다 → 각 단계의 `terraform plan` 확인이 유일한 안전장치다.
 - add-on(coredns 등)은 클러스터 버전과 **짝이 맞아야** 한다 → 단계마다 둘을 같이 올린다.
 
-> 🔴 **pull 직후 함정 — 업그레이드를 시작하기 전이라도, 이 업데이트를 받았으면 tfvars 에 현재 버전을 pin 한다.** 이 업데이트로 terraform 기본값이 1.34 로 올라갔다. 클러스터가 1.31 인 채 tfvars 에 `eks_cluster_version` 이 없으면 **다른 목적의 apply 도** 1.31→1.34 점프를 시도하다 실패한다. 아래 (1) 의 tfvars 블록에 현재 버전(과 (0) 에서 실측한 현재 add-on)을 먼저 넣어둔다. 넣은 뒤 `terraform plan` 이 `No changes` 로 나오면 pin 이 맞은 것이고, 이제 어떤 apply 도 안전하다.
+> 🔴 **pull 직후 함정 — 업그레이드를 시작하기 전이라도, 이 업데이트를 받았으면 tfvars 에 현재 버전을 pin 한다.** 이 업데이트로 terraform 기본값이 1.34 로 올라갔다. 클러스터가 1.31 인 채 tfvars 에 `eks_cluster_version` 이 없으면 **다른 목적의 apply 도** 1.31→1.34 점프를 시도하다 실패한다. pin 명령은 아래 (0) 다음의 「pin」 블록에 있다.
+
+> ℹ️ **시작 전에 저장소부터 최신화한다** — [README §3 ①](README.md#3-적용하기). 이 절의 절차와 terraform 변경(`eks_addon_versions` 변수 포함) 자체가 US-05 로 배포되므로, 옛 체크아웃에는 아래에서 쓰는 변수가 없다.
 
 **진행 체크리스트** — 복사해 두고 하나씩 지우며 진행한다. 각 항목의 상세는 아래 (0)~(2).
 
@@ -629,6 +631,26 @@ done
 ```
 
 `list-insights` 에 `ERROR` 가 있으면 그 항목부터 해결한다 — EKS 가 업그레이드를 거부할 수 있다. `PASSING`·`WARNING` 이면 진행.
+
+**(pin) 현재 버전을 tfvars 에 고정** — 위 「pull 직후 함정」의 처방이다.
+
+▶ **수정** · 배포 EC2 · `~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev/terraform.tfvars`
+
+```hcl
+eks_cluster_version = "1.31"   # ← (0) 에서 확인한 현재 클러스터 버전
+eks_addon_versions = {         # ← 값은 (0) 의 describe-addon 실측 그대로
+  coredns    = "<실측값>"
+  kube_proxy = "<실측값>"
+  vpc_cni    = "<실측값>"
+}
+```
+
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
+terraform plan   # 기대: No changes
+```
+
+`No changes` 면 pin 이 실제와 일치하는 것이다. 다른 diff 가 나오면 **여기서 멈춘다** — pin 값이 실측과 다르거나(오타), 이 배포에 무관한 드리프트가 쌓여 있는 것이다. 드리프트라면 기록만 해 두고 업그레이드와 같은 apply 에 싣지 않는다.
 
 **(1) 단계 반복 — 1.32 → 1.33 → 1.34, 한 단계씩**
 
@@ -681,6 +703,11 @@ bash docs/us-llm-gateway/update-scripts/status.sh   # US-05 가 OK 인지
 ```
 
 tfvars 의 `eks_addon_versions` 블록은 지워도 된다 — 이제 기본값(1.34 호환)과 같다. `eks_cluster_version = "1.34"` 는 **남겨 둔다**. 다음에 기본값이 또 올라갔을 때, 위 「pull 직후 함정」이 재발하지 않는 방어가 된다.
+
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
+terraform plan   # 기대: No changes — 정리 후에도 선언과 실제가 일치
+```
 
 **함정 3가지**
 
