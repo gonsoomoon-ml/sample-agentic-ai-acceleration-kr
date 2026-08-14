@@ -659,6 +659,8 @@ cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
 terraform plan   # 기대: No changes
 ```
 
+> ℹ️ `Error: Required plugins are not installed` 가 나오면 `terraform init` 한 번 뒤 재시도한다. §3 ① 의 `reset --hard` 가 `.terraform.lock.hcl` 을 커밋본으로 되돌려 캐시된 프로바이더와 체크섬이 어긋난 것뿐이며, init 은 인프라를 건드리지 않는다.
+
 `No changes` 면 pin 이 실제와 일치하는 것이다. 다른 diff 가 나오면 **여기서 멈춘다** — pin 값이 실측과 다르거나(오타), 이 배포에 무관한 드리프트가 쌓여 있는 것이다. 드리프트라면 기록만 해 두고 업그레이드와 같은 apply 에 싣지 않는다.
 
 **(1) 단계 반복 — 1.32 → 1.33 → 1.34, 한 단계씩**
