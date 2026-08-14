@@ -98,7 +98,7 @@ export default async function ModelsPage() {
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold mb-4">앱별 웹서치 허용</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('webSearch.title')}</h2>
         <WebSearchTogglePanel initial={routingProfiles} />
       </div>
     </div>
