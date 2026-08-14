@@ -700,14 +700,19 @@ terraform plan -out=tfplan
 terraform apply tfplan   # 컨트롤 플레인 ~10분 + add-on 수 분. 서비스 무중단
 ```
 
-apply 가 끝나도 새 버전이 된 것은 **컨트롤 플레인뿐**이다. Fargate 는 상주 노드가 없고 **파드가 곧 노드**라서, 파드를 새로 띄워야 데이터 플레인이 새 버전 kubelet 을 받는다:
+apply 가 끝나도 새 버전이 된 것은 **컨트롤 플레인뿐**이다. Fargate 는 상주 노드가 없고 **파드가 곧 노드**라서, 파드를 새로 띄워야 데이터 플레인이 새 버전 kubelet 을 받는다. 대상은 **모든 네임스페이스**다 — 애플리케이션만 돌리면 ALB controller·external-secrets·관측 스택이 옛 kubelet 에 남는다:
 
 ```bash
 kubectl rollout restart deployment -n llm-gateway
-kubectl rollout restart deployment coredns -n kube-system
+kubectl rollout restart deployment -n kube-system
+kubectl rollout restart deployment -n external-secrets
+kubectl rollout restart deployment -n observability
+kubectl rollout restart statefulset -n observability   # prometheus
 kubectl rollout status deployment -n llm-gateway --timeout=10m
-kubectl get nodes   # 모든 노드 VERSION 이 방금 올린 버전인지
+kubectl get nodes   # 2~3분 뒤: 모든 노드 VERSION 이 방금 올린 버전인지
 ```
+
+> ℹ️ 업그레이드 **직후 첫 재시작에선 일부 파드가 이전 버전 kubelet 을 받을 수 있다** — Fargate 데이터 플레인에 새 버전이 전파되는 데 몇 분 걸린다. `get nodes` 에 이전 버전 노드가 남아 있으면, 몇 분 뒤 그 노드에 있는 deployment 만 한 번 더 restart 한다.
 
 여기까지 확인한 뒤 다음 단계로 넘어간다.
 
@@ -728,7 +733,7 @@ terraform plan   # 기대: No changes — 정리 후에도 선언과 실제가 �
 **함정 3가지**
 
 - **apply 3번을 몰아 하고 재시작을 한 번만 하면 안 된다.** 파드(kubelet)가 1.31 인 채 컨트롤 플레인만 1.34 가 되면 허용 skew(3 마이너)의 경계에 걸리고, 그 사이 파드가 어떤 이유로든 재기동되면 중간 버전 노드가 섞인다. 단계마다 재시작이 정석이다.
-- **coredns 재시작을 빼먹기 쉽다.** 애플리케이션 네임스페이스만 굴리면 kube-system 의 coredns 가 옛 버전 노드에 남는다. 위 재시작 두 줄을 항상 같이 돌린다.
+- **재시작 범위는 전 네임스페이스다.** 애플리케이션 ns 만 돌리면 coredns·ALB controller·external-secrets·관측 스택이 옛 버전 노드에 남는다 — 이 배포에서 실제로 **22일 묵은 1.30 kubelet** 이 발견됐다(과거 수동 업그레이드 때 재시작 누락). `kubectl get deploy -A` 로 빠진 곳이 없는지 본다.
 - **버전을 두 단계 이상 적으면 plan 이 아니라 apply 에서 터진다.** plan 은 1.31→1.34 를 그대로 보여주며 통과하고, apply 시점에 EKS API 가 거부한다. plan 의 버전 diff 가 정확히 +1 인지 눈으로 확인한다.
 
 ---
