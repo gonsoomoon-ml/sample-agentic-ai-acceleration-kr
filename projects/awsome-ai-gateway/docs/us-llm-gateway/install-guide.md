@@ -234,8 +234,9 @@ bootstrap 직후의 셸은 **docker 를 못 쓴다**(`docker ps` → `permission
 
 ▶ **실행** · 배포 EC2
 
+NDS-HAN developer environment (using devin IDE)
 ```bash
-pkill -f 'vscode-server|cursor-server'
+pkill -f 'vscode-server|cursor-server|devin-server'
 ```
 
 **새 셸에서 — 기본 리전 고정 + 3종 확인:**
