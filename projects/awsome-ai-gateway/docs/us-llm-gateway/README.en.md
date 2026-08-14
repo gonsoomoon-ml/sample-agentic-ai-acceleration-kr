@@ -41,6 +41,14 @@ It covers the one-time installation and every update that follows.
 
 > ⚠️ **A new installation still needs `US-02`.** The install migration seeds the Cowork routing row with an account that does not exist, so Cowork will not work even after `install-guide.md` completes — see [2. Latest updates](#2-latest-updates).
 
+**New-install scope — what you use decides what you install:**
+
+| Your setup | What to install |
+|---|---|
+| Claude Code only (seeded models Opus 4.8 · Sonnet 5 · Haiku 4.5 are enough) | `US-01` only |
+| Claude Code only + **Opus 5** | `US-01` + **only** step `02` (model registration) of `US-02` |
+| Claude Code + **Cowork** | `US-01` + **all of** `US-02` (`01` routing · `02` model · `03` CloudFront) |
+
 ---
 
 
