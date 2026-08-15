@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # status.sh — which updates this gateway has applied
 #
-# WHAT: probe the live system and report US-02 / US-03 / US-04 / US-05 as
+# WHAT: probe the live system and report US-02 … US-06 as
 #       applied, partially applied, or not applied. Prints the next command
 #       for each.
 # WHY:  what an update produces lives OUTSIDE git — a routing_profiles row, a
@@ -120,7 +120,10 @@ SELECT 'ALIAS='   || count(*) FROM model.model_aliases
     TODO+=("bash 02-add-opus5-model.sh --help   # 단가 인자 확인 후 --apply")
   fi
 
-  if [ -n "$cf" ]; then
+  if [ "$GW_HTTPS" = 1 ]; then
+    # US-06 puts TLS on the ALB itself; CloudFront is then not part of the design.
+    l_cf="CloudFront 불필요 (US-06 HTTPS)"
+  elif [ -n "$cf" ]; then
     l_cf="CloudFront $cf"
   else
     l_cf="CloudFront 없음"; n_bad=$((n_bad+1))
@@ -262,6 +265,33 @@ probe_us05() {
   raw "server minor=$minor / oldest node minor=${oldest:-?}"
 }
 
+# ── US-06 — ALB HTTPS on a custom domain (optional) ─────────────────────────
+# The evidence is the gateway Ingress itself: a host rule plus a certificate-arn
+# annotation is what makes the ALB terminate TLS (values 방식 B). Optional, so
+# "not applied" is informational (--), never a failure — a deployment without a
+# domain is a valid deployment.
+probe_us06() {
+  if [ "$GW_HTTPS" = 1 ]; then
+    local arn ports
+    arn=$(aws elbv2 describe-load-balancers --names "$GW_ALB_NAME" \
+          --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null)
+    ports=$(aws elbv2 describe-listeners --load-balancer-arn "$arn" \
+          --query 'Listeners[].Port' --output text 2>/dev/null | tr '\t' ',')
+    if [[ ",$ports," == *",443,"* ]]; then
+      row ok "US-06" "ALB HTTPS (커스텀 도메인)"
+      detail "https://$GW_HOST · 리스너 $ports · cert …${GW_CERT_ARN: -12}"
+    else
+      row warn "US-06" "ALB HTTPS (커스텀 도메인) — 일부 적용"
+      detail "Ingress 엔 host·cert 가 있는데 ALB 리스너가 $ports — helm 반영 지연 또는 SG 규칙 초과 (kubectl get events)"
+      TODO+=("kubectl get events -n $NS --sort-by=.lastTimestamp | tail   # ops/8-H-alb-https.md 3단계")
+    fi
+    raw "host=$GW_HOST cert=$GW_CERT_ARN listeners=$ports"
+  else
+    row skip "US-06" "ALB HTTPS (커스텀 도메인) — 미적용 (선택)"
+    detail "도메인이 있으면 ops/8-H-alb-https.md · 없으면 Cowork https 는 CloudFront(US-02 03)"
+  fi
+}
+
 # ── Report ──────────────────────────────────────────────────────────────────
 echo
 printf '%s US AWSome AI Gateway — 업데이트 적용 상태%s\n' "$c_bold" "$c_reset"
@@ -275,6 +305,7 @@ probe_us02
 probe_us03
 probe_us04
 probe_us05
+probe_us06
 
 echo
 if [ "${#TODO[@]}" -eq 0 ]; then
