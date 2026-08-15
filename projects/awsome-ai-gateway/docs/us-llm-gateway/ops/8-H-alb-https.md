@@ -1,8 +1,8 @@
 # 8-H. ALB HTTPS — 커스텀 도메인 + ACM 인증서 (방식 A → B)
 
-> ← [operations.md](../operations.md) §8 목차로 · 이 절 = **§8-H** · 업데이트 ID **US-06** · 등급 **선택**(도메인이 있거나 확보할 수 있을 때) · 소요 준비 1시간(도메인 등록 대기 포함) + 전환 30분
+> ← [operations.md](../operations.md) §8 목차로 · 이 절 = **§8-H** · 업데이트 ID **US-06** · 등급 **선택**(도메인이 있거나 확보할 수 있을 때) · 소요: 준비 1시간(도메인 등록 대기 포함) + 전환 30분
 
-> **한 줄**: 지금은 ALB 가 준 임시 주소로 http 접속(방식 A). 도메인 + ACM 인증서를 붙여 **`https://gateway-<env>.<도메인>`** 으로 바꾼다(방식 B). Cowork 용 CloudFront(US-02 `03`)는 필요 없어져 함께 정리한다.
+> **한 줄**: 지금은 ALB 가 준 임시 주소로 http 접속(방식 A). 도메인 + ACM 인증서를 붙여 **`https://gateway-<env>.<도메인>`** 으로 바꾼다(방식 B). Cowork 용 CloudFront(US-02 `03`)는 필요 없어져 함께 정리한다(4단계).
 > 도메인·DNS·인증서가 처음이면 → [부록 A 그림](#부록-a-그림으로-보는-도메인--dns--인증서--alb) 먼저.
 
 ## 왜 하는가 · 무엇이 바뀌나
@@ -11,28 +11,47 @@
 - 방식 B(전환 후): ALB 3개 전부 **ACM 인증서로 https:443 종료**, 고정 도메인(ALB 가 재생성돼도 URL 불변), IP 허용목록에 더해 전송 암호화. `install-eks.sh`·차트는 이미 방식 B 를 지원 — **코드 변경 없이 values 만** 바꾼다.
 
 ```
- 0. 값 준비    ── source https-env.sh <도메인>   (도메인 하나만 입력)
+ 0. 시작 전    ── 0-1 저장소 최신화(새 스크립트 받기) · 0-2 값 준비 (source https-env.sh <DOMAIN>)
  1. 준비       ── 도메인 등록(또는 NS 위임) → ACM(ALB 리전) 발급·DNS 검증
- 2. 저장소     ── README §3 ① 로 배포 EC2 최신화
- 3. 전환       ── 10-switch-https.sh → install-eks.sh → 11-route53-cname.sh → https 확인
- 4. 클라이언트   ── 07-client-values.sh 로 새 URL 배포 (Cowork 는 3 직후 끊기므로 바로)
- 5. 폐기       ── CloudFront disable→delete · gateway SG 슬롯 회수
- 6. 검증·마무리  ── curl · smoke-test · status.sh US-06 · 종단
+ 2. 전환       ── 10-switch-https.sh → install-eks.sh → 11-route53-cname.sh → https 확인
+ 3. 클라이언트   ── 07-client-values.sh 로 새 URL 배포 (Cowork 는 2 직후 끊기므로 바로)
+ 4. 폐기       ── CloudFront disable→delete · gateway SG 슬롯 회수
+ 5. 검증·마무리  ── curl · smoke-test · status.sh US-06 · 종단
  R. 롤백       ── 10-switch-https.sh --revert → install-eks.sh · CNAME 삭제 · URL 복귀
 ```
 
 | # | 결정 | 권장 | 이유 |
 |---|---|---|---|
 | 1 | 도메인 출처 | (a) 이 계정 Route 53 Domains 신규 등록 (b) 기존/타 계정 도메인 → **NS 위임**(1-2-보충) | 어느 쪽이든 이후 절차 동일 |
-| 2 | CloudFront(US-02 `03`) | **5단계에서 폐기** | 방식 B 가 살면 존재 이유가 없다. 유지하면 SG 슬롯 55·이중 경로가 남음. Cowork 는 ALB 직행이 되므로 **PC IP 를 gateway `inbound-cidrs` 에도** 등록 |
+| 2 | CloudFront(US-02 `03`) | **4단계에서 폐기** | 방식 B 가 살면 존재 이유가 없다. 유지하면 SG 슬롯 55·이중 경로가 남음. Cowork 는 ALB 직행이 되므로 **PC IP 를 gateway `inbound-cidrs` 에도** 등록 |
 
-## 0. 값 준비 — 도메인 하나만 입력하면 나머지는 시스템에서 읽는다
+## 0. 시작 전 — 새 스크립트 받기 · 값 준비
 
-▶ **실행** · 배포 EC2 — 예시 `mygw.click` 자리에 **본인 도메인** (새 셸을 열 때마다 다시)
+### 0-1. 저장소 최신화 (새 파일 받기)
+
+이 절이 쓰는 `https-env.sh`·`10-switch-https.sh`·`11-route53-cname.sh` 와 도메인을 인지하는 `07-client-values.sh`·`status.sh` 는 fork 브랜치 [`us/deploy-fixes`](https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway/docs/us-llm-gateway/update-scripts) 에 있다. 배포 EC2 저장소를 [README §3 ①](../README.md#3-적용하기) 절차로 최신화한다 — 리베이스 브랜치라 `git pull` 이 아니라 아래다(values 백업 포함).
+
+▶ **실행** · 배포 EC2
+
+```bash
+cd ~/awsome-ai-gateway
+V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cp $V ~/values.bak
+git fetch origin && git reset --hard origin/us/deploy-fixes
+cp ~/values.bak $V
+cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
+ls docs/us-llm-gateway/update-scripts/https-env.sh docs/us-llm-gateway/update-scripts/1[01]-*.sh
+```
+
+> `values restored OK` 와 파일 3개가 보여야 한다. `RESTORE FAILED` 면 `cp ~/values.bak $V` 를 다시.
+
+### 0-2. 값 준비 — 도메인 하나만 입력하면 나머지는 시스템에서 읽는다
+
+▶ **실행** · 배포 EC2 — `<DOMAIN>` 자리에 **본인 도메인**(새 셸을 열 때마다 다시)
 
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
-source https-env.sh mygw.click
+source https-env.sh <DOMAIN>          # 예: source https-env.sh mygw.click
 ```
 
 `https-env.sh` 가 export 하는 것(아래 명령은 전부 이 변수만 쓴다):
@@ -124,15 +143,11 @@ aws acm describe-certificate --region "$REGION" --certificate-arn "$CERT_ARN" --
 > ⚠️ 검증 CNAME 은 지우지 말 것 — 자동 갱신(13개월)에 쓴다.
 > 🧯 `PENDING_VALIDATION` 1시간 초과: `dig +short "$NAME"` 으로 레코드가 보이는지, 위임(1-2-보충)했다면 NS 가 바뀌었는지.
 
-## 2. 저장소 최신화
+## 2. 전환 — values 방식 B → install-eks.sh → CNAME 3개
 
-`10-switch-https.sh`·`11-route53-cname.sh`·`https-env.sh` 와 도메인을 인지하는 `07-client-values.sh`·`status.sh` 는 fork 에 있다 → [README §3 2-1](../README.md#3-적용하기) 절차로 배포 EC2 저장소를 최신으로(values 백업 포함).
+> **한 줄**: ALB 3개를 https:443 + 인증서로 바꾸고 이름 3개를 연결한다. **이 순간부터 `http://<ALB DNS>` 와 CloudFront 경로는 끊긴다** — 클라이언트 URL 은 3단계에서 바꾼다.
 
-## 3. 전환 — values 방식 B → install-eks.sh → CNAME 3개
-
-> **한 줄**: ALB 3개를 https:443 + 인증서로 바꾸고 이름 3개를 연결한다. **이 순간부터 `http://<ALB DNS>` 와 CloudFront 경로는 끊긴다** — 클라이언트 URL 은 4단계에서 바꾼다.
-
-### 3-1. 사전 점검
+### 2-1. 사전 점검
 
 ▶ **실행** · 배포 EC2
 
@@ -143,7 +158,7 @@ kubectl get events -n "$NS" --sort-by=.lastTimestamp | tail -3
 
 > `GW_SG` 의 inbound 규칙 수 + 1 이 계정 SG 규칙 한도(기본 60, CloudFront prefix-list 는 55 로 센다) 이하인지. **IP 추가(05)와 같은 시점에 하지 않는다** — 교체와 추가가 겹치면 순간 초과.
 
-### 3-2. values 방식 B 로 편집
+### 2-2. values 방식 B 로 편집
 
 dry-run 으로 diff·렌더 확인 후 `--apply`
 
@@ -156,7 +171,7 @@ bash 10-switch-https.sh --drop-cloudfront --apply
 
 > diff 에 있어야 할 것: `listen-ports` 443 · `certificate-arn` · `ssl-policy` · host 3개 · `tls.enabled: true` · gateway `security-group-prefix-lists` 삭제. **`inbound-cidrs` 는 안 바뀌어야** 한다. 렌더 체크에 `NEXTAUTH_URL https://admin-…` 가 보이면 정상.
 
-### 3-3. helm 반영
+### 2-3. helm 반영
 
 tmux 안에서, 다른 창으로 이벤트 감시
 
@@ -189,7 +204,7 @@ bash 06-persist-annotations.sh | tail -3
 > ⚠️ `install-eks.sh` 로그에 `NEXTAUTH_URL 이 chart 에서 결정됨 … 스킵` 이 찍혀야 정상. admin-ui 는 env 변경으로 롤링 1회.
 > 🧯 `RulesPerSecurityGroupLimitExceeded` → 컨트롤러 재시도 루프. 동시 IP 추가가 원인이거나 한도 초과. §R 로 되돌리거나 한도 상향 후 재시도.
 
-### 3-4. CNAME 3개
+### 2-4. CNAME 3개
 
 ▶ **실행** · 배포 EC2
 
@@ -198,7 +213,7 @@ bash 11-route53-cname.sh
 bash 11-route53-cname.sh --apply
 ```
 
-### 3-5. 첫 https 확인
+### 2-5. 첫 https 확인
 
 배포 EC2 IP 는 허용목록에 있으므로 여기서
 
@@ -210,16 +225,16 @@ curl -sI "https://$UI_HOST_TARGET/api/health" | head -1
 echo | openssl s_client -connect "$GW_HOST_TARGET:443" -servername "$GW_HOST_TARGET" 2>/dev/null | openssl x509 -noout -subject -issuer
 ```
 
-> 기대: `HTTP/2 200` ×3 · subject `CN=*.<도메인>` · issuer Amazon. `http://<ALB DNS>` 는 연결 거부(정상). CloudFront URL 은 502(5단계에서 폐기).
+> 기대: `HTTP/2 200` ×3 · subject `CN=*.<도메인>` · issuer Amazon. `http://<ALB DNS>` 는 연결 거부(정상). CloudFront URL 은 502(4단계에서 폐기).
 
-## 4. 클라이언트 · 5. CloudFront 폐기 · 6. 검증 · R. 롤백
+## 3. 클라이언트 · 4. CloudFront 폐기 · 5. 검증 · R. 롤백
 
-*(실측 후 작성 — 이 배포에서 3단계까지 검증되면 채운다)*
+*(실측 후 작성 — 이 배포에서 2단계까지 검증되면 채운다)*
 
 ## 함정 (미리 아는 것)
 
 - **리스너 80→443 전환 시 SG 규칙 초과 위험** — ALB controller v2.8.x 는 SG 를 **Revoke→Authorize** 순서로 맞추므로 순수 "교체" 는 한도를 넘지 않는다. 넘는 경우는 **같은 시점에 IP 추가(05)를 섞을 때** — 하지 말 것. 감시: `kubectl get events -n $NS --sort-by=.lastTimestamp` 에 `RulesPerSecurityGroupLimitExceeded`.
-- **CloudFront origin 은 http-only** — 3단계 직후 CloudFront 경로는 502(정상). 4단계에서 URL 을 바꾸고 5단계에서 폐기한다.
+- **CloudFront origin 은 http-only** — 2단계 직후 CloudFront 경로는 502(정상). 3단계에서 URL 을 바꾸고 4단계에서 폐기한다.
 - **values 는 배포 EC2 유일본** — `10-switch-https.sh` 는 스냅샷 후 텍스트 편집만 하고 `inbound-cidrs`·per-Ingress 겹은 손대지 않는다. 손편집 금지.
 - **ACM 은 ALB 와 같은 리전** — us-east-1 인증서는 CloudFront 용. `10-switch-https.sh` 가 리전 불일치를 거부한다.
 - **Cognito callback(`localhost:8090-8092`)·admin-ui→admin-api(클러스터 내부 URL)는 무관** — 건드리지 않는다.
