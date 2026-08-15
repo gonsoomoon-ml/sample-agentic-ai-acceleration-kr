@@ -27,6 +27,7 @@ set -uo pipefail
 source "$(dirname "$(readlink -f "$0")")/_lib.sh"
 
 DOMAIN="${HTTPS_DOMAIN:-${DOMAIN:-}}"; CERT_ARN="${HTTPS_CERT_ARN:-${CERT_ARN:-}}"   # config.env, or exported by https-env.sh
+ORIG_ARGS="$*"
 GW_H=""; UI_H=""; API_H=""
 APPLY=0; DROP_CF=0; REVERT=0
 while [ $# -gt 0 ]; do
@@ -175,7 +176,6 @@ for sec, host in (("gateway", gw_h), ("adminUi", ui_h), ("adminApi", api_h)):
                     L[a] = "    annotations: {}"
 
 open(dst, "w", encoding="utf-8").write("\n".join(L))
-print(changes)
 PY
 rc=$?
 [ $rc -eq 0 ] || { rm -f "$NEW"; die "edit failed"; }
@@ -191,8 +191,8 @@ diff -u "$VALUES_FILE" "$NEW" | sed -n '3,$p' | sed 's/^/  /'
 if command -v helm >/dev/null 2>&1 && [ -d "$CHART_DIR" ]; then
   hdr "Render check (helm template)"
   if OUT=$(helm template llm-gateway "$CHART_DIR" -f "$NEW" 2>&1); then
-    grep -E 'kind: Ingress|certificate-arn|listen-ports|^\s+- host:|NEXTAUTH_URL' <<<"$OUT" \
-      | grep -A1 -E 'NEXTAUTH_URL|kind: Ingress|certificate-arn|listen-ports|host:' | sed 's/^/  /' | head -30
+    grep -E 'kind: Ingress|certificate-arn|listen-ports|^\s+- host:' <<<"$OUT" | sed 's/^/  /'
+    grep -A1 -E '^\s+- name: NEXTAUTH_URL' <<<"$OUT" | grep value | sed 's/^\s*/  NEXTAUTH_URL /' 
     ok "chart renders"
   else
     warn "helm template failed — do not apply until this renders:"; sed 's/^/  /' <<<"$OUT" | tail -15
@@ -200,7 +200,7 @@ if command -v helm >/dev/null 2>&1 && [ -d "$CHART_DIR" ]; then
 fi
 
 if [ "$APPLY" = 0 ]; then
-  echo; note "Nothing written."; note "Apply:  bash $(basename "$0") $* --apply"; rm -f "$NEW"; echo; exit 0
+  echo; note "Nothing written."; note "Apply:  bash $(basename "$0") $ORIG_ARGS --apply"; rm -f "$NEW"; echo; exit 0
 fi
 
 confirm "Write the Ingress block into $VALUES_FILE (helm is NOT run — next: ./deployment/scripts/install-eks.sh $DEPLOY_ENV)."
