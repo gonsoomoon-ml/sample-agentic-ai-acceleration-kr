@@ -2,7 +2,7 @@
 
 > ← [operations.md](../operations.md) §8 목차로 · 이 절 = **§8-H** · 업데이트 ID **US-06** · 등급 **선택**(도메인이 있거나 확보할 수 있을 때) · 소요: 준비 1시간(도메인 등록 대기 포함) + 전환 30분
 
-> **한 줄**: 지금은 ALB 가 준 임시 주소로 http 접속(방식 A). 도메인 + ACM 인증서를 붙여 `https://gateway-<env>.<도메인>` 으로 바꾼다(방식 B). Cowork 용 CloudFront(US-02 `03`)는 필요 없어져 함께 정리한다(4단계).
+> **한 줄**: 지금은 ALB 가 준 임시 주소로 http 접속(방식 A). 도메인 + ACM 인증서를 붙여 `https://gateway-{{env}}.{{도메인}}` 으로 바꾼다(방식 B). Cowork 용 CloudFront(US-02 `03`)는 필요 없어져 함께 정리한다(4단계).
 > 도메인·DNS·인증서가 처음이면 → [부록 A 그림](#부록-a-그림으로-보는-도메인--dns--인증서--alb) 먼저.
 
 ## 왜 하는가 · 무엇이 바뀌나
@@ -12,7 +12,7 @@
 
 ```
  0. 준비       ── 도메인 등록(또는 NS 위임) → ACM(ALB 리전) 발급·DNS 검증   ← 저장소와 무관, 먼저
- 1. 시작 전    ── 1-1 저장소 최신화(새 스크립트 받기) · 1-2 값 준비 (source https-env.sh <DOMAIN>)
+ 1. 시작 전    ── 1-1 저장소 최신화(새 스크립트 받기) · 1-2 값 준비 (source https-env.sh {{DOMAIN}})
  2. 전환       ── 10-switch-https.sh → install-eks.sh → 11-route53-cname.sh → https 확인
  3. 클라이언트   ── 07-client-values.sh 로 새 URL 배포 (Cowork 는 2 직후 끊기므로 바로)
  4. 폐기       ── CloudFront disable→delete · gateway SG 슬롯 회수
@@ -37,11 +37,11 @@
 
 > **한 줄**: 원하는 이름이 아직 비어 있는지 Route 53 에 묻는다.
 
-▶ **실행** · 배포 EC2
+▶ **실행** · 배포 EC2  · **⚠ 바꿀 것: `{{DOMAIN}}` `{{ALB 리전}}`**
 
 ```bash
-DOMAIN=<DOMAIN>      # TLD 포함 전체. 예: DOMAIN=mygw.click  (mygw 만 쓰면 오류)
-REGION=<ALB 리전>    # 예: REGION=us-west-2 (terraform.tfvars 의 aws_region)
+DOMAIN={{DOMAIN}}      # TLD 포함 전체. 예: DOMAIN=mygw.click  (mygw 만 쓰면 오류)
+CERT_REGION={{ALB 리전}}    # 예: CERT_REGION=us-west-2 (terraform.tfvars 의 aws_region)
 aws route53domains check-domain-availability --region us-east-1 \
   --domain-name "$DOMAIN" --query Availability --output text
 ```
@@ -59,7 +59,7 @@ aws route53domains check-domain-availability --region us-east-1 \
 ▶ **실행** · 배포 EC2
 
 ```bash
-# 같은 셸 (0-1 의 DOMAIN·REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
+# 같은 셸 (0-1 의 DOMAIN·CERT_REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
 ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name "$DOMAIN" \
   --query "HostedZones[?Name=='$DOMAIN.'].Id | [0]" --output text \
   | sed 's#/hostedzone/##')
@@ -82,7 +82,7 @@ echo "ZONE_ID=$ZONE_ID"   # Z… 가 나오면 OK ("None" = 등록 전 또는 0-
 ▶ **실행** · 배포 EC2 — 이 계정에 zone 생성 + NS 4개
 
 ```bash
-# 같은 셸 (0-1 의 DOMAIN·REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
+# 같은 셸 (0-1 의 DOMAIN·CERT_REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
 aws route53 create-hosted-zone --name "$DOMAIN" \
   --caller-reference "$DOMAIN-$(date +%s)" \
   --query '{ZoneId:HostedZone.Id,NS:DelegationSet.NameServers}' --output json
@@ -94,13 +94,13 @@ aws route53 create-hosted-zone --name "$DOMAIN" \
 
 > **한 줄**: ALB 에 붙일 와일드카드 인증서를 ALB 와 같은 리전에 요청한다.
 
-인증서 리전은 **ALB 와 같은** `$REGION`(0-1 에서 넣은 값)이어야 ALB 가 붙일 수 있다.
+인증서 리전은 **ALB 와 같은** `$CERT_REGION`(0-1 에서 넣은 값)이어야 ALB 가 붙일 수 있다.
 
 ▶ **실행** · 배포 EC2
 
 ```bash
-# 같은 셸 (0-1 의 DOMAIN·REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
-CERT_ARN=$(aws acm request-certificate --region "$REGION" \
+# 같은 셸 (0-1 의 DOMAIN·CERT_REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
+CERT_ARN=$(aws acm request-certificate --region "$CERT_REGION" \
   --domain-name "*.$DOMAIN" --subject-alternative-names "$DOMAIN" \
   --validation-method DNS --query CertificateArn --output text)
 echo "CERT_ARN=$CERT_ARN"
@@ -117,9 +117,9 @@ echo "CERT_ARN=$CERT_ARN"
 ▶ **실행** · 배포 EC2
 
 ```bash
-# 같은 셸 (0-1 의 DOMAIN·REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
+# 같은 셸 (0-1 의 DOMAIN·CERT_REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
 sleep 20
-RR=$(aws acm describe-certificate --region "$REGION" --certificate-arn "$CERT_ARN" \
+RR=$(aws acm describe-certificate --region "$CERT_REGION" --certificate-arn "$CERT_ARN" \
   --query 'Certificate.DomainValidationOptions[0].ResourceRecord')
 NAME=$(jq -r .Name <<<"$RR"); VALUE=$(jq -r .Value <<<"$RR")
 RS="{\"Name\":\"$NAME\",\"Type\":\"CNAME\",\"TTL\":300,"
@@ -132,8 +132,8 @@ aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" \
 **확인** — `ISSUED` 까지 5~30분:
 
 ```bash
-# 같은 셸 (0-1 의 DOMAIN·REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
-aws acm describe-certificate --region "$REGION" \
+# 같은 셸 (0-1 의 DOMAIN·CERT_REGION, 0-2 의 ZONE_ID, 0-3 의 CERT_ARN)
+aws acm describe-certificate --region "$CERT_REGION" \
   --certificate-arn "$CERT_ARN" --query Certificate.Status --output text
 ```
 
@@ -166,6 +166,8 @@ ls docs/us-llm-gateway/update-scripts/{https-env.sh,10-*.sh,11-*.sh}
 ```
 
 > `values restored OK` 와 새로운 파일 보여야 한다. `RESTORE FAILED` 면 `cp ~/values.bak $V` 를 다시.
+> 🧯 `reset --hard` 는 `.terraform.lock.hcl` 도 되돌리므로 다음 `install-eks.sh` 가 `terraform output 실패` 로 멈출 수 있다 → provider 재조정만 하면 된다(apply 아님):
+> `cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-{{env}} && terraform init -input=false`
 
 
 
@@ -173,11 +175,11 @@ ls docs/us-llm-gateway/update-scripts/{https-env.sh,10-*.sh,11-*.sh}
 
 > **한 줄**: 이후 명령이 쓰는 변수 12개를 config.env·클러스터·AWS 에서 읽어 export 한다.
 
-▶ **실행** · 배포 EC2 — `<DOMAIN>` 자리에 **본인 도메인**(새 셸을 열 때마다 다시)
+▶ **실행** · 배포 EC2  · **⚠ 바꿀 것: `{{DOMAIN}}`** (본인 도메인, TLD 포함)
 
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
-source https-env.sh <DOMAIN>          # 예: source https-env.sh mygw.click
+source https-env.sh {{DOMAIN}}          # 예: source https-env.sh mygw.click
 ```
 
 `https-env.sh` 가 export 하는 것(아래 명령은 전부 이 변수만 쓴다):
@@ -186,20 +188,20 @@ source https-env.sh <DOMAIN>          # 예: source https-env.sh mygw.click
 | 변수                                             | 뜻                                                 | 출처                                    |
 | ---------------------------------------------- | ------------------------------------------------- | ------------------------------------- |
 | `DOMAIN`                                       | 도메인(apex)                                         | **입력** (또는 config.env `HTTPS_DOMAIN`) |
-| `ENV` · `NS` · `REL` · `REGION` · `ACCOUNT_ID` | 배포 환경 · 네임스페이스 · helm release · 리전 · 계정           | `config.env`                          |
+| `GW_ENV` · `GW_NS` · `GW_REL` · `GW_REGION` · `ACCOUNT_ID` | 배포 환경 · 네임스페이스 · helm release · 리전 · 계정           | `config.env`                          |
 | `ZONE_ID`                                      | Route 53 hosted zone                              | 계정에서 조회 — **1-2 후 생김**                |
 | `CERT_ARN`                                     | ACM 인증서(`*.$DOMAIN`, ISSUED 여부 함께 표시)             | 계정에서 조회 — **1-3 후 생김**                |
 | `GW_DNS` · `GW_SG` · `GW_HOST`                 | gateway ALB DNS · SG(inbound 규칙 수) · Ingress host | 클러스터에서 조회                             |
-| `*_HOST_TARGET`                                | `gateway-$ENV.$DOMAIN` 등 이름 3개                    | 계산                                    |
+| `*_HOST_TARGET`                                | `gateway-$GW_ENV.$DOMAIN` 등 이름 3개                    | 계산                                    |
 
 
-> `(none yet)` 이 ZONE_ID/CERT_ARN 에 뜨면 0단계가 덜 끝난 것이다. 1단계를 끝낸 뒤 `source https-env.sh` 를 다시 하면 채워진다.
+> `(none yet)` 이 ZONE_ID/CERT_ARN 에 뜨면 0단계가 덜 끝난 것이다. 도메인은 `config.env` 에 `HTTPS_DOMAIN` 으로 저장되므로, 이후 블록(새 셸 포함)은 `source https-env.sh {{DOMAIN}}` 으로 값을 다시 읽고 표로 확인한다(저장돼 있으면 `{{DOMAIN}}` 생략 가능, `-q` 는 표 생략).
 
 
 
 ## 2. 전환 — values 방식 B → install-eks.sh → CNAME 3개
 
-> **한 줄**: ALB 3개를 https:443 + 인증서로 바꾸고 이름 3개를 연결한다. **이 순간부터** `http://<ALB DNS>` **와 CloudFront 경로는 끊긴다** — 클라이언트 URL 은 3단계에서 바꾼다.
+> **한 줄**: ALB 3개를 https:443 + 인증서로 바꾸고 이름 3개를 연결한다. **이 순간부터** `http://{{ALB DNS}}` **와 CloudFront 경로는 끊긴다** — 클라이언트 URL 은 3단계에서 바꾼다.
 
 ### 2-1. 사전 점검
 
@@ -208,12 +210,12 @@ source https-env.sh <DOMAIN>          # 예: source https-env.sh mygw.click
 ▶ **실행** · 배포 EC2
 
 ```bash
-kubectl get events -n "$NS" --sort-by=.lastTimestamp | tail -3
+kubectl get events -n "$GW_NS" --sort-by=.lastTimestamp | tail -3
 ```
 
 > 기대: `No resources found …`(최근 1시간 이벤트 없음) 또는 `Normal SuccessfullyReconciled ingress/…` 몇 줄 — 둘 다 OK.
 > 멈춤: `Warning` 에 `FailedDeployModel`·`FailedBuildModel`·`RulesPerSecurityGroupLimitExceeded` 가 반복되면 진행 중인 문제가 있는 것 — 전환 전에 원인부터.
-> 1-2 의 `source https-env.sh` 출력에서 `CERT_ARN … (ISSUED)` 와 `GW_SG … (inbound rules: N)` 을 이미 확인했으면 그대로 진행. 새 셸이면 `source https-env.sh -q` 먼저.
+> 1-2 의 `source https-env.sh` 출력에서 `CERT_ARN … (ISSUED)` 와 `GW_SG … (inbound rules: N)` 을 이미 확인했으면 그대로 진행. 새 셸이면 `source https-env.sh {{DOMAIN}}` 먼저.
 
 
 
@@ -240,18 +242,22 @@ bash 10-switch-https.sh --drop-cloudfront --apply
 
 tmux 안에서, 다른 창으로 이벤트 감시
 
-▶ **실행** · 배포 EC2 — tmux
+▶ **실행** · 배포 EC2 — tmux 안에서 (5분 안팎, 끊겨도 계속 돌게)  · **⚠ 바꿀 것: `{{DOMAIN}}`**
 
 ```bash
-source https-env.sh -q     # 1-2 에서 도메인을 한 번 넣었으면 인자 없이 복원 (새 셸·중간 진입 대비)
-cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh "$ENV"
+tmux new -s https          # 이미 있으면: tmux attach -t https  (새 셸이므로 변수는 아래서 다시)
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && source https-env.sh {{DOMAIN}}   # 예: mygw.click — 표 확인
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-$GW_ENV && terraform init -input=false | grep -m1 -i "successfully\|error"
+cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh "$GW_ENV"
 ```
 
-▶ **실행** · 배포 EC2 — 다른 셸
+> `terraform init` 은 1-1 의 `reset --hard` 가 되돌린 lock 파일과 provider 캐시를 다시 맞추는 것(apply 아님, 인프라 무변경). 빼면 `install-eks.sh` 가 `terraform output 실패` 로 멈춘다.
+
+▶ **실행** · 배포 EC2 — 감시용 다른 셸 (tmux 새 창 `Ctrl-b c`, 또는 별도 SSH)  · **⚠ 바꿀 것: `{{DOMAIN}}`**
 
 ```bash
-source https-env.sh -q     # 1-2 에서 도메인을 한 번 넣었으면 인자 없이 복원 (새 셸·중간 진입 대비)
-kubectl get events -n "$NS" --sort-by=.lastTimestamp \
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && source https-env.sh {{DOMAIN}}   # 예: mygw.click — 표 확인
+kubectl get events -n "$GW_NS" --sort-by=.lastTimestamp \
   | grep -iE 'ingress|RulesPer|error|fail' | tail -5
 ```
 
@@ -261,7 +267,7 @@ kubectl get events -n "$NS" --sort-by=.lastTimestamp \
 
 ```bash
 source https-env.sh        # GW_HOST 가 채워졌는지
-kubectl get ingress -n "$NS"
+kubectl get ingress -n "$GW_NS"
 for a in $(aws elbv2 describe-load-balancers \
     --query "LoadBalancers[?contains(LoadBalancerName,'k8s-')].LoadBalancerArn" \
     --output text); do
@@ -271,11 +277,11 @@ done
 aws ec2 describe-security-group-rules --filters Name=group-id,Values="$GW_SG" \
   --query 'SecurityGroupRules[?IsEgress==`false`].[FromPort,CidrIpv4,PrefixListId]' \
   --output text
-kubectl get deploy "$REL-admin-ui" -n "$NS" -o yaml | grep -A1 'name: NEXTAUTH_URL'
+kubectl get deploy "$GW_REL-admin-ui" -n "$GW_NS" -o yaml | grep -A1 'name: NEXTAUTH_URL'
 bash 06-persist-annotations.sh | tail -3
 ```
 
-> 기대: HOSTS 열에 이름 3개(ADDRESS 그대로 — 리스너 교체는 in-place) · 리스너 **443 + cert 만**(80 없음) · gateway SG 규칙 전부 443, prefix-list 없음 · `NEXTAUTH_URL=https://admin-$ENV.$DOMAIN` · 06 은 "already matches".
+> 기대: HOSTS 열에 이름 3개(ADDRESS 그대로 — 리스너 교체는 in-place) · 리스너 **443 + cert 만**(80 없음) · gateway SG 규칙 전부 443, prefix-list 없음 · `NEXTAUTH_URL=https://admin-$GW_ENV.$DOMAIN` · 06 은 "already matches".
 > ⚠️ `install-eks.sh` 로그에 `NEXTAUTH_URL 이 chart 에서 결정됨 … 스킵` 이 찍혀야 정상. admin-ui 는 env 변경으로 롤링 1회.
 > 🧯 `RulesPerSecurityGroupLimitExceeded` → 컨트롤러 재시도 루프. 동시 IP 추가가 원인이거나 한도 초과. §R 로 되돌리거나 한도 상향 후 재시도.
 
@@ -300,10 +306,10 @@ bash 11-route53-cname.sh --apply
 
 배포 EC2 IP 는 허용목록에 있으므로 여기서
 
-▶ **실행** · 배포 EC2
+▶ **실행** · 배포 EC2  · **⚠ 바꿀 것: `{{DOMAIN}}`**
 
 ```bash
-source https-env.sh -q     # 1-2 에서 도메인을 한 번 넣었으면 인자 없이 복원 (새 셸·중간 진입 대비)
+source https-env.sh {{DOMAIN}}       # 예: source https-env.sh mygw.click — 표의 값을 눈으로 확인
 for h in "$GW_HOST_TARGET" "$API_HOST_TARGET"; do
   curl -sI "https://$h/health" | head -1
 done
@@ -312,7 +318,7 @@ echo | openssl s_client -connect "$GW_HOST_TARGET:443" \
   -servername "$GW_HOST_TARGET" 2>/dev/null | openssl x509 -noout -subject -issuer
 ```
 
-> 기대: `HTTP/2 200` ×3 · subject `CN=*.<도메인>` · issuer Amazon. `http://<ALB DNS>` 는 연결 거부(정상). CloudFront URL 은 502(4단계에서 폐기).
+> 기대: `HTTP/2 200` ×3 · subject `CN=*.{{도메인}}` · issuer Amazon. `http://{{ALB DNS}}` 는 연결 거부(정상). CloudFront URL 은 502(4단계에서 폐기).
 
 
 
@@ -322,7 +328,7 @@ echo | openssl s_client -connect "$GW_HOST_TARGET:443" \
 
 ## 함정 (미리 아는 것)
 
-- **리스너 80→443 전환 시 SG 규칙 초과 위험** — ALB controller v2.8.x 는 SG 를 **Revoke→Authorize** 순서로 맞추므로 순수 "교체" 는 한도를 넘지 않는다. 넘는 경우는 **같은 시점에 IP 추가(05)를 섞을 때** — 하지 말 것. 감시: `kubectl get events -n $NS --sort-by=.lastTimestamp` 에 `RulesPerSecurityGroupLimitExceeded`.
+- **리스너 80→443 전환 시 SG 규칙 초과 위험** — ALB controller v2.8.x 는 SG 를 **Revoke→Authorize** 순서로 맞추므로 순수 "교체" 는 한도를 넘지 않는다. 넘는 경우는 **같은 시점에 IP 추가(05)를 섞을 때** — 하지 말 것. 감시: `kubectl get events -n $GW_NS --sort-by=.lastTimestamp` 에 `RulesPerSecurityGroupLimitExceeded`.
 - **CloudFront origin 은 http-only** — 2단계 직후 CloudFront 경로는 502(정상). 3단계에서 URL 을 바꾸고 4단계에서 폐기한다.
 - **values 는 배포 EC2 유일본** — `10-switch-https.sh` 는 스냅샷 후 텍스트 편집만 하고 `inbound-cidrs`·per-Ingress 겹은 손대지 않는다. 손편집 금지.
 - **ACM 은 ALB 와 같은 리전** — us-east-1 인증서는 CloudFront 용. `10-switch-https.sh` 가 리전 불일치를 거부한다.
@@ -385,9 +391,9 @@ Amazon Bedrock
 
 ■ 이름 3개와 쓰임
 
-gateway-dev.<DOMAIN>     Claude Code / Cowork 의 ANTHROPIC_BASE_URL (데이터 플레인)
-admin-dev.<DOMAIN>       관리자 웹 (NEXTAUTH_URL 은 차트가 https 로 자동 파생)
-admin-api-dev.<DOMAIN>   VK 발급 API — api-key-helper 의 ADMIN_API_URL
+gateway-dev.{{DOMAIN}}     Claude Code / Cowork 의 ANTHROPIC_BASE_URL (데이터 플레인)
+admin-dev.{{DOMAIN}}       관리자 웹 (NEXTAUTH_URL 은 차트가 https 로 자동 파생)
+admin-api-dev.{{DOMAIN}}   VK 발급 API — api-key-helper 의 ADMIN_API_URL
 ```
 
 

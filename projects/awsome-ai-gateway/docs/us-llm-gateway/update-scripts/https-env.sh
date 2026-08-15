@@ -38,31 +38,34 @@ if [ -n "$_HE_ARG" ]; then
 fi
 DOMAIN="${DOMAIN:-${HTTPS_DOMAIN:-}}"
 if [ -z "$DOMAIN" ]; then
-  echo "https-env: 먼저  source https-env.sh <domain>   (8-H §0-2, e.g. mygw.click)" >&2
+  echo "https-env: 먼저  source https-env.sh <domain>   (8-H §1-2, e.g. mygw.click)" >&2
 else
   export DOMAIN
-  export ENV="${DEPLOY_ENV:-dev}"
-  export NS="${K8S_NAMESPACE:-llm-gateway}"
-  export REL="${HELM_RELEASE:-llm-gateway}"
-  export REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null)}"
+  # GW_ prefix on purpose: plain NS / ENV / REGION are read from the environment by
+  # other deployment scripts (observability install.sh: NS, set-websearch-url.sh:
+  # REGION, kps install: ENV) — exporting those names here would redirect them.
+  export GW_ENV="${DEPLOY_ENV:-dev}"
+  export GW_NS="${K8S_NAMESPACE:-llm-gateway}"
+  export GW_REL="${HELM_RELEASE:-llm-gateway}"
+  export GW_REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null)}"
   export ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text 2>/dev/null)}"
 
-  export GW_HOST_TARGET="gateway-$ENV.$DOMAIN"
-  export UI_HOST_TARGET="admin-$ENV.$DOMAIN"
-  export API_HOST_TARGET="admin-api-$ENV.$DOMAIN"
+  export GW_HOST_TARGET="gateway-$GW_ENV.$DOMAIN"
+  export UI_HOST_TARGET="admin-$GW_ENV.$DOMAIN"
+  export API_HOST_TARGET="admin-api-$GW_ENV.$DOMAIN"
 
   _z=$(aws route53 list-hosted-zones-by-name --dns-name "$DOMAIN" \
         --query "HostedZones[?Name=='${DOMAIN}.'].Id | [0]" --output text 2>/dev/null | sed 's#/hostedzone/##')
   [ "$_z" = "None" ] && _z=""; export ZONE_ID="$_z"
 
-  _c=$(aws acm list-certificates --region "$REGION" \
+  _c=$(aws acm list-certificates --region "$GW_REGION" \
         --query "CertificateSummaryList[?DomainName=='*.${DOMAIN}'].CertificateArn | [0]" --output text 2>/dev/null)
   [ "$_c" = "None" ] && _c=""; export CERT_ARN="$_c"
-  _cs=""; [ -n "$CERT_ARN" ] && _cs=$(aws acm describe-certificate --region "$REGION" --certificate-arn "$CERT_ARN" \
+  _cs=""; [ -n "$CERT_ARN" ] && _cs=$(aws acm describe-certificate --region "$GW_REGION" --certificate-arn "$CERT_ARN" \
         --query Certificate.Status --output text 2>/dev/null)
 
-  export GW_DNS=$(kubectl get ingress "$REL-gateway" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
-  export GW_HOST=$(kubectl get ingress "$REL-gateway" -n "$NS" -o jsonpath='{.spec.rules[0].host}' 2>/dev/null)
+  export GW_DNS=$(kubectl get ingress "$GW_REL-gateway" -n "$GW_NS" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+  export GW_HOST=$(kubectl get ingress "$GW_REL-gateway" -n "$GW_NS" -o jsonpath='{.spec.rules[0].host}' 2>/dev/null)
   export GW_SG=""
   [ -n "$GW_DNS" ] && GW_SG=$(aws elbv2 describe-load-balancers \
         --query "LoadBalancers[?DNSName=='$GW_DNS'].SecurityGroups[0]" --output text 2>/dev/null)
@@ -71,7 +74,7 @@ else
 
   _p() { [ "$_HE_Q" = 1 ] || printf '  %-16s %s\n' "$1" "${2:-(none yet)}"; }
   [ "$_HE_Q" = 1 ] || echo "https-env — exported:"
-  _p DOMAIN "$DOMAIN"; _p ENV "$ENV"; _p NS "$NS"; _p REL "$REL"; _p REGION "$REGION"; _p ACCOUNT_ID "$ACCOUNT_ID"
+  _p DOMAIN "$DOMAIN"; _p GW_ENV "$GW_ENV"; _p GW_NS "$GW_NS"; _p GW_REL "$GW_REL"; _p GW_REGION "$GW_REGION"; _p ACCOUNT_ID "$ACCOUNT_ID"
   _p ZONE_ID "$ZONE_ID"; _p CERT_ARN "${CERT_ARN:+$CERT_ARN (${_cs:-?})}"
   _p GW_DNS "$GW_DNS"; _p GW_HOST "${GW_HOST:-(none yet — 방식 A)}"; _p GW_SG "${GW_SG:+$GW_SG (inbound rules: ${_rules:-?})}"
   _p "targets" "$GW_HOST_TARGET · $UI_HOST_TARGET · $API_HOST_TARGET"
