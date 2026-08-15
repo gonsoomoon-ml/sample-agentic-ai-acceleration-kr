@@ -56,16 +56,16 @@
 
 - **[2026/08]** `US-05` **EKS 1.34 업그레이드** — **필수**(지원 만료·비용) · 신규 설치 **이미 포함**
 클러스터 Kubernetes 를 1.31 → 1.34 로 올립니다. 1.31 은 표준 지원이 끝나 **연장 지원 요금(클러스터당 월 ~$365 추가)** 이 붙고 있고, 최종 종료(2026-11-26) 후에는 AWS 가 강제로 자동 업그레이드합니다. 마이너는 1단계씩만 올릴 수 있어 apply 3번(1.32→1.33→1.34)이며, 스크립트가 아니라 절차 문서를 따라 단계마다 확인하며 진행합니다.
-→ [operations.md §8-E](operations.md#8-e-eks-버전-업그레이드-131--134)
+→ [operations.md §8-E](ops/8-E-eks-upgrade.md)
 - **[2026/08]** `US-04` **Bedrock·STS 를 NAT 대신 VPC Endpoint 로** — **필수**(컴플라이언스) · 신규 설치 **이미 포함**
 Bedrock·STS 호출이 퍼블릭 인터넷을 지나지 않고 VPC 내부 PrivateLink 로만 흐르게 합니다. 기존 배포는 엔드포인트가 없어 NAT 를 거치므로 적용해야 합니다.
-→ [operations.md §8-N](operations.md#8-n-bedrock-을-nat-대신-vpc-endpointprivatelink로)
+→ [operations.md §8-N](ops/8-N-vpc-endpoint.md)
 - **[2026/08]** `US-03` **Admin UI 한/영 토글** — **필수**(영문 지원) · 신규 설치 **이미 포함**
 관리 화면 전체가 i18n 으로 전환돼 헤더의 KO/EN 토글이 실제로 번역합니다. 기존 배포는 admin-ui 이미지를 다시 빌드해야 반영됩니다.
-→ [operations.md §8-U](operations.md#8-u-업데이트-코드-변경-반영) 의 **A. 서비스 코드** — `rebuild-image.sh admin-ui <env>` → `install-eks.sh <env>` (선행: `06-persist-annotations.sh` dry-run)
+→ [operations.md §8-U](ops/8-U-update.md) 의 **A. 서비스 코드** — `rebuild-image.sh admin-ui <env>` → `install-eks.sh <env>` (선행: `06-persist-annotations.sh` dry-run)
 - **[2026/08]** `US-02` **Cowork 연결 + Opus 5 등록** — **항목마다 대상이 다릅니다** · 🔴 **신규 설치도 해당**
   · **Cowork 를 쓰면 필수** — `01` 라우팅 교정 · `03` HTTPS(CloudFront). 설치 마이그레이션이 Cowork 라우팅 행을 **존재하지 않는 계정**으로 심어, 그대로 두면 Cowork 요청이 전부 502 로 실패합니다.
-  · **Opus 5 를 쓰면 필수** — `02` 모델 등록. **Cowork 와 무관하며 Claude Code 에도 필요합니다**(시드는 Opus 4.8 까지). ⚠️ 단가를 빼먹으면 비용이 `$0` 으로 기록되고 예산이 우회됩니다. 전체 절차·함정은 [operations.md §8-M](operations.md#8-m-모델-추가와-교체). 이름과 달리 **다른 모델을 추가할 때도 쓰는 범용 스크립트**입니다(`config.env` 의 `MODEL_ALIAS`·`MODEL_PROVIDER_ID`).
+  · **Opus 5 를 쓰면 필수** — `02` 모델 등록. **Cowork 와 무관하며 Claude Code 에도 필요합니다**(시드는 Opus 4.8 까지). ⚠️ 단가를 빼먹으면 비용이 `$0` 으로 기록되고 예산이 우회됩니다. 전체 절차·함정은 [operations.md §8-M](ops/8-M-models.md). 이름과 달리 **다른 모델을 추가할 때도 쓰는 범용 스크립트**입니다(`config.env` 의 `MODEL_ALIAS`·`MODEL_PROVIDER_ID`).
   · Claude Code 만 쓰고 Opus 4.8 · Sonnet 5 · Haiku 4.5 로 충분하면 **US-02 전체를 건너뛰어도 됩니다.**
 → [update-scripts 실행 순서](update-scripts/README.md#실행-순서)
 - **[2026/07]** `US-01` **최초 설치** — 기준선

@@ -46,7 +46,7 @@ Claude Code 는 `api-key-helper` 를 **매 요청 직전에 자동 실행**해�
 설치 끝. 이제 Claude Code 는 개인 계정이 아니라 게이트웨이를 본다.
 ```
 
-- **[1] login** = "**나는 회사 직원이다**" 를 한 번 증명(브라우저 로그인). 그 증거(OIDC 토큰)를 PC 에 저장해둔다. 관리자는 §3-8 계정으로, 직원은 각자 계정으로 — 직원 계정은 **관리자가 미리 Cognito 에 등록**해둬야 한다([operations.md 8-Y 직원 온보딩](operations.md#8-y-직원-온보딩--cognito-사용자-추가)).
+- **[1] login** = "**나는 회사 직원이다**" 를 한 번 증명(브라우저 로그인). 그 증거(OIDC 토큰)를 PC 에 저장해둔다. 관리자는 §3-8 계정으로, 직원은 각자 계정으로 — 직원 계정은 **관리자가 미리 Cognito 에 등록**해둬야 한다([operations.md 8-Y 직원 온보딩](ops/8-Y-onboarding.md)).
 - **[2] setup** = Claude Code 에게 "**게이트웨이로 가라 + 열쇠는 helper 로 받아라**" 를 알려준다. 관리 설정(managed-settings)은 최상위 우선순위라, 직원이 다른 설정을 해도 이게 이긴다.
 
 > 🔴 **왜 관리자 권한?** setup 이 쓰는 관리 설정 파일은 시스템 폴더에 있다(OS 마다 위치 다름 — §6 참조). 그래서 sudo(Mac/Linux)·관리자 PowerShell(Windows)이 필요하다.
@@ -149,7 +149,7 @@ helper 는 매 요청 직전 **"만료 직전에 미리"** 갱신한다(요청 �
 | refresh 는 되는데 VK 발급 실패 | **토큰 만료 아님** — admin-api 네트워크 | admin-api `inbound-cidrs` 확인 (operations §8-S) |
 | 매 요청이 느림 | VK 캐시가 안 남 | `~/.gateway-cli/vk-cache.json` 권한·경로 확인 |
 
-**TTL 조절** — 바꾸는 방법(terraform·values 명령)은 [operations.md 8-Z 토큰 TTL 조절](operations.md#8-z-토큰-ttl-조절):
+**TTL 조절** — 바꾸는 방법(terraform·values 명령)은 [operations.md 8-Z 토큰 TTL 조절](ops/8-Z-token-ttl.md):
 - **재로그인 주기 ↑** → Cognito `refresh_token_validity` 를 키운다 (이 배포 기본 **7일**, `cognito/main.tf:123`; 편의 ↑ · 유출 노출 창 ↑).
 - **VK 수명** → admin-api `OIDC_VK_TTL_HOURS`(기본 1). 짧을수록 유출 내성 ↑ · admin-api 부하 ↑.
 
