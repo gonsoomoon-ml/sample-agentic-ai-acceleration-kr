@@ -10,8 +10,12 @@
 # UNDO: read-only — changes nothing
 #
 # Usage:
-#   bash 07-client-values.sh              # Cowork (CloudFront https) — default
-#   bash 07-client-values.sh --claude-code  # Claude Code (gateway ALB http)
+#   bash 07-client-values.sh              # Cowork — default
+#   bash 07-client-values.sh --claude-code  # Claude Code
+#
+# URL layout is discovered from the gateway Ingress (_lib.sh):
+#   US-06 applied (host + certificate-arn)  → https://<host> for both targets, no CloudFront
+#   otherwise (방식 A)                        → Cowork = CloudFront https, Claude Code = ALB http
 # ---------------------------------------------------------------------------
 set -uo pipefail
 source "$(dirname "$(readlink -f "$0")")/_lib.sh"
@@ -102,22 +106,30 @@ ADMIN_ALB=$(kubectl get ingress "$ING_ADMIN_API" -n "$NS" \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
 [ -n "$ADMIN_ALB" ] || die "admin-api Ingress '$ING_ADMIN_API' has no load balancer yet"
 
-# GW_ALB_DNS is resolved by _lib.sh from the gateway Ingress.
-# Same lookup 03 uses, so both agree on which distribution is ours.
-CF_DOMAIN=$(aws cloudfront list-distributions \
-  --query "DistributionList.Items[?Origins.Items[0].DomainName=='$GW_ALB_DNS'].DomainName" \
-  --output text 2>/dev/null | head -1)
-CF_STATUS=$(aws cloudfront list-distributions \
-  --query "DistributionList.Items[?Origins.Items[0].DomainName=='$GW_ALB_DNS'].Status" \
-  --output text 2>/dev/null | head -1)
-
-if [ "$TARGET" = "cowork" ]; then
-  # Cowork refuses a plain-http base URL, so this must be the distribution.
-  [ -n "$CF_DOMAIN" ] && [ "$CF_DOMAIN" != "None" ] || die "no CloudFront distribution fronts $GW_ALB_DNS.
-     Run: bash 03-create-cloudfront.sh --create"
-  BASE_URL="https://$CF_DOMAIN"
+# GW_ALB_DNS / GW_HOST / GW_HTTPS are resolved by _lib.sh from the gateway Ingress.
+CF_DOMAIN=""; CF_STATUS=""
+if [ "$GW_HTTPS" = 1 ]; then
+  # US-06: the ALB terminates TLS on the custom domain — same URL for both
+  # clients, and the CloudFront layer is not part of this deployment.
+  BASE_URL="https://$GW_HOST"
+  ADMIN_URL="https://${ADMIN_API_HOST:-$ADMIN_ALB}"
 else
-  BASE_URL="http://$GW_ALB_DNS"
+  ADMIN_URL="http://$ADMIN_ALB"
+  # Same lookup 03 uses, so both agree on which distribution is ours.
+  CF_DOMAIN=$(aws cloudfront list-distributions \
+    --query "DistributionList.Items[?Origins.Items[0].DomainName=='$GW_ALB_DNS'].DomainName" \
+    --output text 2>/dev/null | head -1)
+  CF_STATUS=$(aws cloudfront list-distributions \
+    --query "DistributionList.Items[?Origins.Items[0].DomainName=='$GW_ALB_DNS'].Status" \
+    --output text 2>/dev/null | head -1)
+  if [ "$TARGET" = "cowork" ]; then
+    # Cowork refuses a plain-http base URL, so this must be the distribution.
+    [ -n "$CF_DOMAIN" ] && [ "$CF_DOMAIN" != "None" ] || die "no CloudFront distribution fronts $GW_ALB_DNS.
+     Run: bash 03-create-cloudfront.sh --create   (or apply US-06: ops/8-H-alb-https.md)"
+    BASE_URL="https://$CF_DOMAIN"
+  else
+    BASE_URL="http://$GW_ALB_DNS"
+  fi
 fi
 
 echo
@@ -128,7 +140,7 @@ hdr "Windows (PowerShell) — paste into the employee's shell"
 cat <<EOF
   \$env:OIDC_ISSUER_URL="$ISSUER"
   \$env:OIDC_CLIENT_ID="$CLIENT"
-  \$env:ADMIN_API_URL="http://$ADMIN_ALB"
+  \$env:ADMIN_API_URL="$ADMIN_URL"
   \$env:ANTHROPIC_BASE_URL="$BASE_URL"
 EOF
 
@@ -136,12 +148,17 @@ hdr "macOS / Linux"
 cat <<EOF
   export OIDC_ISSUER_URL="$ISSUER"
   export OIDC_CLIENT_ID="$CLIENT"
-  export ADMIN_API_URL="http://$ADMIN_ALB"
+  export ADMIN_API_URL="$ADMIN_URL"
   export ANTHROPIC_BASE_URL="$BASE_URL"
 EOF
 
 hdr "Before you send them"
-if [ "$TARGET" = "cowork" ]; then
+if [ "$GW_HTTPS" = 1 ]; then
+  ok "US-06: https://$GW_HOST (ALB + ACM) — no CloudFront in the path"
+  note "Both clients now reach the gateway ALB directly, so the employee's IP"
+  note "must be in the GATEWAY allow-list as well as admin-api's:"
+  note "    bash 05-allow-client-ip.sh --add <their-public-IP>/32 --targets gateway,admin-api --apply"
+elif [ "$TARGET" = "cowork" ]; then
   if [ "$CF_STATUS" = "Deployed" ]; then
     ok "CloudFront $CF_DOMAIN is Deployed"
   else

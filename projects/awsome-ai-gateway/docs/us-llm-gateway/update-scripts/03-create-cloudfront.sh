@@ -8,6 +8,8 @@
 #       listens on HTTP only and the account owns no ACM certificate or public
 #       hosted zone, CloudFront is the only way to get https without first
 #       acquiring a domain (*.cloudfront.net certificate comes free).
+#       NOT needed once US-06 (ops/8-H-alb-https.md: custom domain + ACM on the
+#       ALB) is applied — the ALB then serves https itself.
 # UNDO: 99-rollback.sh — disable then delete the distribution, revert the
 #       ingress annotation
 #

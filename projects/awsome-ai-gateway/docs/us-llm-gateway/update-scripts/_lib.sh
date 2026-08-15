@@ -134,6 +134,20 @@ $(kubectl get ingress -n "$NS" --no-headers -o custom-columns=NAME:.metadata.nam
   GW_ALB_DNS=$(kubectl get ingress "$ING_GATEWAY" -n "$NS" \
     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
 
+  # US-06 (custom domain + ACM on the ALB, ops/8-H-alb-https.md): the gateway
+  # Ingress then carries a host rule and a certificate-arn annotation. When both
+  # are present the public entry point is https://<host>, not the raw ALB DNS,
+  # and no CloudFront is needed — every script that hands out or checks a URL
+  # must branch on GW_HTTPS rather than assume the http/CloudFront layout.
+  GW_HOST=$(kubectl get ingress "$ING_GATEWAY" -n "$NS" \
+    -o jsonpath='{.spec.rules[0].host}' 2>/dev/null)
+  GW_CERT_ARN=$(kubectl get ingress "$ING_GATEWAY" -n "$NS" \
+    -o jsonpath='{.metadata.annotations.alb\.ingress\.kubernetes\.io/certificate-arn}' 2>/dev/null)
+  ADMIN_API_HOST=$(kubectl get ingress "$ING_ADMIN_API" -n "$NS" \
+    -o jsonpath='{.spec.rules[0].host}' 2>/dev/null)
+  GW_HTTPS=0
+  [ -n "$GW_HOST" ] && [ -n "$GW_CERT_ARN" ] && GW_HTTPS=1
+
   GW_ALB_NAME=""; GW_SG=""
   if [ -n "$GW_ALB_DNS" ]; then
     local lb
@@ -185,6 +199,8 @@ show_resolved() {
   printf '  ingresses        %s, %s, %s\n' "$ING_GATEWAY" "$ING_ADMIN_API" "$ING_ADMIN_UI"
   printf '  gateway ALB      %s\n' "${GW_ALB_NAME:-<not found>}"
   printf '  gateway ALB DNS  %s\n' "${GW_ALB_DNS:-<not found>}"
+  printf '  gateway host     %s\n' "${GW_HOST:-<none — 방식 A, http/CloudFront>}"
+  [ "$GW_HTTPS" = 1 ] && printf '  gateway https    yes (cert %s)\n' "${GW_CERT_ARN##*/}"
   printf '  gateway ALB SG   %s\n' "${GW_SG:-<not found>}"
   printf '  CF prefix list   %s\n' "${CF_PREFIX_LIST:-<not found>}"
   printf '  db host          %s\n' "$DB_HOST"
