@@ -26,7 +26,7 @@
 set -uo pipefail
 source "$(dirname "$(readlink -f "$0")")/_lib.sh"
 
-DOMAIN="${HTTPS_DOMAIN:-}"; CERT_ARN="${HTTPS_CERT_ARN:-}"
+DOMAIN="${HTTPS_DOMAIN:-${DOMAIN:-}}"; CERT_ARN="${HTTPS_CERT_ARN:-${CERT_ARN:-}}"   # config.env, or exported by https-env.sh
 GW_H=""; UI_H=""; API_H=""
 APPLY=0; DROP_CF=0; REVERT=0
 while [ $# -gt 0 ]; do
