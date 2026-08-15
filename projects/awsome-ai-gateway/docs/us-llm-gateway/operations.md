@@ -21,6 +21,7 @@
 | §8-S | 배포 후 보안 하드닝 (직원 오픈 전 필수) | 직원 오픈 전 1회 | [ops/8-S-hardening.md](ops/8-S-hardening.md) |
 | §8-N | Bedrock 을 NAT 대신 VPC Endpoint(PrivateLink)로 | 기존 VPC 1회 (US-04) | [ops/8-N-vpc-endpoint.md](ops/8-N-vpc-endpoint.md) |
 | §8-E | EKS 버전 업그레이드 (1.31 → 1.34) | EKS 버전 올릴 때 (US-05) | [ops/8-E-eks-upgrade.md](ops/8-E-eks-upgrade.md) |
+| §8-H | ALB HTTPS — 커스텀 도메인 + ACM (방식 A → B) | 도메인이 있을 때 (US-06, 선택) | [ops/8-H-alb-https.md](ops/8-H-alb-https.md) |
 | §8-T | teardown (과금 중단 · 초기화) | 과금 중단 | [아래](#8-t-teardown-과금-중단--초기화) |
 | §8-Z | 토큰 TTL 조절 | 토큰 수명 바꿀 때 | [ops/8-Z-token-ttl.md](ops/8-Z-token-ttl.md) |
 | §8-P | dev → prod 승격 (검증 후 운영 전환) | prod 승격 | [아래](#8-p-dev--prod-승격-검증-후-운영-전환) |
@@ -67,6 +68,13 @@
 
 `US-05` 필수 — EKS 1.31 → 1.34 를 **1단계씩 3회 apply**, 단계마다 전 네임스페이스 파드 재시작. plan 에 클러스터 1 + add-on 3 외 diff 가 있으면 중단.
 → **[ops/8-E-eks-upgrade.md](ops/8-E-eks-upgrade.md)**
+
+---
+
+### 8-H. ALB HTTPS — 커스텀 도메인 + ACM 인증서 (방식 A → B)
+
+`US-06` 선택 — 도메인 + ACM 으로 ALB 3개를 https:443 으로. `https-env.sh` 로 값 추출 → `10-switch-https.sh` → `install-eks.sh` → `11-route53-cname.sh`. CloudFront(US-02 `03`)는 폐기. **작성 중(1~3단계 검증됨, 4~6·R 예정).**
+→ **[ops/8-H-alb-https.md](ops/8-H-alb-https.md)**
 
 ---
 

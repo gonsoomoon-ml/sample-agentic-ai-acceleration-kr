@@ -20,7 +20,7 @@
 set -uo pipefail
 source "$(dirname "$(readlink -f "$0")")/_lib.sh"
 
-DOMAIN="${HTTPS_DOMAIN:-}"; ZONE_ID=""; APPLY=0; ACTION="UPSERT"
+DOMAIN="${HTTPS_DOMAIN:-${DOMAIN:-}}"; ZONE_ID="${ZONE_ID:-}"; APPLY=0; ACTION="UPSERT"   # config.env, or exported by https-env.sh
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain)  DOMAIN="$2"; shift 2 ;;
