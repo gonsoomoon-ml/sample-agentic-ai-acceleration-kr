@@ -73,7 +73,7 @@
 
 ### 8-H. ALB HTTPS — 커스텀 도메인 + ACM 인증서 (방식 A → B)
 
-`US-06` 선택 — 도메인 + ACM 으로 ALB 3개를 https:443 으로. `https-env.sh` 로 값 추출 → `10-switch-https.sh` → `install-eks.sh` → `11-route53-cname.sh`. CloudFront(US-02 `03`)는 폐기. **작성 중(1~3단계 검증됨, 4~6·R 예정).**
+`US-06` 선택 — 도메인 + ACM 으로 ALB 3개를 https:443 으로. `https-env.sh` 로 값 추출 → `10-switch-https.sh` → `install-eks.sh` → `11-route53-cname.sh`. CloudFront(US-02 `03`)는 폐기. **작성 중(0~2단계 검증 진행, 3~5·R 예정).**
 → **[ops/8-H-alb-https.md](ops/8-H-alb-https.md)**
 
 ---
