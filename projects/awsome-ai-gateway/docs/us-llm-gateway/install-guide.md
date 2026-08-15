@@ -643,7 +643,7 @@ kubectl get externalsecret -n llm-gateway
 >
 > 🔑 **여기서 만드는 이메일 + 비번(TEMP_PW)이 나중에 로그인 계정이다** — §5-3 admin-ui(`/models`) 로그인, §6 클라이언트 `gateway-cli login` 팝업에 이걸 쓴다. **AWS 콘솔/CLI 계정과는 별개**(그건 인프라 구축용 IAM, 이건 게이트웨이용 Cognito). 첫 로그인 때 임시비번을 새 비번으로 바꾸라고 강제된다.
 >
-> 여기서는 **관리자 1명**만 만든다. 직원 계정 추가는 [operations.md 8-Y 직원 온보딩](operations.md#8-y-직원-온보딩--cognito-사용자-추가).
+> 여기서는 **관리자 1명**만 만든다. 직원 계정 추가는 [operations.md 8-Y 직원 온보딩](ops/8-Y-onboarding.md).
 
 ▶ **실행** · 배포 EC2
 
@@ -1108,7 +1108,7 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 
 > 🔴 **통째로 덮어쓴다** — 스크립트는 `inbound-cidrs` 를 **입력값으로 전부 교체**한다(EC2 IP + 이번에 넣은 것만). 기존 IP 를 **유지하며 추가**하려면 프롬프트에 **원하는 전체를 콤마로** 넣는다.
 > ⚠️ `aws ec2 authorize-security-group-ingress` 로 **손으로 SG 에 넣지 말 것** — ALB Controller 가 annotation 에서 되돌린다. **반드시 values 경유.**
-> 대역 확보(네트워크팀 질문)·split-routing 주의 등 배포 후 하드닝 맥락은 [operations.md §8-S](operations.md#8-s-배포-후-보안-하드닝-직원-오픈-전-필수).
+> 대역 확보(네트워크팀 질문)·split-routing 주의 등 배포 후 하드닝 맥락은 [operations.md §8-S](ops/8-S-hardening.md).
 
 
 ### 6-0. Linux (배포 EC2) — 관리자가 먼저 익힌다

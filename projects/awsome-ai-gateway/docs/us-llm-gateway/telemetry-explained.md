@@ -103,7 +103,7 @@ OpenTelemetry(OTEL)는 프로그램이 **"내가 뭘 했는지"를 지표·추�
 
 **③ 인증이 없다** — 그대로 열면 **누구나 가짜 지표를 쏠 수 있다.** `setup` 에 `--otel-auth-token` 파라미터가 있지만(`managed.py:123` → `OTEL_EXPORTER_OTLP_HEADERS: Authorization=Bearer …`) onboard 스크립트가 그걸 **안 넘긴다.** 토큰 발급·주입 체계를 따로 세워야 한다.
 
-**④ IP 제한** — 직원 PC IP 가 그 리스너의 허용 대역 안이어야 한다([operations.md §8-S](operations.md#8-s-배포-후-보안-하드닝-직원-오픈-전-필수)과 같은 문제).
+**④ IP 제한** — 직원 PC IP 가 그 리스너의 허용 대역 안이어야 한다([operations.md §8-S](ops/8-S-hardening.md)과 같은 문제).
 
 즉 "실제로 켠다" = **HTTPS 도입(§0 뒤집기) + collector 외부노출 + gRPC/HTTPS ALB + 인증 토큰 + IP 허용 + 프라이버시 고지.** 포트 하나가 아니라 **인프라 결정**이다.
 

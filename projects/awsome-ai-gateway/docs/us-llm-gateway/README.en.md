@@ -63,16 +63,16 @@ It covers the one-time installation and every update that follows.
 
 - **[2026/08]** `US-05` **EKS 1.34 upgrade** — **Required** (support expiry · cost) · already included in new installs
 Raises the cluster's Kubernetes from 1.31 to 1.34. Standard support for 1.31 has ended, so **extended-support surcharges (~$365/month per cluster)** are already accruing, and after final end of support (2026-11-26) AWS force-upgrades the cluster automatically. Minor versions can only move one step at a time — three applies (1.32→1.33→1.34), following the procedure document with verification at each step rather than a script.
-→ [operations.md §8-E](operations.md#8-e-eks-버전-업그레이드-131--134) (Korean)
+→ [operations.md §8-E](ops/8-E-eks-upgrade.md) (Korean)
 - **[2026/08]** `US-04` **Route Bedrock · STS over VPC Endpoints instead of NAT** — **Required** (compliance) · already included in new installs
 Bedrock and STS calls stay on PrivateLink inside the VPC instead of traversing the public internet. Existing deployments have no endpoints and therefore still go through NAT, so they must apply this.
-→ [operations.md §8-N](operations.md#8-n-bedrock-을-nat-대신-vpc-endpointprivatelink로) (Korean)
+→ [operations.md §8-N](ops/8-N-vpc-endpoint.md) (Korean)
 - **[2026/08]** `US-03` **Admin UI Korean/English toggle** — **Required** (English support) · already included in new installs
 The entire admin console was converted to i18n, so the KO/EN toggle in the header actually translates the screens. Existing deployments must rebuild the admin-ui image.
-→ [operations.md §8-U](operations.md#8-u-업데이트-코드-변경-반영) path **A (service code)** — `rebuild-image.sh admin-ui <env>` → `install-eks.sh <env>` (prerequisite: `06-persist-annotations.sh` dry-run) (Korean)
+→ [operations.md §8-U](ops/8-U-update.md) path **A (service code)** — `rebuild-image.sh admin-ui <env>` → `install-eks.sh <env>` (prerequisite: `06-persist-annotations.sh` dry-run) (Korean)
 - **[2026/08]** `US-02` **Cowork connectivity + Opus 5 registration** — **each part has a different audience** · 🔴 **applies to new installs too**
   · **Required if you use Cowork** — `01` routing fix, `03` HTTPS (CloudFront). The install migration seeds the Cowork routing row with **an account that does not exist**, so every Cowork request fails with 502 until it is corrected.
-  · **Required if you want Opus 5** — `02` model registration. **Unrelated to Cowork; Claude Code needs it too** (the seed stops at Opus 4.8). ⚠️ Omitting the prices makes cost record as `$0` and silently bypasses budgets. Full procedure and pitfalls: [operations.md §8-M](operations.md#8-m-모델-추가와-교체) (Korean). Despite its name it is the **general-purpose script for registering any model** (`MODEL_ALIAS` / `MODEL_PROVIDER_ID` in `config.env`).
+  · **Required if you want Opus 5** — `02` model registration. **Unrelated to Cowork; Claude Code needs it too** (the seed stops at Opus 4.8). ⚠️ Omitting the prices makes cost record as `$0` and silently bypasses budgets. Full procedure and pitfalls: [operations.md §8-M](ops/8-M-models.md) (Korean). Despite its name it is the **general-purpose script for registering any model** (`MODEL_ALIAS` / `MODEL_PROVIDER_ID` in `config.env`).
   · If you only use Claude Code and Opus 4.8 · Sonnet 5 · Haiku 4.5 are enough, you can **skip US-02 entirely.**
 → [update-scripts execution order](update-scripts/README.md#실행-순서) (Korean)
 - **[2026/07]** `US-01` **Initial installation** — baseline

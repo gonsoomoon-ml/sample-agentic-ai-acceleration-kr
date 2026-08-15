@@ -65,7 +65,7 @@
 **E. 클라이언트·오픈 — ⏱️ ~35분**
 
 1. **직원 PC 가 게이트웨이 통해 쓰게 설정** — Claude Code 배포 … [§6](install-guide.md#6-클라이언트-설치--claude-code-awsome-gateway-cli) (운영자는 §6-0 까지, **직원 PC 는 [client-install.md](client-install.md)**)
-2. **IP 제한·로그인 우회 차단 후 재배포** — 보안 하드닝(직원 오픈 전 필수) … [operations.md §8-S](operations.md#8-s-배포-후-보안-하드닝-직원-오픈-전-필수)
+2. **IP 제한·로그인 우회 차단 후 재배포** — 보안 하드닝(직원 오픈 전 필수) … [operations.md §8-S](ops/8-S-hardening.md)
 
 > ⏱️ 대기의 대부분은 **9번**(terraform apply)과 **11번**(이미지 빌드)이다.
 

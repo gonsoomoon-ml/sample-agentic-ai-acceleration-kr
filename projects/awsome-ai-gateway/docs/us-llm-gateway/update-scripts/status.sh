@@ -243,14 +243,14 @@ probe_us05() {
 
   # Data plane: on Fargate a pod IS a node, so a pod not restarted since the
   # upgrade still runs the old kubelet. The oldest node minor tells whether
-  # the restart step of operations.md §8-E was completed.
+  # the restart step of ops/8-E-eks-upgrade.md was completed.
   oldest=$(kubectl get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.kubeletVersion}{"\n"}{end}' 2>/dev/null \
            | sed -n 's/^v1\.\([0-9]\{1,\}\)\..*/\1/p' | sort -n | head -1)
 
   if [ "$minor" -lt 34 ]; then
     row bad "US-05" "EKS 1.34 업그레이드 — 미적용 (필수)"
     detail "컨트롤 플레인 1.$minor (목표 1.34) — 표준 지원 만료 시 연장 요금이 붙습니다"
-    TODO+=("(수동) docs/us-llm-gateway/operations.md §8-E — EKS 1.$minor → 1.34 를 1단계씩")
+    TODO+=("(수동) docs/us-llm-gateway/ops/8-E-eks-upgrade.md — EKS 1.$minor → 1.34 를 1단계씩")
   elif [ -n "$oldest" ] && [ "$oldest" -lt "$minor" ]; then
     row warn "US-05" "EKS 1.34 업그레이드 — 일부 적용"
     detail "컨트롤 플레인 1.$minor 이지만 가장 오래된 노드가 1.$oldest — §8-E 의 파드 재시작 누락"
