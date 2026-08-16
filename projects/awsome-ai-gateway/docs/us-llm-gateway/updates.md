@@ -5,14 +5,14 @@
 README 의 「최신 업데이트」는 최근 5개만 보여준다 — 여기가 전체 이력이다. `US-NN` 은 리베이스에 영향받지 않는 고정 ID. 적용 상태는 배포 EC2 에서 `bash status.sh`.
 등급 — **필수**: 반드시 · **권장**: 안 하면 그 기능 동작 안 함 · **선택**: 요구 있을 때
 
-| ID | 무엇 | 등급 | 신규 설치 | 기존 배포가 할 일 | 문서 |
-|---|---|---|---|---|---|
-| `US-06` 2026/08 | ALB HTTPS — 커스텀 도메인 + ACM 인증서 | 선택 · **운영이면 강력 권장** | §3-6 시점에 같은 절차 | 도메인 확보 → 전환 → 클라이언트 URL 2개 교체 (약 30분) | [ops/8-H](ops/8-H-alb-https.md) |
-| `US-05` 2026/08 | EKS 1.31 → 1.34 | 필수(지원 만료·비용) | 포함 | 1단계씩 3회 apply + 전 ns 파드 재시작 | [ops/8-E](ops/8-E-eks-upgrade.md) |
-| `US-04` 2026/08 | Bedrock·STS 를 NAT 대신 VPC Endpoint 로 | 필수(컴플라이언스) | 포함 | 엔드포인트 apply → gateway-proxy 재시작 | [ops/8-N](ops/8-N-vpc-endpoint.md) |
-| `US-03` 2026/08 | Admin UI 한/영 토글 | 필수(영문 지원) | 포함 | admin-ui 이미지 재빌드 → install-eks | [ops/8-U](ops/8-U-update.md) |
-| `US-02` 2026/08 | Cowork 연결 + Opus 5 등록 | 항목별 — Cowork 쓰면 `01`·`03`, Opus 5 쓰면 `02` 필수 | 🔴 **신규도 해당** | 01 라우팅 · 02 모델(단가 필수) · 03 CloudFront(도메인 없을 때만) | [update-scripts](update-scripts/README.md#실행-순서) |
-| `US-01` 2026/07 | 최초 설치 (기준선) | — | — | — | [install-overview](install-overview.md) |
+| ID (문서) | 무엇 | 등급 · 신규 설치 | 기존 배포가 할 일 |
+|---|---|---|---|
+| [**US-06**](ops/8-H-alb-https.md) 2026/08 | ALB HTTPS — 커스텀 도메인 + ACM 인증서 | 선택 · **운영이면 강력 권장** · 신규는 §3-6 시점에 같은 절차 | 도메인 확보 → 전환 → 클라이언트 URL 2개 교체 (약 30분) |
+| [**US-05**](ops/8-E-eks-upgrade.md) 2026/08 | EKS 1.31 → 1.34 | 필수(지원 만료·비용) · 신규 포함 | 1단계씩 3회 apply + 전 ns 파드 재시작 |
+| [**US-04**](ops/8-N-vpc-endpoint.md) 2026/08 | Bedrock·STS 를 NAT 대신 VPC Endpoint 로 | 필수(컴플라이언스) · 신규 포함 | 엔드포인트 apply → gateway-proxy 재시작 |
+| [**US-03**](ops/8-U-update.md) 2026/08 | Admin UI 한/영 토글 | 필수(영문 지원) · 신규 포함 | admin-ui 이미지 재빌드 → install-eks |
+| [**US-02**](update-scripts/README.md#실행-순서) 2026/08 | Cowork 연결 + Opus 5 등록 | 항목별 — Cowork 쓰면 `01`·`03`, Opus 5 쓰면 `02` 필수 · 🔴 **신규도 해당** | 01 라우팅 · 02 모델(단가 필수) · 03 CloudFront(도메인 없을 때만) |
+| [**US-01**](install-overview.md) 2026/07 | 최초 설치 (기준선) | — | — |
 
 ## 왜 · 함정 (항목별)
 
