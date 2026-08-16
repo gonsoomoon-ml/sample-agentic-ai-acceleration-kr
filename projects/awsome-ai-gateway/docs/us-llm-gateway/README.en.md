@@ -1,183 +1,84 @@
-# US AWSome AI Gateway
+# AWSome AI Gateway — Global Edition
 
-**An LLM gateway that connects in-house Claude Code · Cowork to Amazon Bedrock.**
-It covers the one-time installation and every update that follows.
-
+**An LLM gateway that connects in-house Claude Code · Cowork to Amazon Bedrock** — the one-time installation and every update that follows, in one place.
+What sets this edition apart: a region outside Korea · direct to Bedrock (not Mantle) · public https entry · English UI. The "US" in update IDs `US-NN` is the **track name** from the first deployment region (us-west-2) — numbering continues even if you change region.
 [한국어](README.md) · **English**
 
-> **Synced with the Korean version through `US-05` (2026-08-14).**
-> If [README.md](README.md) lists a `US-NN` that is missing here, this page is out of date.
+> Synced with the Korean version through `US-06` (2026-08-16). **The linked procedure documents are Korean-only** (install guide, runbooks, update scripts) — this page tells you *what changed* and *whether this deployment has it*; the runbooks are for the operator who performs the change.
 
-> **The linked procedure documents are Korean-only** (install guide, operations runbook,
-> update scripts). This page tells you *what changed* and *whether this deployment has it*;
-> the runbooks are for the operator who performs the change.
-
-- 🔴 **Take the code from the fork's `us/deploy-fixes` branch**
-  https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway
-  <br>A `forked from aws-samples/…` banner at the top of that page is expected — confirm you are in the right place by the `gonsoomoon-ml` owner in the URL and the `us/deploy-fixes` branch.
-- **upstream** — [`aws-samples/sample-agentic-ai-acceleration-kr`](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr/tree/main/projects/awsome-ai-gateway). US AWSome AI Gateway is the US-specific customization of that original.
-- **Region** — this deployment runs on `us-west-2` (infrastructure). Inference uses **US Geo**, so it is distributed across us-east-1/2 · us-west-2.
-  - ⚠️ **Changing the region is not a one-parameter edit** — `aws_region`, `azs` and `bedrock_model_arns` (region-scoped ARNs) in `terraform.tfvars` must change together, and `us-west-2` must be substituted throughout the guides (51 occurrences in install-guide alone).
-  - ⚠️ **Deploying outside the US (e.g. Europe) requires configuration changes** — switch the inference profile to `eu.anthropic.`*, adjust model IDs and IAM resource ARNs accordingly, and confirm model availability in that region first. The server-side web search connector is **us-east-1 only**, so it becomes a cross-region call.
-- **Inference backend** — `bedrock-runtime` with US Geo inference profiles (`us.anthropic.`*). **Not Bedrock Mantle.**
-- **Clients** — Claude Code (Mac · Windows · Linux) · Cowork (after `US-02`)
-- **Models** — Opus 4.8 · Sonnet 5 · Haiku 4.5 (+ **Opus 5** via `US-02`)
-
-> The fork is **rebased** onto upstream, so commit hashes change — that is why this document counts versions by `US-NN` rather than by hash. For the full agreed scope, see [install-overview.md §0](install-overview.md#0-이번-배포의-범위-확정) (Korean).
-
----
-
-
-
-## 1. Entry points by task
-
-
-| Task                  | What it involves                                                        | Documents                                                                                                   |
-| --------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **New installation**  | Provision infrastructure → deploy apps → routing · web search → connect clients | [install-overview.md](install-overview.md) → [install-guide.md](install-guide.md)                       |
-| **Ongoing updates**   | Check what is applied, then apply only what is missing                   | [2. Latest updates](#2-latest-updates) — run `status.sh` first, then apply only the gaps                     |
-| **Client rollout**    | Install Claude Code · Cowork on employee machines                        | [client-install.md](client-install.md) · [cowork/cowork-client-install-windows.md](cowork/cowork-client-install-windows.md) (manual) · [cowork/cowork-client-install-windows-auto.md](cowork/cowork-client-install-windows-auto.md) (installer) |
-
-
-> ⚠️ **A new installation still needs `US-02`.** The install migration seeds the Cowork routing row with an account that does not exist, so Cowork will not work even after `install-guide.md` completes — see [2. Latest updates](#2-latest-updates).
-
-**New-install scope — what you use decides what you install:**
-
-| Your setup | What to install |
+| What you want to do | Go to |
 |---|---|
-| Claude Code only (seeded models Opus 4.8 · Sonnet 5 · Haiku 4.5 are enough) | `US-01` only |
-| Claude Code only + **Opus 5** | `US-01` + **only** step `02` (model registration) of `US-02` |
-| Claude Code + **Cowork** | `US-01` + **all of** `US-02` (`01` routing · `02` model · `03` CloudFront) |
+| **Install for the first time** | [install-overview.md](install-overview.md) (scope · flow, 10 min) → [install-guide.md](install-guide.md) (run §1–§6-0) |
+| **Already installed — see the update state** | `bash status.sh` on the deployment EC2 → apply only the missing rows of [2. Latest updates](#2-latest-updates) below |
+| **Set up employee PCs only** | [client-install.md](client-install.md) (Claude Code) · [cowork/…windows.md](cowork/cowork-client-install-windows.md) · [cowork/…windows-auto.md](cowork/cowork-client-install-windows-auto.md) (installer) · [cowork/…macos.md](cowork/cowork-client-install-macos.md) |
+
+- 🔴 **Take the code from the fork's `us/deploy-fixes` branch** — https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway (deployment · vendor fixes not yet in upstream [aws-samples](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr); the `forked from aws-samples/…` banner is expected)
+- The fork is **rebased** onto upstream, so commit hashes change → versions are counted by **`US-NN`**, not by hash.
+
+| Item | This deployment |
+|---|---|
+| Region | `us-west-2` (infrastructure) · inference on **US Geo** (`us.anthropic.*`, spread across us-east-1/2 · us-west-2) · changing region / deploying outside the US: [install-overview §0](install-overview.md#0-이번-배포의-범위-확정) (Korean) |
+| Inference backend | `bedrock-runtime` + US Geo inference profiles (not Mantle) |
+| Clients · models | Claude Code (Mac · Windows · Linux) · Cowork (after `US-02`) · Opus 4.8 · Sonnet 5 · Haiku 4.5 (+ Opus 5 = `US-02`) |
+| Entry point | http ALB + IP allow-list (mode A) by default. With a domain, an **https domain** (`US-06`, ACM) — **strongly recommended for production** |
 
 ---
 
+## 1. New-install scope — what you use · POC or production
 
+| Your setup | POC (no domain · http ALB + IP allow-list) | Production (domain · https) |
+|---|---|---|
+| Claude Code only (Opus 4.8 · Sonnet 5 · Haiku 4.5) | `US-01` | `US-01` + `US-06` |
+| Claude Code only + **Opus 5** | `US-01` + step `02` of `US-02` (model registration) | `US-01` + step `02` of `US-02` + `US-06` |
+| Claude Code + **Cowork** | `US-01` + all of `US-02` (`01` routing · `02` model · `03` CloudFront) | `US-01` + steps `01`·`02` of `US-02` + `US-06` (`03` not needed) |
+
+> `US-06` (ALB HTTPS) = https via your domain + ACM — **strongly recommended for production**. Cowork requires https: CloudFront (`03`) without a domain, US-06 with one — never both. `US-03·04·05` are included in new installs (required).
+> ⚠️ **A new install still needs `US-02`** — the migration seeds the Cowork routing row with a non-existent account, so left as is every Cowork request is a 502. Claude Code only + seed models → US-02 can be skipped.
+
+---
 
 ## 2. Latest updates
 
-🔥 New updates are added at the top. `US-NN` is a fixed identifier that survives rebases.
+**Newest 5 only** — full history (US-01~) and the why · pitfalls per item: [updates.en.md](updates.en.md). `US-NN` is a fixed ID unaffected by rebases. **Check the current state first with [3. Applying updates](#3-applying-updates-on-the-deployment-ec2).**
 
-> ⚠️ **Before applying anything, check the current state first — see [3. Applying updates](#3-applying-updates).** That is how you avoid re-running something already applied or skipping a prerequisite.
+| ID | What | Grade | New installs | Existing deployments do | Doc |
+|---|---|---|---|---|---|
+| `US-06` 2026/08 | ALB HTTPS — custom domain + ACM | Optional · **strongly recommended for production** | same steps at §3-6 | get a domain → switch → update 2 client URLs (30 min) | [ops/8-H](ops/8-H-alb-https.md) |
+| `US-05` 2026/08 | EKS 1.31 → 1.34 | Required (support expiry · cost) | included | apply one minor at a time ×3 + restart all ns | [ops/8-E](ops/8-E-eks-upgrade.md) |
+| `US-04` 2026/08 | Bedrock · STS over VPC Endpoints | Required (compliance) | included | apply endpoints → restart gateway-proxy | [ops/8-N](ops/8-N-vpc-endpoint.md) |
+| `US-03` 2026/08 | Admin UI KO/EN toggle | Required (English support) | included | rebuild admin-ui image → install-eks | [ops/8-U](ops/8-U-update.md) |
+| `US-02` 2026/08 | Cowork connection + Opus 5 registration | Per item — Cowork needs `01`·`03`, Opus 5 needs `02` | 🔴 **new installs too** | 01 routing · 02 model (pricing required) · 03 CloudFront (only without a domain) | [update-scripts](update-scripts/README.md#실행-순서) |
 
-> Severity — **Required**: must be applied (compliance or essential capability) · **Recommended**: the feature does not work without it · **Optional**: only if requested
-
-- **[2026/08]** `US-05` **EKS 1.34 upgrade** — **Required** (support expiry · cost) · already included in new installs
-Raises the cluster's Kubernetes from 1.31 to 1.34. Standard support for 1.31 has ended, so **extended-support surcharges (~$365/month per cluster)** are already accruing, and after final end of support (2026-11-26) AWS force-upgrades the cluster automatically. Minor versions can only move one step at a time — three applies (1.32→1.33→1.34), following the procedure document with verification at each step rather than a script.
-→ [operations.md §8-E](ops/8-E-eks-upgrade.md) (Korean)
-- **[2026/08]** `US-04` **Route Bedrock · STS over VPC Endpoints instead of NAT** — **Required** (compliance) · already included in new installs
-Bedrock and STS calls stay on PrivateLink inside the VPC instead of traversing the public internet. Existing deployments have no endpoints and therefore still go through NAT, so they must apply this.
-→ [operations.md §8-N](ops/8-N-vpc-endpoint.md) (Korean)
-- **[2026/08]** `US-03` **Admin UI Korean/English toggle** — **Required** (English support) · already included in new installs
-The entire admin console was converted to i18n, so the KO/EN toggle in the header actually translates the screens. Existing deployments must rebuild the admin-ui image.
-→ [operations.md §8-U](ops/8-U-update.md) path **A (service code)** — `rebuild-image.sh admin-ui <env>` → `install-eks.sh <env>` (prerequisite: `06-persist-annotations.sh` dry-run) (Korean)
-- **[2026/08]** `US-02` **Cowork connectivity + Opus 5 registration** — **each part has a different audience** · 🔴 **applies to new installs too**
-  · **Required if you use Cowork** — `01` routing fix, `03` HTTPS (CloudFront). The install migration seeds the Cowork routing row with **an account that does not exist**, so every Cowork request fails with 502 until it is corrected.
-  · **Required if you want Opus 5** — `02` model registration. **Unrelated to Cowork; Claude Code needs it too** (the seed stops at Opus 4.8). ⚠️ Omitting the prices makes cost record as `$0` and silently bypasses budgets. Full procedure and pitfalls: [operations.md §8-M](ops/8-M-models.md) (Korean). Despite its name it is the **general-purpose script for registering any model** (`MODEL_ALIAS` / `MODEL_PROVIDER_ID` in `config.env`).
-  · If you only use Claude Code and Opus 4.8 · Sonnet 5 · Haiku 4.5 are enough, you can **skip US-02 entirely.**
-→ [update-scripts execution order](update-scripts/README.md#실행-순서) (Korean)
-- **[2026/07]** `US-01` **Initial installation** — baseline
-Stands up the gateway on a single account, `us-west-2`, Claude Code, US Geo inference.
-→ [install-overview.md](install-overview.md) (Korean)
+Earlier (`US-01` initial install) and the why · pitfalls per item → [updates.en.md](updates.en.md)
 
 ---
 
+## 3. Applying updates (on the deployment EC2)
 
-
-## 3. Applying updates
-
-Bring the repository up to date, then find out which of the updates above this deployment already has.
-
-> **Every command below runs on the "deployment EC2".** That is the work host created during the `US-01` initial installation, so you already have it ([install-guide.md §1-2](install-guide.md#1-2-배포-작업용-ec2-deployment-ec2-us-west-2), Korean). It will not work from a laptop — the database sits in a private VPC and must be reached through that host, and the kubeconfig plus the gateway repository checkout (`~/awsome-ai-gateway`) exist only there.
-
-▶ **① Bring the repository up to date** · on the deployment EC2
-
-**First confirm you are pointed at the fork.** Upstream (`aws-samples`) has **no** `us/deploy-fixes` branch, so a wrong remote makes the update below fail with "unknown revision".
+**① Bring the repository up to date** — a rebased branch, so not `git pull` but the block below. `values-*.yaml` exists only on this EC2, so the backup · restore is the point (confirm `values restored OK`).
 
 ```bash
-cd ~/awsome-ai-gateway && git remote -v
-```
-
-`origin` must be **`gonsoomoon-ml/sample-agentic-ai-acceleration-kr`**. If it shows `aws-samples`, you cloned upstream — repoint it.
-
-```bash
-git remote set-url origin https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr.git
-```
-
-This branch is **rebased** onto upstream, so `git pull` does not work — the histories diverge and `--ff-only` fails. Match the remote exactly, but back up the file that exists **only on this host** first.
-
-```bash
-cd ~/awsome-ai-gateway
+cd ~/awsome-ai-gateway && git remote -v            # origin must be gonsoomoon-ml/… (if aws-samples: set-url)
 V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
-cp $V ~/values.bak
-git fetch origin && git reset --hard origin/us/deploy-fixes
-cp ~/values.bak $V
-```
-
-Verify afterwards — **forgetting the final `cp` is the one real risk in this procedure.**
-
-```bash
-V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cp $V ~/values.bak && git fetch origin && git reset --hard origin/us/deploy-fixes && cp ~/values.bak $V
 cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
 ```
+
+**② Check the state** — queries the live system (DB rows · endpoints · image · ALB), changes nothing, 1–2 min (throwaway psql pod). Output is Korean; markers `OK` applied · `!!` partial · `XX` missing · `--` optional.
+
 ```bash
-git status --short && git log --oneline -1
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && bash status.sh     # raw evidence: --verbose
 ```
-
-`values restored OK` plus a HEAD matching `origin/us/deploy-fixes` means you are done. On `RESTORE FAILED`, run `cp ~/values.bak $V` again.
-
-ℹ️ `<RDS_PROXY_ENDPOINT>` and `<ELASTICACHE_ENDPOINT>` **remaining in this file is correct** — `install-eks.sh` reads the real values from `terraform output` and injects them with `--set` at helm time. That is why you must never run `helm upgrade -f values` directly.
-
-⚠️ `values-*.yaml` holds real account values (registry, region, `inbound-cidrs`, secret keys) and cannot be committed, so it lives on **this one EC2 instance only**. Losing it makes the next `helm upgrade` go out with placeholders and **drops the ALB IP allow-list entirely.**
-ℹ️ `terraform.tfvars`, `.terraform/`, `config.env` and `snapshots/` are gitignored, so `reset --hard` does not remove them. Deleting the directory and re-cloning, on the other hand, does **not** bring them back.
-ℹ️ `.terraform.lock.hcl` is reset too, but `terraform init` repopulates it, so that is harmless.
-
-▶ **② Check what is applied** · 1–2 min, changes nothing
-
-`status.sh` determines whether each update in [2. Latest updates](#2-latest-updates) is present in this deployment by **querying the live system**. It judges from actual deployed state rather than code version — DB routing rows, the CloudFront distribution, VPC endpoints, and the running container image.
-
-The script prints Korean. Status markers are `OK` (applied), `!!` (partially applied) and `XX` (not applied).
-
-Sample output — a deployment where only some updates are applied:
-
 ```
- US AWSome AI Gateway — 업데이트 적용 상태
- ────────────────────────────────────────────────────────────
- 계정 <ACCOUNT_ID> / us-west-2 · release llm-gateway · ns llm-gateway
-
    OK   US-01  최초 설치 (기준선)
-   !!   US-02  Cowork 연결 + Opus 5 등록 — 일부 적용
-        routing=invoke · claude-opus-5 ACTIVE · CloudFront 없음
-   XX   US-03  Admin UI 한·영 토글 — 미적용
-        이미지 tag 1.0.12 (푸시 2026-08-04 03:11 UTC) — i18n 반입 이전 빌드
+   !!   US-02  Cowork 연결 + Opus 5 등록 — 일부 적용        routing=invoke · claude-opus-5 ACTIVE · CloudFront 없음
    XX   US-04  Bedrock·STS VPC Endpoint — 미적용 (필수)
-        엔드포인트 없음 → Bedrock·STS 호출이 NAT 경유
-   XX   US-05  EKS 1.34 업그레이드 — 미적용 (필수)
-        컨트롤 플레인 1.31 (목표 1.34) — 표준 지원 만료 시 연장 요금이 붙습니다
-
- 다음 작업 (update-scripts 디렉터리에서 실행)
- ────────────────────────────────────────────────────────────
-   bash 03-create-cloudfront.sh        # Cowork 를 사용하는 경우에만 필요
-   bash 09-update-admin-ui.sh          # 선행: bash 06-persist-annotations.sh
-   (수동) docs/us-llm-gateway/operations.md §8-E — EKS 1.31 → 1.34 를 1단계씩
+   --   US-06  ALB HTTPS (커스텀 도메인) — 미적용 (선택 · 운영이면 권장)
+ 다음 작업: bash 03-create-cloudfront.sh … / (수동) ops/8-N-vpc-endpoint.md …
 ```
 
-**Conditions and caveats**
-
-- **Runs on the deployment EC2 only.** The database sits in a private VPC and must be reached through that host, and the kubeconfig for cluster access lives there.
-- **It does not change configuration.** It is not read-only in the strictest sense, though: to query the database it creates a throwaway psql pod in the cluster and deletes it afterwards. Fargate scheduling makes this take **1–2 minutes** (measured: 1m20s–1m30s).
-- For the raw evidence behind each verdict, run `bash status.sh --verbose`.
+**③ Only the missing rows**, via the doc column of the table in §2. Detailed procedure · pitfalls · rollback: [ops/8-U-update.md](ops/8-U-update.md).
 
 ---
 
-
-
-## 4. System overview
-
-The gateway authenticates Claude Code · Cowork requests, applies per-team and per-user budgets and rate limits, and forwards them to Amazon Bedrock. The request path (data plane) and the management functions (control plane) run as separate services, and usage and cost are recorded at request time.
-
-- **Authentication** — Cognito OIDC login issues a virtual key (VK); every request is validated against it
-- **Control** — budgets and rate limits are checked atomically per request; requests over the limit are blocked or downgraded to a cheaper model
-- **Inference** — forwarded through `bedrock-runtime` US Geo inference profiles (distributed across us-east-1/2 · us-west-2)
-- **Accounting** — per-request tokens and cost are recorded and can be reviewed per team and per user in the Admin UI
-
-For the architecture diagram and request flows see [architecture.md](architecture.md); for the agreed scope of this deployment see [install-overview.md §0](install-overview.md#0-이번-배포의-범위-확정) (both Korean).
+What the system does (auth · budget · rate limit · inference · accounting) and the diagram → [architecture.md](architecture.md) "전체 그림" · requirements [prd.md](prd.md) · operations [operations.md](operations.md) (all Korean)

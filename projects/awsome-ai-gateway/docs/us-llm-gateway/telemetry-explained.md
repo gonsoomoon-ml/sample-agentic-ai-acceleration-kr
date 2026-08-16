@@ -39,21 +39,31 @@ OpenTelemetry(OTEL)는 프로그램이 **"내가 뭘 했는지"를 지표·추�
 ## 데이터가 어디로 흐르나 (의도된 그림)
 
 ```
-   직원 PC (Claude Code)
-        │  사용 지표·추적
-        │  OTLP/gRPC → <게이트웨이 호스트>:4317
-        ▼
-   ┌──────────────────────────────────────────┐
-   │  otel-collector   (클러스터 안)            │
-   │  0.0.0.0:4317 수신                         │
-   └──────────────────────────────────────────┘
-        │  prometheusremotewrite
-        ▼
-   Prometheus (kps-prometheus:9090)
-        │
-        ▼
-   Grafana 대시보드  ← 관리자가 사용 현황을 본다
+   ┌─ PC  (Claude Code) ──────────────────┐
+   │ OTLP/gRPC exporter                   │
+   └───────────────────┬──────────────────┘
+                       │ 사용 지표·추적 (usage metrics, traces)
+                       │ OTLP/gRPC -> <gateway host>:4317
+                       ▼
+   ┌─ otel-collector  (in cluster) ───────┐
+   │ listens 0.0.0.0:4317                 │
+   │ exporter: prometheusremotewrite      │
+   └───────────────────┬──────────────────┘
+                       │ remote write
+                       ▼
+   ┌─ Prometheus  (kps-prometheus:9090) ──┐
+   │ stores metrics                       │
+   └───────────────────┬──────────────────┘
+                       │
+                       ▼
+   ┌─ Grafana ────────────────────────────┐
+   │ dashboards                           │
+   └──────────────────────────────────────┘
+
+  Grafana: 관리자가 사용 현황을 본다 (대시보드 uid: gateway-ops, gateway-usage)
 ```
+
+> 이 그림은 생성기로 만든 것이다 — 손으로 고치지 말 것(폭 계산이 깨진다). 생성기는 운영자 내부 repo 에 있다.
 
 이게 **벤더가 의도한** 그림이다. 직원 지표가 회사 관측 스택(Prometheus·Grafana)으로 모인다.
 

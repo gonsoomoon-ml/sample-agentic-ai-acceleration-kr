@@ -283,18 +283,18 @@ probe_us06() {
     else
       row warn "US-06" "ALB HTTPS (커스텀 도메인) — 일부 적용"
       detail "Ingress 엔 host·cert 가 있는데 ALB 리스너가 $ports — helm 반영 지연 또는 SG 규칙 초과 (kubectl get events)"
-      TODO+=("kubectl get events -n $NS --sort-by=.lastTimestamp | tail   # ops/8-H-alb-https.md 3단계")
+      TODO+=("kubectl get events -n $NS --sort-by=.lastTimestamp | tail   # ops/8-H-alb-https.md 2단계")
     fi
     raw "host=$GW_HOST cert=$GW_CERT_ARN listeners=$ports"
   else
-    row skip "US-06" "ALB HTTPS (커스텀 도메인) — 미적용 (선택)"
+    row skip "US-06" "ALB HTTPS (커스텀 도메인) — 미적용 (선택 · 운영이면 권장)"
     detail "도메인이 있으면 ops/8-H-alb-https.md · 없으면 Cowork https 는 CloudFront(US-02 03)"
   fi
 }
 
 # ── Report ──────────────────────────────────────────────────────────────────
 echo
-printf '%s US AWSome AI Gateway — 업데이트 적용 상태%s\n' "$c_bold" "$c_reset"
+printf '%s AWSome AI Gateway 해외 배포판 — 업데이트 적용 상태%s\n' "$c_bold" "$c_reset"
 printf '%s\n' "$(printf '─%.0s' $(seq 1 68))"
 printf '  계정 %s / %s · release %s · ns %s\n\n' \
   "$AWS_ACCOUNT_ID" "$AWS_REGION" "$HELM_RELEASE" "$NS"

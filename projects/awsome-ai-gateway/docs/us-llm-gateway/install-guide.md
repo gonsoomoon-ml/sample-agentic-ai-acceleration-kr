@@ -568,6 +568,8 @@ done < /tmp/images.txt
 
 > **한 줄**: values 의 대부분은 §3-7 이 `terraform output` 을 읽어 자동 주입한다. 손댈 org 값은 스크립트 하나로 끝낸다.
 
+> ℹ️ **도메인이 있으면** 이 시점에 [ops/8-H-alb-https.md](ops/8-H-alb-https.md)(US-06, ALB HTTPS) 의 0단계(도메인·ACM)를 먼저 끝내고, §3-7 이후에 그 문서 2단계(전환)를 이어서 한다. 없으면 방식 A(http, IP 제한) 그대로 진행.
+
 **스크립트로 채운다** — 이메일·관리자 PC IP 만 묻고 나머지(pool id·리전·EC2 IP)는 자동:
 
 ▶ **실행** · 배포 EC2
