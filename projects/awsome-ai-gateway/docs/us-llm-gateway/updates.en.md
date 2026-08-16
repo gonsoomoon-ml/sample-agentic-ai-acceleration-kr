@@ -5,14 +5,14 @@
 README's "Latest updates" shows only the newest 5 — this is the full history. `US-NN` is a fixed ID unaffected by rebases. Check what is applied with `bash status.sh` on the deployer EC2.
 Grades — **Required** · **Recommended** (feature does not work without it) · **Optional** (on request)
 
-| ID | What | Grade | New installs | Existing deployments do | Doc |
-|---|---|---|---|---|---|
-| `US-06` 2026/08 | ALB HTTPS — custom domain + ACM certificate | Optional · **strongly recommended for production** | same steps at §3-6 | get a domain → switch → update 2 client URLs (~30 min) | [ops/8-H](ops/8-H-alb-https.md) |
-| `US-05` 2026/08 | EKS 1.31 → 1.34 | Required (support expiry · cost) | included | apply one minor at a time ×3 + restart pods in all namespaces | [ops/8-E](ops/8-E-eks-upgrade.md) |
-| `US-04` 2026/08 | Bedrock · STS over VPC Endpoints instead of NAT | Required (compliance) | included | apply endpoints → restart gateway-proxy | [ops/8-N](ops/8-N-vpc-endpoint.md) |
-| `US-03` 2026/08 | Admin UI KO/EN toggle | Required (English support) | included | rebuild admin-ui image → install-eks | [ops/8-U](ops/8-U-update.md) |
-| `US-02` 2026/08 | Cowork connection + Opus 5 registration | Per item — Cowork needs `01`·`03`, Opus 5 needs `02` | 🔴 **new installs too** | 01 routing · 02 model (pricing required) · 03 CloudFront (only without a domain) | [update-scripts](update-scripts/README.md#실행-순서) |
-| `US-01` 2026/07 | Initial install (baseline) | — | — | — | [install-overview](install-overview.md) |
+| ID (doc) | What | Grade · new installs | Existing deployments do |
+|---|---|---|---|
+| [**US-06**](ops/8-H-alb-https.md) 2026/08 | ALB HTTPS — custom domain + ACM certificate | Optional · **strongly recommended for production** · new installs: same steps at §3-6 | get a domain → switch → update 2 client URLs (~30 min) |
+| [**US-05**](ops/8-E-eks-upgrade.md) 2026/08 | EKS 1.31 → 1.34 | Required (support expiry · cost) · included in new installs | apply one minor at a time ×3 + restart pods in all namespaces |
+| [**US-04**](ops/8-N-vpc-endpoint.md) 2026/08 | Bedrock · STS over VPC Endpoints instead of NAT | Required (compliance) · included in new installs | apply endpoints → restart gateway-proxy |
+| [**US-03**](ops/8-U-update.md) 2026/08 | Admin UI KO/EN toggle | Required (English support) · included in new installs | rebuild admin-ui image → install-eks |
+| [**US-02**](update-scripts/README.md#실행-순서) 2026/08 | Cowork connection + Opus 5 registration | Per item — Cowork needs `01`·`03`, Opus 5 needs `02` · 🔴 **new installs too** | 01 routing · 02 model (pricing required) · 03 CloudFront (only without a domain) |
+| [**US-01**](install-overview.md) 2026/07 | Initial install (baseline) | — | — |
 
 ## Why · pitfalls (per item)
 
