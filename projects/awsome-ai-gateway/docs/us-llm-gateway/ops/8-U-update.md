@@ -76,7 +76,7 @@ git pull --ff-only
 
 `git stash list` 로 남아 있으니 필요하면 `git stash pop` 으로 되살린다. 확인 후 `git stash drop`.
 
-⚠️ **백업 없이** `git reset --hard` 를 쓰지 말 것 — `values-eks-fargate-*.yaml` 이 함께 날아가고, 그 파일은 어디에도 백업이 없다. 다만 이 브랜치는 리베이스되므로 위 `git pull --ff-only` 가 실패하는 경우가 있다. 그때는 **백업을 뜨고 `reset --hard` 로 원격에 맞추는** 정본 절차를 쓴다 — [README.md 「3. 적용하기」](../README.md#3-적용하기).
+⚠️ **백업 없이** `git reset --hard` 를 쓰지 말 것 — `values-eks-fargate-*.yaml` 이 함께 날아가고, 그 파일은 어디에도 백업이 없다. 다만 이 브랜치는 리베이스되므로 위 `git pull --ff-only` 가 실패하는 경우가 있다. 그때는 **백업을 뜨고 `reset --hard` 로 원격에 맞추는** 정본 절차를 쓴다 — [README.md 「3. 적용하기」](../README.md#3-적용하기-배포-ec2-에서).
 
 ---
 

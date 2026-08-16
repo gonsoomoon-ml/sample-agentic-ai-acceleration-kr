@@ -5,51 +5,55 @@
 ## 전체 그림
 
 ```text
-Claude Code on Amazon Bedrock — US LLM Gateway  (single AWS account · us-west-2)
-clients: Claude Code (Mac/Windows/Linux) · inference: US Geo (us.anthropic.*)
+Claude Code on Amazon Bedrock - US LLM Gateway  (single AWS account, us-west-2)
+clients: Claude Code / Cowork (Mac, Windows, Linux) - inference: US Geo (us.anthropic.*)
 
-                                  ┌─ AWS Cloud ────────────────────────────────────────────────────┐
-                                  │ ┌─ Region: us-west-2 ────────────────────────────────────────┐ │
-┌─ Office / Employee PC ───────┐  │ │                                                            │ │
-│ User — Claude Code           │  │ │   ┌─ Amazon Cognito ────────────────────────────┐          │ │
-│ (1) SSO login (OIDC) ────────┼──┼─┼──▶│ user pool · Hosted UI · OIDC issuer/token   │          │ │
-│   Mac · Windows · Linux      │  │ │   └─────────────────────────────────────────────┘          │ │
-│  gateway-cli + api-key-helper│  │ │                                                            │ │
-│                              │  │ │ ┌─ VPC · ALB = IP allowlist (inbound-cidrs) ─────────────┐ │ │
-│                              │  │ │ │ ┌───────────────────┐  ┌─ EKS on Fargate ────────────┐ │ │ │
-│ (2) get Virtual Key ─────────┼──┼─┼─┼▶│ ALB — Admin API   │─▶│ · admin-api                 │ │ │ │
-│                              │  │ │ │ └───────────────────┘  │     (OIDC verify · VK issue)│ │ │ │
-│                              │  │ │ │                        │ · scheduler                 │ │ │ │
-│                              │  │ │ │ ┌───────────────────┐  │                             │ │ │ │
-│ (3) call LLM · Bearer VK ────┼──┼─┼─┼▶│ ALB — Gateway     │─▶│ · gateway-proxy             │ │ │ │
-│                              │  │ │ │ └───────────────────┘  │     (auth·ratelimit·budget) │ │ │ │
-│                              │  │ │ │                        │ · cost-recorder-worker      │ │ │ │
-│ Admin — browser              │  │ │ │ ┌───────────────────┐  │ · notification-worker       │ │ │ │
-│ (A) admin console ───────────┼──┼─┼─┼▶│ ALB — Admin UI    │─▶│ · admin-ui                  │ │ │ │
-└──────────────────────────────┘  │ │ │ └───────────────────┘  │   + migration Job (install) │ │ │ │
-                                  │ │ │                        └─┬────┬───────┬───────────┬──┘ │ │ │
-                                  │ │ │           ┌──────────────┼────┘       │           │    │ │ │
-                                  │ │ │ ┌─────────▼───────────┐  │ ┌──────────▼────────┐  │    │ │ │
-                                  │ │ │ │ Aurora PostgreSQL   │  │ │ ElastiCache Valkey│  │    │ │ │
-                                  │ │ │ │ (via RDS Proxy)     │  │ │ VK·rate·budget Lua│  │    │ │ │
-                                  │ │ │ └─────────────────────┘  │ └───────────────────┘  │    │ │ │
-                                  │ │ └──────────────────────────┼────────────────────────┼────┘ │ │
-                                  │ │                            │   (via VPC endpoint)   │      │ │
-                                  │ │                            │  ┌─ Amazon Bedrock ────▼────┐ │ │
-                                  │ │                            │  │ bedrock-runtime us-west-2│ │ │
-                                  │ │                            │  │ US Geo: us.anthropic.*   │ │ │
-                                  │ │                            │  └────────────┬─────────────┘ │ │
-                                  │ └────────────────────────────┼───────────────┼───────────────┘ │
-                                  │             ┌─(4) web search ┘               │                 │
-                                  │             ▼                                ▼                 │
-                                  │ ┌─ Region: us-east-1 ───┐   ┌─ US Geo (us.anthropic.*) ──────┐ │
-                                  │ │ AgentCore Gateway     │   │ us-east-1·us-east-2·us-west-2  │ │
-                                  │ │ └─▶ Web Search        │   │ Opus 4.8·Sonnet 5·Haiku 4.5    │ │
-                                  │ │ (managed · SigV4/IRSA)│   │ (Anthropic models on Bedrock)  │ │
-                                  │ └───────────────────────┘   └────────────────────────────────┘ │
-                                  │  CloudWatch · CloudTrail · Secrets Manager (ESO) · IAM (IRSA)  │
-                                  └────────────────────────────────────────────────────────────────┘
+                                ┌─ AWS Cloud ──────────────────────────────────────────────────┐
+                                │ ┌─ Region: us-west-2 ──────────────────────────────────────┐ │
+┌─ Office / Employee PC ─────┐  │ │                                                          │ │
+│ User: Claude Code / Cowork │  │ │   ┌─ Amazon Cognito ─────────────────────────────┐       │ │
+│ (1) SSO login (OIDC)       ├──┼─┼──▶│ user pool, Hosted UI, OIDC issuer/token      │       │ │
+│ Mac, Windows, Linux        │  │ │   └──────────────────────────────────────────────┘       │ │
+│ gateway-cli/api-key-helper │  │ │                                                          │ │
+│                            │  │ │ ┌─ VPC / ALB: IP allowlist + https (US-06) ────────────┐ │ │
+│                            │  │ │ │ ┌─ ALB Admin API ──┐  ┌─ EKS on Fargate ───────────┐ │ │ │
+│ (2) get Virtual Key        ├──┼─┼─┼▶│                  ├─▶│ - admin-api                │ │ │ │
+│                            │  │ │ │ └──────────────────┘  │    (OIDC verify,VK issue)  │ │ │ │
+│                            │  │ │ │                       │ - scheduler                │ │ │ │
+│                            │  │ │ │ ┌─ ALB Gateway ────┐  │                            │ │ │ │
+│ (3) call LLM, Bearer VK    ├──┼─┼─┼▶│                  ├─▶│ - gateway-proxy            │ │ │ │
+│                            │  │ │ │ └──────────────────┘  │    (auth,ratelimit,budget) │ │ │ │
+│                            │  │ │ │                       │ - cost-recorder-worker     │ │ │ │
+│                            │  │ │ │ ┌─ ALB Admin UI ───┐  │ - notification-worker      │ │ │ │
+│ Admin: browser             ├──┼─┼─┼▶│                  ├─▶│ - admin-ui                 │ │ │ │
+│ (A) admin console          │  │ │ │ └──────────────────┘  │ + migration Job (install)  │ │ │ │
+│                            │  │ │ │                       └─┬───┬───────┬───────────┬──┘ │ │ │
+└────────────────────────────┘  │ │ │                         │   │       │           │    │ │ │
+                                │ │ │           ┌─────────────┼───┘       │           │    │ │ │
+                                │ │ │           ▼             │           ▼           │    │ │ │
+                                │ │ │ ┌─ Aurora PostgreSQL ┐  │ ┌─ Valkey (Redis) ─┐  │    │ │ │
+                                │ │ │ │ (via RDS Proxy)    │  │ │ VK,rate,budget   │  │    │ │ │
+                                │ │ │ │                    │  │ │ Lua scripts      │  │    │ │ │
+                                │ │ │ └────────────────────┘  │ └──────────────────┘  │    │ │ │
+                                │ │ └─────────────────────────┼───────────────────────┼────┘ │ │
+                                │ │                           │  (via VPC endpoint)   │      │ │
+                                │ │                           │                       ▼      │ │
+                                │ │                           │ ┌─ Amazon Bedrock ─────────┐ │ │
+                                │ │                           │ │ bedrock-runtime          │ │ │
+                                │ │                           │ │ us-west-2 -> US Geo      │ │ │
+                                │ │                           │ └─────────────────────┬────┘ │ │
+                                │ └───────────────────────────┼───────────────────────┼──────┘ │
+                                │                             ▼ (4) web search        ▼        │
+                                │   ┌─ Region: us-east-1 ──────────┐ ┌─ US Geo ──────────────┐ │
+                                │   │ AgentCore GW -> Web Search   │ │ us.anthropic.*        │ │
+                                │   │ (managed, SigV4/IRSA)        │ │ us-east-1/2,us-west-2 │ │
+                                │   │                              │ │ Opus4.8/Sonnet5/Haiku │ │
+                                │   └──────────────────────────────┘ └───────────────────────┘ │
+                                │ CloudWatch, CloudTrail, Secrets Manager (ESO), IAM (IRSA)    │
+                                └──────────────────────────────────────────────────────────────┘
 ```
+
+> 이 그림은 생성기로 만든 것이다 — 손으로 고치지 말 것(폭 계산이 깨진다). 생성기는 운영자 내부 repo 에 있다.
 
 > 박스 위치는 표기용이다(실제 배치 의미 없음). 계정 ID·리소스 이름은 의도적으로 넣지 않았다 — 설치마다 달라지는 값은 [install-guide.md](install-guide.md)의 각 절이 terraform output 에서 얻는다.
 

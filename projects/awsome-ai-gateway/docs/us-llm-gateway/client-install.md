@@ -55,8 +55,8 @@ export PATH="$HOME/.local/bin:$PATH"
 # ② 운영자가 준 4줄 붙여넣기 (§6 출력 그대로 — 아래는 예시값)
 export OIDC_ISSUER_URL="https://cognito-idp.us-west-2.amazonaws.com/us-west-2_AbCdEfGhI"
 export OIDC_CLIENT_ID="7h2k9p4m1n8q3r5s6t0v2w4x6y"
-export ADMIN_API_URL="http://k8s-llmgatew-llmgatew-a1b2c3d4e5-1234567.us-west-2.elb.amazonaws.com"
-export ANTHROPIC_BASE_URL="http://k8s-llmgatew-llmgatew-f6g7h8i9j0-7654321.us-west-2.elb.amazonaws.com"
+export ADMIN_API_URL="https://admin-api-dev.example.com"      # US-06 전(방식 A)이면 http://k8s-…elb.amazonaws.com
+export ANTHROPIC_BASE_URL="https://gateway-dev.example.com"
 
 # ③ 저장소 clone (직원 Mac 엔 없다 — §1-4 = fork) 후 온보딩
 cd ~
@@ -114,6 +114,8 @@ cd ~
 git clone -b us/deploy-fixes `
   https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr.git
 cd ~\sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway
+#     이미 클론돼 있으면 clone 대신 여기서 갱신 (리베이스 브랜치라 git pull 은 실패):
+git fetch origin; git reset --hard origin/us/deploy-fixes
 
 # ①-b gateway-cli 설치 — Python 3.11+ 필수
 #     (Windows 스크립트는 설치를 안 하고 '확인만' 한다 — 없으면 exit 1)
@@ -130,13 +132,14 @@ gateway-cli version              # 버전이 찍히면 설치 OK
 # ③ 운영자가 준 4줄 (§6 출력값을 PowerShell 문법으로 — 아래는 예시값)
 $env:OIDC_ISSUER_URL="https://cognito-idp.us-west-2.amazonaws.com/us-west-2_AbCdEfGhI"
 $env:OIDC_CLIENT_ID="7h2k9p4m1n8q3r5s6t0v2w4x6y"
-$env:ADMIN_API_URL="http://k8s-llmgatew-llmgatew-a1b2c3d4e5-1234567.us-west-2.elb.amazonaws.com"
-$env:ANTHROPIC_BASE_URL="http://k8s-llmgatew-llmgatew-f6g7h8i9j0-7654321.us-west-2.elb.amazonaws.com"
+$env:ADMIN_API_URL="https://admin-api-dev.example.com"      # US-06 전(방식 A)이면 http://k8s-…elb.amazonaws.com
+$env:ANTHROPIC_BASE_URL="https://gateway-dev.example.com"
 
 # ④ 온보딩 (①-a 에서 이미 저장소 폴더에 있다)
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force   # .ps1 실행 차단 해제(이 세션만)
 .\scripts\onboard-windows.ps1 -SetupClaudeCode
 ```
+
 
 > ℹ️ **④ 도중 브라우저에 Cognito 로그인 창이 뜬다** — `gateway-cli login` 단계에서 기본 브라우저가 자동으로 열린다. **이메일 + 비밀번호**(운영자가 발급한 그 직원의 Cognito 계정 — 발급은 [operations.md §8-Y](ops/8-Y-onboarding.md))를 입력한다. **첫 로그인이면** 임시 비밀번호로 들어간 뒤 곧바로 **새 비밀번호 설정**을 요구한다(관리자 생성 계정 기본 상태). 로그인에 성공하면 브라우저에 완료 표시가 뜨고 터미널이 이어서 진행된다.
 

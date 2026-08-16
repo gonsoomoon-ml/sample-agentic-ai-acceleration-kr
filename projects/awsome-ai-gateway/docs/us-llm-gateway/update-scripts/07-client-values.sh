@@ -152,6 +152,7 @@ cat <<EOF
   export ANTHROPIC_BASE_URL="$BASE_URL"
 EOF
 
+TARGETS_HINT=""; [ "$GW_HTTPS" = 1 ] && TARGETS_HINT="--targets gateway,admin-api "
 hdr "Before you send them"
 if [ "$GW_HTTPS" = 1 ]; then
   ok "US-06: https://$GW_HOST (ALB + ACM) — no CloudFront in the path"
@@ -173,7 +174,7 @@ cat <<EOF
   ADMIN_API_URL is IP restricted. The employee's public IP must be in the
   allow-list or VK issuance times out after a successful login:
 
-      bash 05-allow-client-ip.sh --add <their-public-IP>/32 --apply
+      bash 05-allow-client-ip.sh --add <their-public-IP>/32 ${TARGETS_HINT}--apply
 
   Ask them for it — on their PC:  (irm https://checkip.amazonaws.com).Trim()
 

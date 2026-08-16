@@ -22,7 +22,7 @@ git fetch origin && git reset --hard origin/us/deploy-fixes
 cp ~/values.bak $V
 ```
 
-⚠️ 이 브랜치는 리베이스되므로 `git pull` 은 통하지 않는다. `values-*.yaml` 백업·복구를 빠뜨리면 다음 `helm upgrade` 에서 **ALB 허용목록이 통째로 빠진다.** 원격 확인과 `cmp` 복구 검증을 포함한 전체 절차는 [README.md 「3. 적용하기」](../README.md#3-적용하기).
+⚠️ 이 브랜치는 리베이스되므로 `git pull` 은 통하지 않는다. `values-*.yaml` 백업·복구를 빠뜨리면 다음 `helm upgrade` 에서 **ALB 허용목록이 통째로 빠진다.** 원격 확인과 `cmp` 복구 검증을 포함한 전체 절차는 [README.md 「3. 적용하기」](../README.md#3-적용하기-배포-ec2-에서).
 
 **1) `config.env` 를 준비한다** — 스크립트는 전부 이 파일을 읽는다. 없으면 다음 단계가 *"config.env not found"* 로 멈춘다.
 
