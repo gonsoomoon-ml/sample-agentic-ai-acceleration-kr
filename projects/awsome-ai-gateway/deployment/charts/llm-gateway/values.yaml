@@ -38,6 +38,17 @@ global:
   # 배포 모드 (eks-fargate) — 조건부 리소스 분기에 사용
   deploymentMode: eks-fargate
 
+  # 비용/사용량 집계(대시보드·analytics·budget·chat·daily_aggregates·이메일 발송시각) 의
+  # 캘린더 경계 타임존(§59). **정규 IANA TZ 이름만** 허용 (예: "Asia/Seoul", "UTC",
+  # "America/New_York"). "KST"/"US/Pacific"/"PST" 같은 약어·레거시 alias 는 배포
+  # 이미지(Debian slim 계열)의 tzdata 에 없을 수 있어 각 서비스 부팅 시 거부됨 —
+  # 대소문자도 구분(예: "utc"(X) / "UTC"(O)).
+  # 공통 ConfigMap(REPORTING_TIMEZONE) 으로 admin-api·cost-recorder-worker·
+  # notification-worker 에 동시에 주입됨 — 서비스별로 따로 안 맞춰도 됨.
+  # 단, cost-recorder-worker 의 daily_aggregates 는 값 변경 후 배포 시점부터만
+  # 새 타임존으로 집계되므로(과거분 재집계 없음), 운영 중 변경은 신중히.
+  reportingTimezone: "Asia/Seoul"
+
 # ----------------------------------------------------------------------------
 # Name overrides
 # ----------------------------------------------------------------------------
@@ -505,6 +516,8 @@ adminApi:
     WORKERS: "2"
     DEV_LOGIN_ENABLED: "false"  # production에선 반드시 false
     DEFAULT_USER_BUDGET_USD: "1000"
+    # REPORTING_TIMEZONE 은 공통 ConfigMap(global.reportingTimezone) 에서 주입됨.
+    # 서비스별로 다르게 두지 말 것 — 여기 개별 override 하지 않는다.
 
   # --------------------------------------------------------------------------
   # OIDC 인증 (Cognito / Keycloak / Okta / Azure AD / IC)
@@ -772,6 +785,7 @@ notificationWorker:
   env:
     LOG_LEVEL: "INFO"
     OTEL_SERVICE_NAME: "notification-worker"
+    # REPORTING_TIMEZONE(이메일 발송시각 표시)은 공통 ConfigMap에서 주입됨.
 
   # 이메일 발송 설정 — 고객 내부 메일 API / SMTP / mock
   email:
@@ -866,3 +880,5 @@ costRecorderWorker:
     BATCH_MAX_SIZE: "100"
     BATCH_MAX_INTERVAL_SEC: "5"
     DAILY_USAGE_AGG_CRON: "10 0 * * *"
+    # REPORTING_TIMEZONE(daily_aggregates 캘린더 경계 + cron 실행 타임존)은
+    # 공통 ConfigMap(global.reportingTimezone)에서 주입됨 — admin-api 와 항상 일치.

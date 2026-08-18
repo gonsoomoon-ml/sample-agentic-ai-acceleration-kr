@@ -140,6 +140,7 @@
     "costTrendSubtitle": "기간 내 일별 비용 · 요청 수",
     "costTrendEmpty": "기간 내 집계된 사용량이 없습니다.",
     "costSeries": "비용",
+    "webSearchCount": "웹서치 {count, number}회",
     "noUsageForPeriod": "이 기간에 사용 기록이 없습니다.",
     "monthNames": {
       "1": "1",
@@ -318,6 +319,9 @@
     "teamModelAccess": "팀별 모델 접근 관리",
     "hideInactive": "비활성 모델 숨기기",
     "displayName": "표시 이름",
+    "endpointUrl": "Endpoint URL",
+    "endpointUrlOptional": "(선택)",
+    "endpointUrlPlaceholder": "예: http://vllm.internal:8000/v1 (Bedrock/Mantle은 비워둠)",
     "inputPriceShort": "입력단가",
     "outputPriceShort": "출력단가",
     "cache5min": "캐시 5min",
@@ -374,7 +378,39 @@
     "deactivateImmediateLead": "비활성화는",
     "deactivateImmediateEmphasis": "즉시 적용",
     "deactivateImmediateTail": "됩니다. 비활성 모델은 신규 요청에서 사용할 수 없으며, 언제든 다시 활성화할 수 있습니다.",
-    "addModelButton": "+ 모델 추가"
+    "addModelButton": "+ 모델 추가",
+    "priceSync": {
+      "button": "AWS 단가 동기화",
+      "buttonTitle": "AWS Price List 공식 단가와 비교해 동기화(승인형)",
+      "dialogTitle": "AWS 공식 단가 동기화",
+      "loading": "AWS Price List 조회 중…",
+      "sourceInfo": "소스: AWS Price List API ({region}) · 매칭 {matched} · 변경 {changed} · 동일 {unchanged} · 미매칭 {unmatched}",
+      "noChanges": "변경된 단가가 없습니다(현재 DB 단가가 AWS 공식가와 일치).",
+      "unmatched": "미매칭(AWS 단가 미발견, 적용 불가): {aliases}",
+      "columns": {
+        "apply": "적용",
+        "model": "모델",
+        "input": "입력(현재→AWS)",
+        "output": "출력(현재→AWS)",
+        "note": "비고"
+      },
+      "applySelected": "선택 {count}건 적용",
+      "toast": {
+        "previewFailed": "미리보기 실패",
+        "selectModel": "적용할 모델을 선택하세요",
+        "applyFailed": "적용 실패",
+        "applySuccess": "적용 {applied}건{skipped, select, 0 {} other {, 스킵 {skipped}}}",
+        "errorDetail": "오류 {count}건: {message}"
+      }
+    },
+    "webSearch": {
+      "title": "앱별 웹서치 허용",
+      "description": "앱별 서버사이드 웹서치 허용. ON 이면 해당 앱(Claude Code / Cowork / Codex) 사용자가 질문할 때 게이트웨이가 자동으로 웹 검색을 수행해 최신 정보로 답합니다(클라 설정 불필요).",
+      "on": "웹서치 ON",
+      "off": "웹서치 OFF",
+      "empty": "라우팅 프로필이 없습니다. (마이그레이션 0021 로 claude-code/cowork/codex 시드 필요)",
+      "saveFailed": "저장 실패: {error}"
+    }
   },
   "rateLimits": {
     "title": "Rate Limits",
@@ -445,6 +481,7 @@
     },
     "appAccess": {
       "title": "앱 접근 권한",
+      "description": "전부 선택(또는 전체 해제) = 모든 앱 허용. 일부만 선택하면 화이트리스트로 제한됩니다.",
       "groupLabel": "앱 접근 권한 선택",
       "all": "전체",
       "loading": "로딩 중…"
@@ -452,6 +489,7 @@
     "budgetInput": {
       "claudeCode": "Claude Code 예산 (USD/월)",
       "cowork": "Cowork 예산 (USD/월)",
+      "generic": "{app} 예산 (USD/월)",
       "placeholder": "미설정",
       "invalid": "유효하지 않은 예산 값입니다 ({client}). 0 이상 숫자를 입력하세요."
     },

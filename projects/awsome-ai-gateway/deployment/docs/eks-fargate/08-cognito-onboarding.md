@@ -1,8 +1,8 @@
-# 07. Cognito (OIDC) 사용자 / 팀 온보딩
+# 08. Cognito (OIDC) 사용자 / 팀 온보딩
 
 **목적**: 배포 직후 Cognito User Pool 에 첫 admin 등록, 그룹 운영 정책 정리, OIDC 흐름 end-to-end 검증.
 **소요**: 30~45분
-**전제**: [02-terraform-apply.md](./02-terraform-apply.md), [04-helm-install.md](./04-helm-install.md), [05-smoke-test.md](./05-smoke-test.md) 완료.
+**전제**: [02-terraform-apply.md](./02-terraform-apply.md), [04-helm-install.md](./04-helm-install.md), [05-https-custom-domain.md](./05-https-custom-domain.md), [06-smoke-test.md](./06-smoke-test.md) 완료.
 
 ---
 
@@ -324,4 +324,6 @@ aws cognito-idp create-group \
 
 이 체크리스트가 모두 통과하면 OIDC 흐름이 production 에서 정상 동작.
 
-다음: 일상 운영 → [troubleshooting.md](./troubleshooting.md) 의 OIDC 섹션 참고.
+---
+
+[👈 07-upgrade-rollback.md](./07-upgrade-rollback.md) | [09-post-deploy-tui.md 👉](./09-post-deploy-tui.md)

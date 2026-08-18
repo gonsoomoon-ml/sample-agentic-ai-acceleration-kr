@@ -8,9 +8,10 @@
   1. **SUCCESS 만 합산** — ERROR/TIMEOUT 호출은 비용에서 제외(유효 사용량 관점).
      (실측: 이번 달 ERROR 26건 $2.32 + TIMEOUT 17건 $1.18 이 실패 호출에도 비용으로
       쌓여 있어, status 필터 없으면 Top 사용자/팀이 부풀려졌었다.)
-  2. **KST(Asia/Seoul) 월 경계** — 한국 운영 자산이므로 캘린더 경계는 KST 기준.
-     timestamptz 에 to_char 를 그냥 쓰면 DB 세션 TZ(UTC)로 잘려 KST 6/1 0~9시
-     호출이 5월로 새는 9시간 오차가 생긴다 → 명시적 KST 변환으로 강제.
+  2. **리포팅 타임존 월 경계** — 캘린더 경계는 REPORTING_TIMEZONE(기본 Asia/Seoul)
+     기준. timestamptz 에 to_char 를 그냥 쓰면 DB 세션 TZ(UTC)로 잘려 KST 6/1 0~9시
+     호출이 5월로 새는 9시간 오차가 생긴다 → 명시적 타임존 변환으로 강제.
+     한국 밖 배포(US·India)는 env 로 배포 리전 타임존을 지정한다.
 
 ⚠️ 이 필터는 **비용/사용량 표시용**에만 쓴다. 에러율·모니터링처럼 ERROR/TIMEOUT 을
 세야 하는 쿼리에는 success_only=False 로 쓰거나 쓰지 않는다.
@@ -20,16 +21,35 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import ColumnElement, and_, func
 
+from app.core.config import get_settings
 from app.core.exceptions import ValidationError
 from app.models.usage import UsageLog, UsageStatus
 
-# KST = UTC+9 고정 오프셋. 한국은 서머타임이 없어(1988 서울올림픽 이후) 오프셋이
-# 불변이므로, 경계 계산에 zoneinfo 대신 고정 오프셋을 쓸 수 있다. 이 전제가 깨지면
-# (=DST 도입) 아래 period_to_utc_range 는 zoneinfo 기반으로 바꿔야 한다.
+# 기본 리포팅 타임존(Asia/Seoul)의 고정 오프셋. 한국은 DST 가 없어 불변이다.
+# 경계 계산은 아래 _reporting_tz()(zoneinfo) 를 쓰고, 이 상수는 테스트·호환용 공개 이름이다.
 KST = timezone(timedelta(hours=9))
+
+
+def reporting_timezone() -> str:
+    """비용/사용량 집계 캘린더 경계에 쓰는 IANA 타임존 이름.
+
+    REPORTING_TIMEZONE env 로 오버라이드(기본 "Asia/Seoul" = 종전 KST 동작 유지).
+    값의 유효성은 Settings 의 validator 가 기동 시점에 검사한다.
+    """
+    return get_settings().REPORTING_TIMEZONE
+
+
+def _reporting_tz() -> ZoneInfo:
+    """경계 계산용 tzinfo. 고정 오프셋이 아니라 zoneinfo 를 쓴다 — 한국은 DST 가 없지만
+    America/Los_Angeles 처럼 DST 가 있는 리포팅 타임존에서는 월 경계의 UTC 오프셋이
+    3월/11월에 달라지므로(PST -8 / PDT -7) 고정 오프셋으로는 경계가 1시간 틀어진다.
+    """
+    return ZoneInfo(reporting_timezone())
+
 
 # period 의 **모양**을 고정한다 — 정확히 4자리 연 + 2자리 월. `int()` 는 숫자인지만
 # 보므로 '26-08'(연 26) 이나 '2026-8' 을 통과시킨다(아래 참조).
@@ -43,7 +63,7 @@ _PERIOD_MAX_YEAR = 2100
 
 
 def current_kst_period() -> str:
-    """"지금"이 속한 KST 월을 'YYYY-MM' 으로. 기본 period 의 **단일 진실원**.
+    """"지금"이 속한 리포팅 타임존 월을 'YYYY-MM' 으로. 기본 period 의 **단일 진실원**.
 
     ⚠️ `date.today()` / `datetime.now()` 로 기본 기간을 정하면 **프로세스 로컬 TZ**,
     즉 pod 에서는 UTC 를 따른다. 데이터는 KST 월로 버킷되므로(§59) 매월 1일
@@ -56,8 +76,8 @@ def current_kst_period() -> str:
     **나머지 3곳(my.budget/my.usage/analytics.models/budgets.allocation)이
     UTC 로 남았다**. 화면마다 기본 월이 갈리는 건 복붙이 원인이므로 한 곳으로 모은다.
     """
-    now_kst = datetime.now(KST)
-    return f"{now_kst.year}-{now_kst.month:02d}"
+    now_local = datetime.now(_reporting_tz())
+    return f"{now_local.year}-{now_local.month:02d}"
 
 
 def kst_month_expr() -> ColumnElement:
@@ -69,7 +89,7 @@ def kst_month_expr() -> ColumnElement:
     컬럼을 함수로 감싸 non-sargable 이 되어 인덱스를 못 쓴다(아래 참조).
     기간 필터가 필요하면 `cost_period_filter()` / `period_to_utc_range()` 를 쓴다.
     """
-    return func.to_char(func.timezone("Asia/Seoul", UsageLog.requested_at), "YYYY-MM")
+    return func.to_char(func.timezone(reporting_timezone(), UsageLog.requested_at), "YYYY-MM")
 
 
 def period_to_utc_range(period: str) -> tuple[datetime, datetime]:
@@ -118,9 +138,10 @@ def period_to_utc_range(period: str) -> tuple[datetime, datetime]:
         raise ValidationError(
             f"period year must be {_PERIOD_MIN_YEAR}-{_PERIOD_MAX_YEAR} (got {period!r})"
         )
-    start_kst = datetime(year, month, 1, tzinfo=KST)
-    end_kst = datetime(year + (month == 12), (month % 12) + 1, 1, tzinfo=KST)
-    return start_kst.astimezone(timezone.utc), end_kst.astimezone(timezone.utc)
+    tz = _reporting_tz()
+    start_local = datetime(year, month, 1, tzinfo=tz)
+    end_local = datetime(year + (month == 12), (month % 12) + 1, 1, tzinfo=tz)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
 
 
 def kst_period_range_filter(column: ColumnElement, period: str) -> ColumnElement:

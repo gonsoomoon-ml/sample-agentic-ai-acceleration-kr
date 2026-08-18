@@ -21,6 +21,7 @@ import { Table, THead, TBody, Tr, Th, Td } from '@/components/common/Table';
  * 경로라 시계열·감사·캐시무효화가 보존된다.
  */
 export function PriceSyncButton() {
+  const t = useTranslations('models.priceSync');
   const tCommon = useTranslations('common');
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -36,7 +37,7 @@ export function PriceSyncButton() {
     const res = await previewPriceSyncAction();
     setLoading(false);
     if (!res.success) {
-      toast({ type: 'error', message: res.error || '미리보기 실패', auto_dismiss_ms: 5000 });
+      toast({ type: 'error', message: res.error || t('toast.previewFailed'), auto_dismiss_ms: 5000 });
       setOpen(false);
       return;
     }
@@ -57,18 +58,18 @@ export function PriceSyncButton() {
   function apply() {
     const aliases = [...selected];
     if (!aliases.length) {
-      toast({ type: 'error', message: '적용할 모델을 선택하세요', auto_dismiss_ms: 4000 });
+      toast({ type: 'error', message: t('toast.selectModel'), auto_dismiss_ms: 4000 });
       return;
     }
     startApply(async () => {
       const res = await applyPriceSyncAction(aliases);
       if (!res.success) {
-        toast({ type: 'error', message: res.error || '적용 실패', auto_dismiss_ms: 5000 });
+        toast({ type: 'error', message: res.error || t('toast.applyFailed'), auto_dismiss_ms: 5000 });
         return;
       }
       const { applied, skipped, errors } = res.data;
-      toast({ type: 'success', message: `적용 ${applied.length}건${skipped.length ? `, 스킵 ${skipped.length}` : ''}`, auto_dismiss_ms: 4000 });
-      if (errors.length) toast({ type: 'error', message: `오류 ${errors.length}건: ${errors[0]}`, auto_dismiss_ms: 6000 });
+      toast({ type: 'success', message: t('toast.applySuccess', { applied: applied.length, skipped: skipped.length }), auto_dismiss_ms: 4000 });
+      if (errors.length) toast({ type: 'error', message: t('toast.errorDetail', { count: errors.length, message: errors[0] }), auto_dismiss_ms: 6000 });
       setOpen(false);
     });
   }
@@ -82,17 +83,17 @@ export function PriceSyncButton() {
       <button
         onClick={openAndPreview}
         className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        title="AWS Price List 공식 단가와 비교해 동기화(승인형)"
+        title={t('buttonTitle')}
       >
         <RefreshCw size={15} />
-        AWS 단가 동기화
+        {t('button')}
       </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="glass max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-apple flex flex-col">
             <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <h2 className="text-base font-semibold">AWS 공식 단가 동기화</h2>
+              <h2 className="text-base font-semibold">{t('dialogTitle')}</h2>
               <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
                 <X size={18} />
               </button>
@@ -101,30 +102,35 @@ export function PriceSyncButton() {
             <div className="overflow-auto px-5 py-4">
               {loading && (
                 <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-                  <Loader2 size={16} className="animate-spin" /> AWS Price List 조회 중…
+                  <Loader2 size={16} className="animate-spin" /> {t('loading')}
                 </div>
               )}
 
               {preview && (
                 <>
                   <p className="mb-3 text-xs text-muted-foreground">
-                    소스: AWS Price List API ({preview.region}) · 매칭 {preview.matched_count} · 변경{' '}
-                    {preview.changed_count} · 동일 {unchanged} · 미매칭 {unmatched.length}
+                    {t('sourceInfo', {
+                      region: preview.region,
+                      matched: preview.matched_count,
+                      changed: preview.changed_count,
+                      unchanged,
+                      unmatched: unmatched.length,
+                    })}
                   </p>
 
                   {changedDiffs.length === 0 ? (
                     <p className="py-6 text-sm text-muted-foreground">
-                      변경된 단가가 없습니다(현재 DB 단가가 AWS 공식가와 일치).
+                      {t('noChanges')}
                     </p>
                   ) : (
                     <Table density="compact">
                       <THead>
                         <Tr>
-                          <Th>적용</Th>
-                          <Th>모델</Th>
-                          <Th numeric>입력(현재→AWS)</Th>
-                          <Th numeric>출력(현재→AWS)</Th>
-                          <Th>비고</Th>
+                          <Th>{t('columns.apply')}</Th>
+                          <Th>{t('columns.model')}</Th>
+                          <Th numeric>{t('columns.input')}</Th>
+                          <Th numeric>{t('columns.output')}</Th>
+                          <Th>{t('columns.note')}</Th>
                         </Tr>
                       </THead>
                       <TBody>
@@ -149,7 +155,7 @@ export function PriceSyncButton() {
 
                   {unmatched.length > 0 && (
                     <p className="mt-3 text-[11px] text-muted-foreground">
-                      미매칭(AWS 단가 미발견, 적용 불가): {unmatched.map((d) => d.alias).join(', ')}
+                      {t('unmatched', { aliases: unmatched.map((d) => d.alias).join(', ') })}
                     </p>
                   )}
                 </>
@@ -169,7 +175,7 @@ export function PriceSyncButton() {
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
                 {applying && <Loader2 size={14} className="animate-spin" />}
-                선택 {selected.size}건 적용
+                {t('applySelected', { count: selected.size })}
               </button>
             </div>
           </div>

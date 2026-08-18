@@ -140,6 +140,7 @@
     "costTrendSubtitle": "Daily cost and requests for the period",
     "costTrendEmpty": "No usage aggregated for this period.",
     "costSeries": "Cost",
+    "webSearchCount": "{count, number} web searches",
     "noUsageForPeriod": "No usage records for this period.",
     "monthNames": {
       "1": "January",
@@ -318,6 +319,9 @@
     "teamModelAccess": "Team Model Access Management",
     "hideInactive": "Hide inactive models",
     "displayName": "Display Name",
+    "endpointUrl": "Endpoint URL",
+    "endpointUrlOptional": "(optional)",
+    "endpointUrlPlaceholder": "e.g. http://vllm.internal:8000/v1 (leave blank for Bedrock/Mantle)",
     "inputPriceShort": "Input Price",
     "outputPriceShort": "Output Price",
     "cache5min": "Cache 5min",
@@ -374,7 +378,39 @@
     "deactivateImmediateLead": "Deactivation",
     "deactivateImmediateEmphasis": "takes effect immediately",
     "deactivateImmediateTail": ". Inactive models cannot serve new requests, and you can reactivate them at any time.",
-    "addModelButton": "+ Add model"
+    "addModelButton": "+ Add model",
+    "priceSync": {
+      "button": "Sync AWS Pricing",
+      "buttonTitle": "Compare and sync with AWS Price List official prices (approval required)",
+      "dialogTitle": "Sync AWS Official Pricing",
+      "loading": "Fetching AWS Price List…",
+      "sourceInfo": "Source: AWS Price List API ({region}) · matched {matched} · changed {changed} · unchanged {unchanged} · unmatched {unmatched}",
+      "noChanges": "No price changes (current DB prices match AWS official prices).",
+      "unmatched": "Unmatched (AWS price not found, cannot apply): {aliases}",
+      "columns": {
+        "apply": "Apply",
+        "model": "Model",
+        "input": "Input (current→AWS)",
+        "output": "Output (current→AWS)",
+        "note": "Note"
+      },
+      "applySelected": "Apply {count} selected",
+      "toast": {
+        "previewFailed": "Preview failed",
+        "selectModel": "Select at least one model.",
+        "applyFailed": "Apply failed",
+        "applySuccess": "Applied {applied}{skipped, select, 0 {} other {, skipped {skipped}}}",
+        "errorDetail": "Error {count}: {message}"
+      }
+    },
+    "webSearch": {
+      "title": "App-specific Web Search",
+      "description": "Allow server-side web search per app. When ON, the gateway automatically performs web searches for users of that app (Claude Code / Cowork / Codex) so they get up-to-date answers without client configuration.",
+      "on": "Web Search ON",
+      "off": "Web Search OFF",
+      "empty": "No routing profiles found. (Migration 0021 is required to seed claude-code/cowork/codex.)",
+      "saveFailed": "Save failed: {error}"
+    }
   },
   "rateLimits": {
     "title": "Rate Limits",
@@ -445,6 +481,7 @@
     },
     "appAccess": {
       "title": "App access",
+      "description": "Select all (or deselect all) = allow every app. Select a subset to restrict to a whitelist.",
       "groupLabel": "Select app access",
       "all": "All",
       "loading": "Loading…"
@@ -452,6 +489,7 @@
     "budgetInput": {
       "claudeCode": "Claude Code budget (USD/month)",
       "cowork": "Cowork budget (USD/month)",
+      "generic": "{app} budget (USD/month)",
       "placeholder": "Not set",
       "invalid": "Invalid budget value ({client}). Enter a number of 0 or greater."
     },

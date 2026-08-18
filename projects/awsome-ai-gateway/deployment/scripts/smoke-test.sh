@@ -102,7 +102,7 @@ test_health_endpoints() {
 # ---- 3. /v1/models ----
 # 이 엔드포인트는 VK (Authorization: Bearer) 인증 필수.
 # 인증 없이 호출 시 401 이 정상 — 인증 middleware 가 동작하는 것을 확인하는 용도.
-# 실제 모델 목록 조회는 VK 발급 후 05-smoke-test.md §4 에서 수행.
+# 실제 모델 목록 조회는 VK 발급 후 06-smoke-test.md §4 에서 수행.
 test_models_endpoint() {
     echo ""
     echo "━━━ 3. /v1/models 인증 middleware 동작 확인 ━━━"

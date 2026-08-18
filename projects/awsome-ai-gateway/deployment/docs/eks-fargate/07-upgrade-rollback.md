@@ -1,4 +1,4 @@
-# 06. Upgrade · Rollback
+# 07. Upgrade & Rollback — 버전 업데이트와 롤백
 
 **목적**: 코드 변경을 운영에 반영하는 방법과, 문제 생기면 되돌리는 방법.
 
@@ -202,4 +202,4 @@ replicas 2 → 1개씩 새 버전, 1개는 구 버전으로 유지하고 싶다�
 
 ---
 
-[👈 05-smoke-test.md](./05-smoke-test.md) | [07-cognito-onboarding.md 👉](./07-cognito-onboarding.md)
+[👈 06-smoke-test.md](./06-smoke-test.md) | [08-cognito-onboarding.md 👉](./08-cognito-onboarding.md)

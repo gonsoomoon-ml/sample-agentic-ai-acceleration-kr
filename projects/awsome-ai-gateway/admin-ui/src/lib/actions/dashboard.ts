@@ -157,10 +157,11 @@ export interface AnalyticsResponse {
 export async function fetchAnalytics(
   period: string,
   groupBy: 'team' | 'user' | 'model' = 'team',
+  client?: string,
 ): Promise<AnalyticsResponse> {
-  return withRetry(() =>
-    adminAPI.get<AnalyticsResponse>('/admin/analytics', { period, group_by: groupBy, scope: 'all' }),
-  );
+  const params: Record<string, string> = { period, group_by: groupBy, scope: 'all' };
+  if (client && client !== 'all') params.client = client;
+  return withRetry(() => adminAPI.get<AnalyticsResponse>('/admin/analytics', params));
 }
 
 // ── Budget summary (Top 팀/사용자 by 비용) — /admin/budgets/summary ──

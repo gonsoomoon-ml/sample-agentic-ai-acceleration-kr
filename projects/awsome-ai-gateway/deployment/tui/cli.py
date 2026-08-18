@@ -79,8 +79,8 @@ ENGINES = [
 
 # 다음 단계 가이드에서 가리키는 리포 내 문서 경로(실제 위치라 상수).
 NEXT_STEPS_DOCS = {
-    "post_deploy": "deployment/docs/eks-fargate/08-post-deploy-tui.md",
-    "cognito": "deployment/docs/eks-fargate/07-cognito-onboarding.md",
+    "post_deploy": "deployment/docs/eks-fargate/09-post-deploy-tui.md",
+    "cognito": "deployment/docs/eks-fargate/08-cognito-onboarding.md",
 }
 
 _STATE_MARK = {

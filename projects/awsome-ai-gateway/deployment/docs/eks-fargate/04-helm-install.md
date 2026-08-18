@@ -180,7 +180,7 @@ cognito_hosted_ui_domain    : llm-gateway-dev-auth.auth.ap-northeast-2.amazoncog
 
 ⚠️ **`cognito_issuer_url` 출력이 비어있으면**: terraform 의 cognito 모듈이 적용 안 된 상태. `terraform apply` 다시 실행 필요.
 
-OIDC 가 활성화되면 사용자 등록 / 첫 admin 부트스트랩이 필요합니다. **다음 단계 [05-smoke-test.md](./05-smoke-test.md) 진행 후 [07-cognito-onboarding.md](./07-cognito-onboarding.md)** 를 보세요.
+OIDC 가 활성화되면 사용자 등록 / 첫 admin 부트스트랩이 필요합니다. **다음 단계 [06-smoke-test.md](./06-smoke-test.md) 진행 후 [08-cognito-onboarding.md](./08-cognito-onboarding.md)** 를 보세요.
 
 ### 3.2 전체 소요시간
 
@@ -372,8 +372,8 @@ curl -i https://gateway-dev.llm-gateway.mycompany.com/health
 
 `helm install` 이 끝나면 **migration Job 이 모든 DB 준비 (schemas, tables, seed data, gateway user, GRANT) 를 자동 수행**한 상태입니다. 별도 후속 작업 불필요.
 
-**바로 [05-smoke-test.md](./05-smoke-test.md) 진행** — 핵심 기능 E2E 확인 (VK 발급, Claude API 호출, Admin UI 접속).
+**바로 [05-https-custom-domain.md](./05-https-custom-domain.md) 진행** — HTTPS + ACM + Route53 도메인 연결.
 
 ---
 
-[👈 03-secrets.md](./03-secrets.md) | [다음: 05-smoke-test.md 👉](./05-smoke-test.md)
+[👈 03-secrets.md](./03-secrets.md) | [다음: 05-https-custom-domain.md 👉](./05-https-custom-domain.md)

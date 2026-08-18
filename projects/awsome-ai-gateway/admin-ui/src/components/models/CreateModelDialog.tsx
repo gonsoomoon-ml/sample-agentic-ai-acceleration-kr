@@ -234,7 +234,7 @@ export function CreateModelDialog({ isOpen, onClose, editModel }: CreateModelDia
           {/* Endpoint URL — OPENMODEL(vLLM) 등 커스텀 엔드포인트 모델에서만 의미있음 */}
           <div className="space-y-1">
             <label htmlFor="endpoint_url" className="text-sm font-medium">
-              Endpoint URL <span className="text-muted-foreground text-xs">(선택)</span>
+              {t('endpointUrl')} <span className="text-muted-foreground text-xs">{t('endpointUrlOptional')}</span>
             </label>
             <input
               id="endpoint_url"
@@ -243,7 +243,7 @@ export function CreateModelDialog({ isOpen, onClose, editModel }: CreateModelDia
               value={form.endpoint_url}
               onChange={handleChange}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder="예: http://vllm.internal:8000/v1 (Bedrock/Mantle은 비워둠)"
+              placeholder={t('endpointUrlPlaceholder')}
             />
             {fieldErrors.endpoint_url && <FormError error={fieldErrors.endpoint_url} />}
           </div>
