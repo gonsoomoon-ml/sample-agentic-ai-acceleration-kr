@@ -7,6 +7,40 @@ from functools import lru_cache
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# 흔히 쓰는 비-IANA 약어/레거시 alias → 정규 IANA 이름 힌트 (검증은 그대로 엄격하게
+# 유지하되, 실수했을 때 바로 고칠 수 있도록 에러 메시지에 제안을 붙인다).
+_TZ_ALIAS_HINTS: dict[str, str] = {
+    "KST": "Asia/Seoul",
+    "JST": "Asia/Tokyo",
+    "IST": "Asia/Kolkata",
+    "PST": "America/Los_Angeles",
+    "PDT": "America/Los_Angeles",
+    "EST": "America/New_York",
+    "EDT": "America/New_York",
+    "CST": "America/Chicago",
+    "CDT": "America/Chicago",
+    "MST": "America/Denver",
+    "MDT": "America/Denver",
+    "GMT": "UTC",
+    "US/PACIFIC": "America/Los_Angeles",
+    "US/EASTERN": "America/New_York",
+    "US/CENTRAL": "America/Chicago",
+    "US/MOUNTAIN": "America/Denver",
+}
+
+
+def _reporting_timezone_error(v: str) -> str:
+    """reporting_timezone 검증 실패 메시지 — 흔한 실수(약어/레거시 alias/대소문자)에
+    대해 정규 IANA 이름을 제안한다."""
+    hint = _TZ_ALIAS_HINTS.get(v.strip().upper())
+    if hint is None and v.upper() == "UTC" and v != "UTC":
+        hint = "UTC"  # 대소문자 오타 (예: "utc")
+    msg = f"Invalid reporting_timezone {v!r}: not a valid IANA timezone name"
+    if hint:
+        msg += f" (did you mean {hint!r}?)"
+    msg += ". Use a canonical IANA name, e.g. 'Asia/Seoul', 'UTC', 'America/Los_Angeles'."
+    return msg
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -60,7 +94,7 @@ class Settings(BaseSettings):
         try:
             ZoneInfo(v)
         except (ZoneInfoNotFoundError, ValueError) as e:
-            raise ValueError(f"Invalid reporting_timezone {v!r}: not a valid IANA timezone name") from e
+            raise ValueError(_reporting_timezone_error(v)) from e
         return v
 
     # Logging

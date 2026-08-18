@@ -8,6 +8,40 @@ from typing import Annotated
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+# 흔히 쓰는 비-IANA 약어/레거시 alias → 정규 IANA 이름 힌트 (검증은 그대로 엄격하게
+# 유지하되, 실수했을 때 바로 고칠 수 있도록 에러 메시지에 제안을 붙인다).
+_TZ_ALIAS_HINTS: dict[str, str] = {
+    "KST": "Asia/Seoul",
+    "JST": "Asia/Tokyo",
+    "IST": "Asia/Kolkata",
+    "PST": "America/Los_Angeles",
+    "PDT": "America/Los_Angeles",
+    "EST": "America/New_York",
+    "EDT": "America/New_York",
+    "CST": "America/Chicago",
+    "CDT": "America/Chicago",
+    "MST": "America/Denver",
+    "MDT": "America/Denver",
+    "GMT": "UTC",
+    "US/PACIFIC": "America/Los_Angeles",
+    "US/EASTERN": "America/New_York",
+    "US/CENTRAL": "America/Chicago",
+    "US/MOUNTAIN": "America/Denver",
+}
+
+
+def _reporting_timezone_error(v: str) -> str:
+    """REPORTING_TIMEZONE 검증 실패 메시지 — 흔한 실수(약어/레거시 alias/대소문자)에
+    대해 정규 IANA 이름을 제안한다."""
+    hint = _TZ_ALIAS_HINTS.get(v.strip().upper())
+    if hint is None and v.upper() == "UTC" and v != "UTC":
+        hint = "UTC"  # 대소문자 오타 (예: "utc")
+    msg = f"Invalid REPORTING_TIMEZONE {v!r}: not a valid IANA timezone name"
+    if hint:
+        msg += f" (did you mean {hint!r}?)"
+    msg += ". Use a canonical IANA name, e.g. 'Asia/Seoul', 'UTC', 'America/Los_Angeles'."
+    return msg
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -147,9 +181,12 @@ class Settings(BaseSettings):
     TTFT_SLOW_MS: int = 3000
 
     # ── Reporting timezone (§59) ──
-    # 비용/사용량 집계의 "월/일 경계" 기준 타임존. IANA TZ database 이름
-    # (예: "Asia/Seoul", "UTC", "America/Los_Angeles"). 기본값은 기존 하드코딩된
-    # 한국 운영 기준(KST)을 그대로 유지하되, 다른 리전에 배포할 땐 env로 바꿀 수 있게 함.
+    # 비용/사용량 집계의 "월/일 경계" 기준 타임존. **정규 IANA TZ database 이름만
+    # 허용** (예: "Asia/Seoul", "UTC", "America/Los_Angeles"). "KST"/"US/Pacific"/
+    # "PST" 같은 약어·레거시 alias 는 배포 이미지(Debian slim 계열)의 tzdata 에
+    # 없을 수 있어 거부됨 — 대소문자도 구분(예: "utc"(X) / "UTC"(O)).
+    # 기본값은 기존 하드코딩된 한국 운영 기준(KST)을 그대로 유지하되, 다른
+    # 리전에 배포할 땐 env로 바꿀 수 있게 함.
     REPORTING_TIMEZONE: str = "Asia/Seoul"
 
     @field_validator("REPORTING_TIMEZONE")
@@ -162,7 +199,7 @@ class Settings(BaseSettings):
         try:
             ZoneInfo(v)
         except (ZoneInfoNotFoundError, ValueError) as e:
-            raise ValueError(f"Invalid REPORTING_TIMEZONE {v!r}: not a valid IANA timezone name") from e
+            raise ValueError(_reporting_timezone_error(v)) from e
         return v
 
     # ── Scheduler ──
