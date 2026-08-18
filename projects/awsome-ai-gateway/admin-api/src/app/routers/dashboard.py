@@ -17,6 +17,7 @@ from app.core.usage_filters import (
     client_filter,
     cost_period_filter,
     kst_month_expr,
+    reporting_timezone,
 )
 from app.models.auth import Team, User
 from app.models.model import ModelAlias
@@ -25,13 +26,11 @@ from zoneinfo import ZoneInfo
 
 router = APIRouter(prefix="/admin/dashboard", tags=["Dashboard"])
 
-_KST = ZoneInfo("Asia/Seoul")
-
 
 def _default_period() -> str:
-    # KST 기준(§59) — 데이터 월 버킷이 KST 이므로 기본 기간도 KST 로 통일.
-    # (한국 운영 자산 — 모든 캘린더 경계는 Asia/Seoul.)
-    return datetime.now(_KST).strftime("%Y-%m")
+    # 집계 타임존 기준(§59) — 데이터 월 버킷이 REPORTING_TIMEZONE(기본 KST) 이므로
+    # 기본 기간도 동일 타임존으로 통일. 배포 리전이 다르면 REPORTING_TIMEZONE env 로 변경.
+    return datetime.now(ZoneInfo(reporting_timezone())).strftime("%Y-%m")
 
 
 @router.get("/summary")
@@ -308,9 +307,9 @@ async def dashboard_periods(
     "데이터 있는 가장 최근 월"(periods[0])로 잡아 현재 달력월이 비어도
     빈 화면을 피한다. status 필터 안 함 — 에러만 있는 월도 노출.
     """
-    # 월 binning 을 명시적 KST 로(§59) — requested_at 은 timestamptz 라 to_char 가
-    # 세션 타임존을 타므로, timezone('Asia/Seoul', ...) 로 고정해 /summary·budget·
-    # chat 과 동일 기준(KST) 보장. status 필터 안 함 — 에러만 있는 월도 옵션에 노출.
+    # 월 binning 을 명시적 집계 타임존으로(§59) — requested_at 은 timestamptz 라
+    # to_char 가 세션 타임존을 타므로, timezone(REPORTING_TIMEZONE, ...) 로 고정해
+    # /summary·budget·chat 과 동일 기준 보장. status 필터 안 함 — 에러만 있는 월도 옵션에 노출.
     period_expr = kst_month_expr()
     stmt = select(distinct(period_expr).label("period")).order_by(period_expr.desc())
     rows = (await session.execute(stmt)).scalars().all()

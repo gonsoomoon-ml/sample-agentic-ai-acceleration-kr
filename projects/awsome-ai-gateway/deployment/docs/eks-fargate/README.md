@@ -21,9 +21,11 @@ AWS EKS Fargate 환경에 LLM Gateway를 배포하는 전체 가이드입니다.
 | 02 | [terraform-apply.md](./02-terraform-apply.md) | VPC → EKS → Aurora → ElastiCache 프로비저닝 | 45~60분 |
 | 03 | [secrets.md](./03-secrets.md) | Secrets Manager에 비밀값 저장 | 15분 |
 | 04 | [helm-install.md](./04-helm-install.md) | `install-eks.sh` 실행 | 15분 |
-| 05 | [smoke-test.md](./05-smoke-test.md) | 배포 후 E2E 검증 | 10분 |
-| 06 | [upgrade-rollback.md](./06-upgrade-rollback.md) | 버전 업데이트와 롤백 | 참고용 |
-| 07 | [cognito-onboarding.md](./07-cognito-onboarding.md) | Cognito 첫 admin 등록 + OIDC end-to-end 검증 | 30~45분 |
+| 05 | [https-custom-domain.md](./05-https-custom-domain.md) | ALB + ACM + Route53 HTTPS 도메인 연결 | 15~20분 |
+| 06 | [smoke-test.md](./06-smoke-test.md) | 배포 후 E2E 검증 | 10분 |
+| 07 | [upgrade-rollback.md](./07-upgrade-rollback.md) | 버전 업데이트와 롤백 | 참고용 |
+| 08 | [cognito-onboarding.md](./08-cognito-onboarding.md) | Cognito 첫 admin 등록 + OIDC end-to-end 검증 | 30~45분 |
+| 09 | [post-deploy-tui.md](./09-post-deploy-tui.md) | TUI 배포 직후 확인 가이드 | 15~30분 |
 | — | [troubleshooting.md](./troubleshooting.md) | 공통 이슈 (OIDC 섹션 포함) | 참고용 |
 
 ## 이 가이드의 규칙

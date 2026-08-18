@@ -90,10 +90,10 @@ async def main() -> None:
     )
 
     # 7. APScheduler — daily aggregator cron + startup backfill
-    scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
+    scheduler = AsyncIOScheduler(timezone=settings.reporting_timezone)
     scheduler.add_job(
         run_daily_aggregation,
-        CronTrigger.from_crontab(settings.daily_usage_agg_cron, timezone="Asia/Seoul"),
+        CronTrigger.from_crontab(settings.daily_usage_agg_cron, timezone=settings.reporting_timezone),
         id="daily_usage_aggregation",
         args=[session_factory],
         replace_existing=True,
@@ -104,7 +104,7 @@ async def main() -> None:
     logger.info(
         "daily_aggregator_scheduled",
         cron=settings.daily_usage_agg_cron,
-        timezone="Asia/Seoul",
+        timezone=settings.reporting_timezone,
     )
 
     # 8. TaskSupervisor

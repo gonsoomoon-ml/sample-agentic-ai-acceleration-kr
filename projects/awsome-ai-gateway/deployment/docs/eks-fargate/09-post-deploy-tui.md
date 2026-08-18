@@ -1,10 +1,10 @@
-# 08. Deploy TUI 배포 직후 가이드
+# 09. Deploy TUI 배포 직후 가이드
 
 **목적**: `deploy-tui` 로 LLM Gateway 를 배포한 **직후** 무엇을 확인하고, 어떤 순서로 운영을 시작하는지.
 **소요**: 15~30분
 **전제**: `./deployment/scripts/deploy-tui.sh` → **LLM Gateway 배포** 워크플로우가 `[완료]` 로 끝난 상태.
 
-> TUI 는 배포 마지막에 `verify-migration`(= `smoke-test.sh`)을 자동으로 돌린다. 이 문서는 그 자동 검증을 **사람이 다시 확인**하고, VK 발급·Cognito 온보딩·API 실호출로 이어지는 흐름을 한 장으로 정리한 것이다. 상세 troubleshooting 은 각 절 하단의 링크(05·07 문서)를 참조한다.
+> TUI 는 배포 마지막에 `verify-migration`(= `smoke-test.sh`)을 자동으로 돌린다. 이 문서는 그 자동 검증을 **사람이 다시 확인**하고, VK 발급·Cognito 온보딩·API 실호출로 이어지는 흐름을 한 장으로 정리한 것이다. 상세 troubleshooting 은 각 절 하단의 링크(06·08 문서)를 참조한다.
 
 ---
 
@@ -54,7 +54,7 @@ export KUBECONFIG=/tmp/llm-gateway.kubeconfig   # 1절과 동일
 ./deployment/scripts/smoke-test.sh --env dev
 ```
 
-✅ `PASS: N   FAIL: 0` 이면 통과. FAIL 이 있으면 → [05-smoke-test.md §1](./05-smoke-test.md) 의 로그 확인 절차.
+✅ `PASS: N   FAIL: 0` 이면 통과. FAIL 이 있으면 → [06-smoke-test.md §1](./06-smoke-test.md) 의 로그 확인 절차.
 
 ---
 
@@ -94,7 +94,7 @@ curl -s -X POST "$GATEWAY_URL/v1/messages" \
   -d '{"model":"claude-sonnet-4-6","max_tokens":50,"messages":[{"role":"user","content":"안녕하세요"}]}' | jq .
 ```
 
-✅ `/v1/messages` 응답에 `content: [{type:"text", ...}]` 가 오면 **인프라 → 인증 → Bedrock** 경로가 전부 살아있는 것이다. 상세·오류 대응은 → [05-smoke-test.md §2](./05-smoke-test.md).
+✅ `/v1/messages` 응답에 `content: [{type:"text", ...}]` 가 오면 **인프라 → 인증 → Bedrock** 경로가 전부 살아있는 것이다. 상세·오류 대응은 → [06-smoke-test.md §2](./06-smoke-test.md).
 
 ---
 
@@ -107,7 +107,7 @@ curl -s -X POST "$GATEWAY_URL/v1/messages" \
 3. `gateway-cli login` → `api-key-helper` 로 VK 발급
 4. 첫 호출은 팀 budget=$0 이라 **429** (deny by default) → Admin UI 에서 팀 budget 활성화 → 200
 
-전체 절차는 → [07-cognito-onboarding.md](./07-cognito-onboarding.md).
+전체 절차는 → [08-cognito-onboarding.md](./08-cognito-onboarding.md).
 
 > ⚠️ 자동 생성된 팀은 budget=$0 + HARD_BLOCK 이다. Admin UI(`$ADMIN_UI_URL`)에서 예산을 켜기 전까지 그 팀의 모든 요청은 429 로 막힌다. 이는 버그가 아니라 설계다.
 
@@ -131,4 +131,4 @@ curl -s -X POST "$GATEWAY_URL/v1/messages" \
 
 ---
 
-[👈 05-smoke-test.md](./05-smoke-test.md) · [07-cognito-onboarding.md](./07-cognito-onboarding.md) · [troubleshooting.md](./troubleshooting.md)
+[👈 08-cognito-onboarding.md](./08-cognito-onboarding.md) · [troubleshooting.md](./troubleshooting.md)

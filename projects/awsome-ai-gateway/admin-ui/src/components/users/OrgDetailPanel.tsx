@@ -379,7 +379,7 @@ function UserPanel({ node }: { node: OrgTreeNode }) {
       <div className="border-t pt-4">
         <p className="text-sm font-medium mb-2">{t('appAccess.title')}</p>
         <p className="text-xs text-muted-foreground mb-2">
-          전부 선택(또는 전체 해제) = 모든 앱 허용. 일부만 선택하면 화이트리스트로 제한됩니다.
+          {t('appAccess.description')}
         </p>
         {isLoadPending ? (
           <div className="text-xs text-muted-foreground py-1 mb-3">{t('appAccess.loading')}</div>
@@ -409,7 +409,11 @@ function UserPanel({ node }: { node: OrgTreeNode }) {
             {CLIENT_OPTIONS.filter((o) => selected.includes(o.value)).map((o) => (
               <div key={o.value}>
                 <label className="block text-xs text-muted-foreground mb-1">
-                  {o.value === 'claude-code' ? t('budgetInput.claudeCode') : o.value === 'cowork' ? t('budgetInput.cowork') : `${o.label} (USD/월)`}
+                  {o.value === 'claude-code'
+                    ? t('budgetInput.claudeCode')
+                    : o.value === 'cowork'
+                      ? t('budgetInput.cowork')
+                      : t('budgetInput.generic', { app: o.label })}
                 </label>
                 <input
                   type="number"

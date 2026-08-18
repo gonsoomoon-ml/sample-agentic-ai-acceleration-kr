@@ -138,4 +138,3 @@ UPDATE model.routing_profiles
 > **롤백은 즉시**: `account_role_arn`·`external_id` 를 다시 `NULL` 로 → 다음 요청부터 in-account 복귀(무배포).
 >
 > **codex·cowork 도 같은 구조**다(원 설계: claude-code·codex·cowork 를 각각 다른 계정으로). 이 배포는 둘을 out-of-scope(§0)로 두고 [§4-2 (D)](install-guide.md#4-2-3모델-alias-를-us-geo-프로파일로-sonnet-5는-신규)에서 INACTIVE 처리했다. 그것들까지 멀티계정으로 살리려면 클라이언트마다 ①②③ 을 반복한다.
-

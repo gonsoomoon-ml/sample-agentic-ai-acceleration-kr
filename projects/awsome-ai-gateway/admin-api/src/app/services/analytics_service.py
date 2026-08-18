@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
 from app.core.exceptions import ForbiddenError, ValidationError
+from app.core.usage_filters import reporting_timezone
 from app.models.auth import UserRole
 from app.models.usage import ROIScope
 from app.repositories.analytics_repository import AnalyticsRepository
@@ -165,6 +166,33 @@ class AnalyticsService:
                     cost_usd=row.cost or Decimal("0"),
                     requests=row.requests or 0,
                 ))
+        # Daily trends — 일별 비용/요청 수 집계 (KST 기준)
+        from sqlalchemy import func, select
+        from app.models.usage import UsageLog
+        from app.core.usage_filters import cost_period_filter
+
+        # _kst_day = func.date(func.timezone("Asia/Seoul", UsageLog.requested_at))
+        _kst_day = func.date(func.timezone(reporting_timezone(), UsageLog.requested_at))
+        trend_stmt = (
+            select(
+                _kst_day.label("day"),
+                func.coalesce(func.sum(UsageLog.cost_usd), 0).label("cost_usd"),
+                func.count().label("requests"),
+            )
+            .where(cost_period_filter(period))
+            .group_by(_kst_day)
+            .order_by(_kst_day)
+        )
+        if roi_scope == ROIScope.TEAM and scope_id:
+            trend_stmt = trend_stmt.where(UsageLog.team_id == scope_id)
+        elif roi_scope == ROIScope.USER and scope_id:
+            trend_stmt = trend_stmt.where(UsageLog.user_id == scope_id)
+
+        trend_result = await session.execute(trend_stmt)
+        trends = [
+            TrendItem(date=str(row.day), cost_usd=row.cost_usd, requests=row.requests)
+            for row in trend_result.all()
+        ]
 
         return AnalyticsResponse(
             period=period,
@@ -172,6 +200,7 @@ class AnalyticsService:
             by_model=by_model,
             by_team=by_team,
             by_user=by_user,
+            trends=trends
         )
 
     async def export_analytics(
@@ -209,7 +238,7 @@ class AnalyticsService:
         _validate_period_date(period, date)
 
         period_start = f"{period}-01"
-        kst_day = func.date(func.timezone("Asia/Seoul", UsageLog.requested_at))
+        kst_day = func.date(func.timezone(reporting_timezone(), UsageLog.requested_at))
 
         stmt = (
             select(
@@ -293,7 +322,7 @@ class AnalyticsService:
         _validate_period_date(period, date)
 
         period_start = f"{period}-01"
-        kst_day = func.date(func.timezone("Asia/Seoul", UsageLog.requested_at))
+        kst_day = func.date(func.timezone(reporting_timezone(), UsageLog.requested_at))
 
         stmt = (
             select(

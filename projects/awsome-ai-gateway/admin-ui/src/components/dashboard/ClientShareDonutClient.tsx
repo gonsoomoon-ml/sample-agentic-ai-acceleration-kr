@@ -63,7 +63,7 @@ export function ClientShareDonutClient({ data }: Props) {
             afterLabel: (ctx: import('chart.js').TooltipItem<'doughnut'>) => {
               const item = data.clients[ctx.dataIndex];
               if (!item || !item.web_search_count) return '';
-              return `웹서치 ${item.web_search_count.toLocaleString()}회`;
+              return t('webSearchCount', { count: item.web_search_count });
             },
           },
         },
