@@ -570,7 +570,7 @@ done < /tmp/images.txt
 
 > ℹ️ **도메인이 있으면** 이 시점에 [ops/8-H-alb-https.md](ops/8-H-alb-https.md)(US-06, ALB HTTPS) 의 0단계(도메인·ACM)를 먼저 끝내고, §3-7 이후에 그 문서 2단계(전환)를 이어서 한다. 없으면 방식 A(http, IP 제한) 그대로 진행.
 
-**스크립트로 채운다** — 이메일·관리자 PC IP 만 묻고 나머지(pool id·리전·EC2 IP)는 자동:
+**스크립트로 채운다** — 이메일·관리자 PC IP·리포팅 타임존만 묻고 나머지(pool id·리전·EC2 IP)는 자동:
 
 ▶ **실행** · 배포 EC2
 
@@ -579,7 +579,9 @@ cd ~/awsome-ai-gateway
 bash deployment/scripts/fill-org-values.sh dev
 ```
 
-요약을 보여준 뒤 `y` 하면 org 값 4곳(`COGNITO_USER_POOL_ID`·`COGNITO_REGION`·`adminBootstrap.emails`·ingress `inbound-cidrs`)을 채우고, 파일에 남은 placeholder(계정·미사용 chat-agent ARN)도 실제값/빈값으로 정리한다 — 관리자가 열어도 헷갈릴 값이 없게. 멱등이라 나중에 IP 넓힐 때 다시 실행하면 된다(직원 오픈 전 하드닝: operations.md §8-S(2)).
+요약을 보여준 뒤 `y` 하면 org 값 5곳(`COGNITO_USER_POOL_ID`·`COGNITO_REGION`·`adminBootstrap.emails`·ingress `inbound-cidrs`·`global.reportingTimezone`)을 채우고, 파일에 남은 placeholder(계정·미사용 chat-agent ARN)도 실제값/빈값으로 정리한다 — 관리자가 열어도 헷갈릴 값이 없게. 멱등이라 나중에 IP 넓힐 때 다시 실행하면 된다(직원 오픈 전 하드닝: operations.md §8-S(2)).
+
+> 🕒 **리포팅 타임존** — 대시보드·일별 집계·이메일 발송시각의 **달력 경계**(월/일이 어디서 끊기나). 차트 기본이 `Asia/Seoul` 이라 미국 배포는 반드시 바꾼다(스크립트가 리전 기준 기본값 `America/Los_Angeles` 를 제안, Enter 로 수락). **정규 IANA 이름만**(`KST`·`PST`·`US/Pacific` 은 서비스가 부팅을 거부). 예산 **강제** 월 경계(gateway-proxy)는 이 값과 무관하게 UTC. 운영 중 바꾸면 이미 쌓인 `daily_aggregates` 는 옛 기준으로 남으므로 설치 때 확정한다.
 
 > 🔴 `inbound-cidrs` 를 **안 넣으면 ALB 기본이** `0.0.0.0/0`(전 세계 오픈) → `DEV_LOGIN_ENABLED=true` 와 겹쳐 누구나 admin 키 발급(operations.md §8-S). 스크립트가 반드시 넣는 이유다. 관리자 PC `/32` 로 설치·검증하고, 직원 대역은 operations.md §8-S 에서 확대한다.
 
@@ -597,6 +599,8 @@ bash deployment/scripts/fill-org-values.sh dev
   adminBootstrap:
     emails:
       - "you@your-org.com"                  # admin@example.com 에서 교체
+global:
+  reportingTimezone: "America/Los_Angeles"  # Asia/Seoul 에서 교체 — 정규 IANA 이름만
 # ingress.annotations(활성=방식 A)에 추가:
     alb.ingress.kubernetes.io/inbound-cidrs: "<EC2>/32,<PC>/32"
 ```

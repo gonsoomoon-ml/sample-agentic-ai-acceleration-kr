@@ -7,6 +7,9 @@
 #     - adminBootstrap.emails                  (프롬프트)
 #     - ingress inbound-cidrs = 배포EC2/32,관리자PC/32
 #         (배포 EC2 IP 는 checkip 로 자동, 관리자 PC IP 는 프롬프트)
+#     - global.reportingTimezone               (프롬프트, 리전별 기본값 제안)
+#         대시보드·일별 집계·이메일 시각의 달력 경계. 차트 기본은 Asia/Seoul
+#         이라 미국 배포는 여기서 바꿔야 한다. 예산 강제 월은 UTC 고정(별개).
 #   ⚠️ inbound-cidrs 를 비우면 ALB 기본이 0.0.0.0/0 (전 세계 오픈)이므로,
 #      이 스크립트가 반드시 채워 그 실수를 막는다.
 # 멱등: 다시 실행하면 값만 교체(중복 안 생김). 요약 확인 후에만 파일을 고친다.
@@ -65,6 +68,42 @@ for _ip in "${_PC_IPS[@]}"; do
     esac
 done
 
+# ---- 리포팅 타임존 (global.reportingTimezone → ConfigMap REPORTING_TIMEZONE) ----
+# admin-api·cost-recorder·notification 이 같은 값으로 월/일 경계를 자른다. 정규 IANA
+# 이름만: "KST"·"PST"·"US/Pacific" 같은 약어/레거시 alias 는 배포 이미지(Debian slim)의
+# tzdata 에 없어 세 서비스가 부팅을 거부한다 → 여기서 미리 막는다.
+case "$REGION" in
+    us-west-*)                 TZ_DEFAULT="America/Los_Angeles" ;;
+    us-east-*|ca-central-*)    TZ_DEFAULT="America/New_York" ;;
+    ap-northeast-2)            TZ_DEFAULT="Asia/Seoul" ;;
+    ap-northeast-1)            TZ_DEFAULT="Asia/Tokyo" ;;
+    ap-south-*)                TZ_DEFAULT="Asia/Kolkata" ;;
+    ap-southeast-1)            TZ_DEFAULT="Asia/Singapore" ;;
+    ap-southeast-2)            TZ_DEFAULT="Australia/Sydney" ;;
+    eu-west-2)                 TZ_DEFAULT="Europe/London" ;;
+    eu-*)                      TZ_DEFAULT="Europe/Berlin" ;;
+    *)                         TZ_DEFAULT="UTC" ;;
+esac
+echo "  (대시보드·일별 집계·이메일 발송시각의 달력 경계. 정규 IANA 이름만 — 예: America/Los_Angeles, Asia/Seoul, UTC)"
+read -rp "리포팅 타임존 [Enter = $TZ_DEFAULT]: " REPORTING_TZ
+REPORTING_TZ="$(printf '%s' "${REPORTING_TZ:-$TZ_DEFAULT}" | tr -d '[:space:]')"
+if [ "$REPORTING_TZ" != "UTC" ]; then
+    case "$REPORTING_TZ" in
+        */*) ;;   # Area/City 형태
+        *)   echo "❌ 잘못된 타임존: '$REPORTING_TZ' — 약어(KST/PST/EST) 대신 정규 IANA 이름(예: Asia/Seoul, America/Los_Angeles)"; exit 1 ;;
+    esac
+    case "$REPORTING_TZ" in
+        US/*|Etc/*|posix/*|right/*) echo "❌ 레거시 alias '$REPORTING_TZ' 는 배포 이미지에서 거부됨 — 예: US/Pacific → America/Los_Angeles"; exit 1 ;;
+    esac
+fi
+# 존재 검증: 이 EC2 의 tzdata 또는 python zoneinfo 중 하나로 확인(둘 다 없으면 형식 검사만으로 통과)
+if [ -d /usr/share/zoneinfo ] && [ ! -f "/usr/share/zoneinfo/$REPORTING_TZ" ]; then
+    echo "❌ 알 수 없는 타임존: '$REPORTING_TZ' (/usr/share/zoneinfo 에 없음)"; exit 1
+elif [ ! -d /usr/share/zoneinfo ] && command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import sys; from zoneinfo import ZoneInfo; ZoneInfo(sys.argv[1])' "$REPORTING_TZ" 2>/dev/null \
+        || { echo "❌ 알 수 없는 타임존: '$REPORTING_TZ'"; exit 1; }
+fi
+
 # ---- 요약 후 확인 ----
 cat <<SUMMARY
 
@@ -73,6 +112,7 @@ cat <<SUMMARY
   COGNITO_REGION       : $REGION    (issuer URL 에서)
   adminBootstrap email : $EMAIL
   inbound-cidrs        : $CIDRS   (EC2 $EC2_IP + PC $PC_IP)
+  reportingTimezone    : $REPORTING_TZ   (global.reportingTimezone — 대시보드/집계 달력 경계, 예산 월은 UTC)
   masterPasswordRemoteKey : ${RDS_SECRET:-(없음 — /db:master_password 유지)}
   + placeholder 정리   : 123456789012 → $ACCOUNT, ap-northeast-2 → $REGION
                          chat-agent(미사용) ARN/버킷 → 빈 값
@@ -109,6 +149,14 @@ else
   awk -v c="$CIDRS" '/^  annotations:$/&&!d{print;print "    alb.ingress.kubernetes.io/inbound-cidrs: \"" c "\"";d=1;next}{print}' "$V" > "$V.tmp" && mv "$V.tmp" "$V"
 fi
 
+# ---- 리포팅 타임존: global.reportingTimezone (2칸 들여쓰기 = global 블록의 키) ----
+# 키가 있으면 값만 교체, 없으면(구버전 values) global.deploymentMode 다음 줄에 삽입.
+if grep -qE '^  reportingTimezone: ' "$V"; then
+  sed -i 's#^\(  reportingTimezone: \).*#\1"'"$REPORTING_TZ"'"#' "$V"
+else
+  awk -v z="$REPORTING_TZ" '/^  deploymentMode: /&&!d{print;print "  reportingTimezone: \"" z "\""; d=1; next}{print}' "$V" > "$V.tmp" && mv "$V.tmp" "$V"
+fi
+
 # ---- master 비번 드리프트 차단: ESO 가 RDS 관리형 시크릿을 직접 읽게 ----
 # manage_master_user_password=true 환경에선 RDS 가 master 비번을 로테이션하므로,
 # terraform 이 apply 시점에 /db 로 복사한 정적 값은 로테이션 한 번에 어긋난다
@@ -126,5 +174,5 @@ fi
 
 echo
 echo "✅ 완료. 반영된 줄:"
-grep -n 'COGNITO_USER_POOL_ID:\|^    COGNITO_REGION:\|inbound-cidrs:\|masterPasswordRemoteKey:' "$V"
+grep -n 'COGNITO_USER_POOL_ID:\|^    COGNITO_REGION:\|inbound-cidrs:\|masterPasswordRemoteKey:\|^  reportingTimezone:' "$V"
 grep -n -A1 '^    emails:$' "$V" | tail -1

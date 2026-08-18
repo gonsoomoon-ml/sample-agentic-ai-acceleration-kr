@@ -14,6 +14,11 @@
 global:
   environment: dev
   deploymentMode: eks-fargate
+  # CHANGE_ME (org): 리포팅 타임존 — 대시보드·일별 집계(daily_aggregates)·이메일 발송시각의
+  # 달력 경계. **정규 IANA 이름만**(예: America/Los_Angeles · Asia/Seoul · UTC — "KST"/"PST"/
+  # "US/Pacific" 은 배포 이미지에서 거부). fill-org-values.sh 가 프롬프트로 채운다.
+  # 예산 강제(gateway-proxy)의 월 경계는 이 값과 무관하게 UTC 고정.
+  reportingTimezone: "Asia/Seoul"
   commonLabels:
     environment: dev
     managed-by: terraform
