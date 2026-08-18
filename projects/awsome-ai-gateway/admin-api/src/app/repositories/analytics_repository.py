@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.usage_filters import cost_period_filter, kst_month_expr
+from app.core.usage_filters import client_filter, cost_period_filter, kst_month_expr
 from app.models.usage import ROIAggregation, ROIScope, UsageLog
 
 
@@ -62,7 +62,7 @@ class AnalyticsRepository:
     # ── UsageLog queries (for scheduler aggregation) ──
 
     async def sum_usage_by_model(
-        self, period: str, scope: ROIScope, scope_id: uuid.UUID | None
+        self, period: str, scope: ROIScope, scope_id: uuid.UUID | None, client: str | None = None
     ) -> dict[str, Decimal]:
         """Returns {model_alias: total_cost_usd} for the given period/scope."""
         stmt = select(
@@ -72,27 +72,36 @@ class AnalyticsRepository:
             cost_period_filter(period),  # §59 SUCCESS + KST
         )
         stmt = self._apply_scope_filter(stmt, scope, scope_id)
+        stmt = self._apply_client_filter(stmt, client)
         stmt = stmt.group_by(UsageLog.model_alias)
         result = await self._session.execute(stmt)
         return {row.model_alias: row.total_cost or Decimal("0") for row in result}
 
-    async def count_active_users(self, period: str, scope: ROIScope, scope_id: uuid.UUID | None) -> int:
+    async def count_active_users(
+        self, period: str, scope: ROIScope, scope_id: uuid.UUID | None, client: str | None = None
+    ) -> int:
         stmt = select(func.count(distinct(UsageLog.user_id))).where(
             cost_period_filter(period),  # §59 SUCCESS + KST
         )
         stmt = self._apply_scope_filter(stmt, scope, scope_id)
+        stmt = self._apply_client_filter(stmt, client)
         result = await self._session.execute(stmt)
         return result.scalar_one() or 0
 
-    async def total_requests(self, period: str, scope: ROIScope, scope_id: uuid.UUID | None) -> int:
+    async def total_requests(
+        self, period: str, scope: ROIScope, scope_id: uuid.UUID | None, client: str | None = None
+    ) -> int:
         stmt = select(func.count(UsageLog.id)).where(
             cost_period_filter(period),  # §59 SUCCESS + KST
         )
         stmt = self._apply_scope_filter(stmt, scope, scope_id)
+        stmt = self._apply_client_filter(stmt, client)
         result = await self._session.execute(stmt)
         return result.scalar_one() or 0
 
-    async def total_tokens(self, period: str, scope: ROIScope, scope_id: uuid.UUID | None) -> int:
+    async def total_tokens(
+        self, period: str, scope: ROIScope, scope_id: uuid.UUID | None, client: str | None = None
+    ) -> int:
         stmt = select(
             func.coalesce(func.sum(UsageLog.input_tokens), 0)
             + func.coalesce(func.sum(UsageLog.output_tokens), 0)
@@ -100,8 +109,15 @@ class AnalyticsRepository:
             cost_period_filter(period),  # §59 SUCCESS + KST
         )
         stmt = self._apply_scope_filter(stmt, scope, scope_id)
+        stmt = self._apply_client_filter(stmt, client)
         result = await self._session.execute(stmt)
         return result.scalar_one() or 0
+
+    @staticmethod
+    def _apply_client_filter(stmt, client: str | None):
+        if (cf := client_filter(client)) is not None:
+            stmt = stmt.where(cf)
+        return stmt
 
     @staticmethod
     def _apply_scope_filter(stmt, scope: ROIScope, scope_id: uuid.UUID | None):

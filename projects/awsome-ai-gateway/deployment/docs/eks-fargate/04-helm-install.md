@@ -180,7 +180,7 @@ cognito_hosted_ui_domain    : llm-gateway-dev-auth.auth.ap-northeast-2.amazoncog
 
 ⚠️ **`cognito_issuer_url` 출력이 비어있으면**: terraform 의 cognito 모듈이 적용 안 된 상태. `terraform apply` 다시 실행 필요.
 
-OIDC 가 활성화되면 사용자 등록 / 첫 admin 부트스트랩이 필요합니다. **다음 단계 [05-smoke-test.md](./05-smoke-test.md) 진행 후 [07-cognito-onboarding.md](./07-cognito-onboarding.md)** 를 보세요.
+OIDC 가 활성화되면 사용자 등록 / 첫 admin 부트스트랩이 필요합니다. **다음 단계 [06-smoke-test.md](./06-smoke-test.md) 진행 후 [08-cognito-onboarding.md](./08-cognito-onboarding.md)** 를 보세요.
 
 ### 3.2 전체 소요시간
 

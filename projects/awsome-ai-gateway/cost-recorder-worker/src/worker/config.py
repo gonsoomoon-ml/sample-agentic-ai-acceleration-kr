@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +45,19 @@ class Settings(BaseSettings):
     # daily_aggregates(이 값 기준)와 usage_logs 실시간 집계(admin-api 기준)가
     # 서로 다른 날짜 경계를 갖게 된다.
     reporting_timezone: str = "Asia/Seoul"
+
+    @field_validator("reporting_timezone")
+    @classmethod
+    def _validate_reporting_timezone(cls, v: str) -> str:
+        """Fail fast at boot on an invalid IANA TZ name instead of a CrashLoop
+        surfacing only once the aggregator cron first fires."""
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError(f"Invalid reporting_timezone {v!r}: not a valid IANA timezone name") from e
+        return v
 
     # Graceful shutdown
     shutdown_grace_period_sec: float = 30.0

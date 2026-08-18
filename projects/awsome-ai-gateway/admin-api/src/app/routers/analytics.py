@@ -23,6 +23,7 @@ async def get_analytics(
     period: str = Query(description="YYYY-MM format"),
     group_by: str = Query("model", description="model | team | department | user"),
     scope: str = Query("all", description="all | team:{uuid}"),
+    client: str = Query(default=None, description="claude-code|cowork|codex|other|all"),
     user: CurrentUser = Depends(require_admin_or_team_leader),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -34,6 +35,7 @@ async def get_analytics(
         period=period,
         group_by=group_by,
         scope=scope,
+        client=client,
         actor=user,
     )
 

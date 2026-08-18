@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
 from app.core.exceptions import ForbiddenError, ValidationError
-from app.core.usage_filters import reporting_timezone
+from app.core.usage_filters import client_filter, reporting_timezone
 from app.models.auth import UserRole
 from app.models.usage import ROIScope
 from app.repositories.analytics_repository import AnalyticsRepository
@@ -61,6 +61,7 @@ class AnalyticsService:
         period: str,
         group_by: str = "model",
         scope: str = "all",
+        client: str | None = None,
         actor: CurrentUser,
     ) -> AnalyticsResponse:
         repo = AnalyticsRepository(session)
@@ -86,11 +87,11 @@ class AnalyticsService:
         # Real-time aggregation from usage_logs (not pre-aggregated roi_aggregations)
         query_scope = roi_scope or ROIScope.GLOBAL
 
-        cost_by_model = await repo.sum_usage_by_model(period, query_scope, scope_id)
+        cost_by_model = await repo.sum_usage_by_model(period, query_scope, scope_id, client)
         total_cost = sum(cost_by_model.values(), Decimal("0"))
-        active_users_count = await repo.count_active_users(period, query_scope, scope_id)
-        total_requests_count = await repo.total_requests(period, query_scope, scope_id)
-        total_tokens_count = await repo.total_tokens(period, query_scope, scope_id)
+        active_users_count = await repo.count_active_users(period, query_scope, scope_id, client)
+        total_requests_count = await repo.total_requests(period, query_scope, scope_id, client)
+        total_tokens_count = await repo.total_tokens(period, query_scope, scope_id, client)
 
         avg_cost = total_cost / active_users_count if active_users_count > 0 else Decimal("0")
 
@@ -110,17 +111,20 @@ class AnalyticsService:
         # Team breakdown — aggregate per team from usage_logs
         by_team: list[TeamBreakdown] = []
         if not roi_scope or roi_scope == ROIScope.GLOBAL:
-            team_costs = await repo.sum_usage_by_model(period, ROIScope.GLOBAL, None)
+            team_costs = await repo.sum_usage_by_model(period, ROIScope.GLOBAL, None, client)
             # Get per-team costs
             from sqlalchemy import distinct, func, select
             from app.models.usage import UsageLog
             from app.core.usage_filters import cost_period_filter
+            team_where = [cost_period_filter(period)]  # §59 SUCCESS + KST (team 귀속은 usage_logs.team_id 직접)
+            if (cf := client_filter(client)) is not None:
+                team_where.append(cf)
             stmt = select(
                 UsageLog.team_id,
                 func.sum(UsageLog.cost_usd).label("cost"),
                 func.count(distinct(UsageLog.user_id)).label("users"),
             ).where(
-                cost_period_filter(period),  # §59 SUCCESS + KST (team 귀속은 usage_logs.team_id 직접)
+                *team_where,
             ).group_by(UsageLog.team_id)
             result = await session.execute(stmt)
             for row in result:
@@ -146,6 +150,8 @@ class AnalyticsService:
             user_where = [cost_period_filter(period)]
             if scope_id is not None:  # TEAM_LEADER/team scope 격리
                 user_where.append(UsageLog.team_id == scope_id)
+            if (cf := client_filter(client)) is not None:
+                user_where.append(cf)
             ustmt = (
                 select(
                     User.display_name.label("name"),
@@ -171,7 +177,6 @@ class AnalyticsService:
         from app.models.usage import UsageLog
         from app.core.usage_filters import cost_period_filter
 
-        # _kst_day = func.date(func.timezone("Asia/Seoul", UsageLog.requested_at))
         _kst_day = func.date(func.timezone(reporting_timezone(), UsageLog.requested_at))
         trend_stmt = (
             select(
@@ -187,6 +192,8 @@ class AnalyticsService:
             trend_stmt = trend_stmt.where(UsageLog.team_id == scope_id)
         elif roi_scope == ROIScope.USER and scope_id:
             trend_stmt = trend_stmt.where(UsageLog.user_id == scope_id)
+        if (cf := client_filter(client)) is not None:  # 대시보드 ?client= 필터와 정합 (KPI/Top 과 동일 기준)
+            trend_stmt = trend_stmt.where(cf)
 
         trend_result = await session.execute(trend_stmt)
         trends = [

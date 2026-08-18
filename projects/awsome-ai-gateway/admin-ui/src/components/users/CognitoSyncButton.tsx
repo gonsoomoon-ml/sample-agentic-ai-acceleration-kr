@@ -11,6 +11,7 @@ import { useToast } from '@/components/common/ToastProvider';
 
 export function CognitoSyncButton() {
   const t = useTranslations('users');
+  const tCommon = useTranslations('common');
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -68,7 +69,7 @@ export function CognitoSyncButton() {
                 disabled={isPending}
                 className="px-3 py-1.5 text-sm rounded-md border hover:bg-muted"
               >
-                {t('common.cancel')}
+                {tCommon('cancel')}
               </button>
               <button
                 type="button"

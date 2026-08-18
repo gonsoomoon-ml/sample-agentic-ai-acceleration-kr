@@ -146,13 +146,13 @@ cd /path/to/LLM-Gateway-Vanilla
 ./deployment/scripts/install-eks.sh dev
 ```
 
-또는 직접 Helm upgrade:
-
-```bash
-helm upgrade --install llm-gateway ./deployment/charts/llm-gateway \
-  -f ./deployment/charts/llm-gateway/values-eks-fargate-dev.yaml \
-  -n llm-gateway
-```
+⚠️ **`values-eks-fargate-dev.yaml`을 직접 `-f`로 주는 `helm upgrade`는 사용하지 마세요.**
+`install-eks.sh`는 Terraform output(DB/Redis host, IRSA role ARN, OIDC 값 등)을
+`--set`으로 주입하는데, values 파일에는 이 값들이 `<RDS_PROXY_ENDPOINT>` 같은
+placeholder로만 남아 있습니다. `-f`만 쓰면 이 placeholder가 그대로 적용되어
+스택이 깨집니다(관련 경고: [07. 업그레이드/롤백](./07-upgrade-rollback.md)).
+반드시 위처럼 `install-eks.sh`를 쓰거나, 부득이하게 직접 `helm upgrade`를 써야
+한다면 기존 릴리스 값을 보존하도록 `--reuse-values`를 명시하세요.
 
 배포 후 ALB DNS를 확인합니다.
 
@@ -224,7 +224,7 @@ curl -i https://admin-api-dev.llm-gateway.mycompany.com/health
 - [ ] `values-eks-fargate-dev.yaml`에서 방식 A 주석 / 방식 B 해제
 - [ ] `certificate-arn`을 실제 ACM ARN으로 교체
 - [ ] `host` 3개를 실제 도메인으로 교체
-- [ ] `install-eks.sh dev` 또는 `helm upgrade` 성공
+- [ ] `install-eks.sh dev` 성공 (직접 `helm upgrade` 시 `--reuse-values` 필수)
 - [ ] Route53에 CNAME 3개 추가
 - [ ] HTTPS health check 200 확인
 

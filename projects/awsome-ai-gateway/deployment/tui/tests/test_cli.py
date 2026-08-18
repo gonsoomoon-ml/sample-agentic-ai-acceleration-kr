@@ -211,7 +211,7 @@ def test_render_endpoints_panel_pending_message_when_empty(capsys):
 def test_render_next_steps_includes_doc_path(capsys):
     cli.render_next_steps("dev")
     out = capsys.readouterr().out
-    assert "08-post-deploy-tui.md" in out
+    assert "09-post-deploy-tui.md" in out
     assert "KUBECONFIG" in out
 
 

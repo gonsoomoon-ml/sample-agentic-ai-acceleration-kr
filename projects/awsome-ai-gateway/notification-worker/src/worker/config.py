@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,6 +49,19 @@ class Settings(BaseSettings):
     # 이메일 본문의 "발송시각" 표시 타임존(§59). IANA TZ 이름.
     # admin-api 의 REPORTING_TIMEZONE 과 동일 값으로 맞추는 것을 권장(운영 기준 통일).
     reporting_timezone: str = "Asia/Seoul"
+
+    @field_validator("reporting_timezone")
+    @classmethod
+    def _validate_reporting_timezone(cls, v: str) -> str:
+        """Fail fast at boot on an invalid IANA TZ name instead of a 500 the
+        first time an email template renders a timestamp."""
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError(f"Invalid reporting_timezone {v!r}: not a valid IANA timezone name") from e
+        return v
 
     # Logging
     log_level: str = "INFO"

@@ -75,7 +75,7 @@
 
 📚 다음 단계:
    1. 스모크 테스트 실행:    deployment/scripts/smoke-test.sh --namespace {{ .Release.Namespace }}
-   2. 초기 Admin 계정 설정:  deployment/docs/{{ .Values.global.deploymentMode }}/05-smoke-test.md
+   2. 초기 Admin 계정 설정:  deployment/docs/{{ .Values.global.deploymentMode }}/06-smoke-test.md
    3. 모니터링:              Grafana 대시보드 (uid: gateway-ops, gateway-usage)
 
 문제 발생 시: deployment/docs/{{ .Values.global.deploymentMode }}/troubleshooting.md

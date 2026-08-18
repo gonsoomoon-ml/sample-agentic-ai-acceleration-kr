@@ -127,9 +127,11 @@ User HTTP → ALB → gateway-proxy Pod
 | 2 | [02-terraform-apply.md](../deployment/docs/eks-fargate/02-terraform-apply.md) | VPC·EKS·Aurora·ElastiCache 프로비저닝 | 45~60분 |
 | 3 | [03-secrets.md](../deployment/docs/eks-fargate/03-secrets.md) | Secrets Manager에 앱/DB/Redis 시크릿 등록 | 15분 |
 | 4 | [04-helm-install.md](../deployment/docs/eks-fargate/04-helm-install.md) | Docker 빌드 + ECR 푸시 + Helm install | 15분 |
-| 5 | [05-smoke-test.md](../deployment/docs/eks-fargate/05-smoke-test.md) | Pod Ready, Health, E2E 검증 | 10분 |
-| 6 | [06-upgrade-rollback.md](../deployment/docs/eks-fargate/06-upgrade-rollback.md) | Helm upgrade / rollback 절차 | — |
-| 7 | [07-cognito-onboarding.md](../deployment/docs/eks-fargate/07-cognito-onboarding.md) | Cognito 사용자 생성, 그룹 매핑 | 10분 |
+| 5 | [05-https-custom-domain.md](../deployment/docs/eks-fargate/05-https-custom-domain.md) | ALB + ACM + Route53 커스텀 도메인 HTTPS | 15~20분 |
+| 6 | [06-smoke-test.md](../deployment/docs/eks-fargate/06-smoke-test.md) | Pod Ready, Health, E2E 검증 | 10분 |
+| 7 | [07-upgrade-rollback.md](../deployment/docs/eks-fargate/07-upgrade-rollback.md) | Helm upgrade / rollback 절차 | — |
+| 8 | [08-cognito-onboarding.md](../deployment/docs/eks-fargate/08-cognito-onboarding.md) | Cognito 사용자 생성, 그룹 매핑 | 10분 |
+| 9 | [09-post-deploy-tui.md](../deployment/docs/eks-fargate/09-post-deploy-tui.md) | 배포 후 TUI 검증 | — |
 
 트러블슈팅: [troubleshooting.md](../deployment/docs/eks-fargate/troubleshooting.md) (36개 이슈 + 해결법)
 

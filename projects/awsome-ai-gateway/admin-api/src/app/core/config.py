@@ -152,6 +152,19 @@ class Settings(BaseSettings):
     # 한국 운영 기준(KST)을 그대로 유지하되, 다른 리전에 배포할 땐 env로 바꿀 수 있게 함.
     REPORTING_TIMEZONE: str = "Asia/Seoul"
 
+    @field_validator("REPORTING_TIMEZONE")
+    @classmethod
+    def _validate_reporting_timezone(cls, v: str) -> str:
+        """Fail fast at boot on an invalid IANA TZ name (e.g. "KST", "US/Pacific"
+        aren't always valid `ZoneInfo` keys) instead of a 500 at query time."""
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError(f"Invalid REPORTING_TIMEZONE {v!r}: not a valid IANA timezone name") from e
+        return v
+
     # ── Scheduler ──
     ROI_AGGREGATION_CRON: str = "*/15 * * * *"
     KEY_EXPIRY_CRON: str = "0 * * * *"
