@@ -30,7 +30,7 @@ What sets this edition apart: a region outside Korea · direct to Bedrock (not M
 | Claude Code + **Cowork** | `US-01` + all of `US-02` (`01` routing · `02` model · `03` CloudFront) | `US-01` + steps `01`·`02` of `US-02` + `US-06` (`03` not needed) |
 
 > `US-06` (ALB HTTPS) = https via your domain + ACM — **strongly recommended for production**. Cowork requires https: CloudFront (`03`) without a domain, US-06 with one — never both. `US-03·04·05` are included in new installs (required).
-> `US-07` (admin ALBs internal) = the **final posture for production with a site-to-site VPN** (optional) — new installs include it during `US-01` by uncommenting the values before §3; existing deployments follow the [switch runbook](ops/8-I-admin-internal.md). Do not apply without the VPN.
+> `US-07` (admin ALBs internal) = the **final posture for production with a site-to-site VPN** (optional) — new installs include it during `US-01` by uncommenting the values **at §3-6**; existing deployments follow the [switch runbook](ops/8-I-admin-internal.md). Do not apply without the VPN.
 > ⚠️ **A new install still needs `US-02`** — the migration seeds the Cowork routing row with a non-existent account, so left as is every Cowork request is a 502. Claude Code only + seed models → US-02 can be skipped.
 
 ---
@@ -41,7 +41,7 @@ What sets this edition apart: a region outside Korea · direct to Bedrock (not M
 
 | ID (doc) | What | Grade · new installs | Existing deployments do |
 |---|---|---|---|
-| [**US-07**](ops/8-I-admin-internal.md) 2026/08 | Customer final architecture — both admin ALBs internal (private subnets) | Optional · requires site-to-site VPN · new installs: during US-01 via values | uncomment 2 values blocks → helm (ALB recreation) → swap admin SG · CNAMEs |
+| [**US-07**](ops/8-I-admin-internal.md) 2026/08 | Customer final architecture — both admin ALBs internal (private subnets) | Optional · requires site-to-site VPN · new installs: at §3-6 via values | uncomment 2 values blocks → helm (ALB recreation) → swap admin SG · CNAMEs |
 | [**US-06**](ops/8-H-alb-https.md) 2026/08 | ALB HTTPS — custom domain + ACM | Optional · **strongly recommended for production** · new installs: at §3-6 | get a domain → switch → update 2 client URLs (30 min) |
 | [**US-05**](ops/8-E-eks-upgrade.md) 2026/08 | EKS 1.31 → 1.34 | Required (support expiry · cost) · included in new installs | apply one minor at a time ×3 + restart all ns |
 | [**US-04**](ops/8-N-vpc-endpoint.md) 2026/08 | Bedrock · STS over VPC Endpoints | Required (compliance) · included in new installs | apply endpoints → restart gateway-proxy |

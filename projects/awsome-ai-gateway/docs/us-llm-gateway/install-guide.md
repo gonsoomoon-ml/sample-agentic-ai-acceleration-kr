@@ -570,6 +570,8 @@ done < /tmp/images.txt
 
 > ℹ️ **도메인이 있으면** 이 시점에 [ops/8-H-alb-https.md](ops/8-H-alb-https.md)(US-06, ALB HTTPS) 의 0단계(도메인·ACM)를 먼저 끝내고, §3-7 이후에 그 문서 2단계(전환)를 이어서 한다. 없으면 방식 A(http, IP 제한) 그대로 진행.
 
+> ℹ️ **S2S VPN 이 있고 최종형(admin ALB internal, `US-07`)으로 설치하려면** 이 시점에 values 의 `adminUi`·`adminApi` 주석 2곳(`scheme: internal`)을 해제하고 진행한다 — admin ALB 가 처음부터 private 서브넷에 만들어져 전환 절차가 필요 없다. 전제·상세: [ops/8-I-admin-internal.md](ops/8-I-admin-internal.md). **VPN 없으면 해제 금지** — VK 발급(api-key-helper → admin-api)이 끊긴다.
+
 **스크립트로 채운다** — 이메일·관리자 PC IP·리포팅 타임존만 묻고 나머지(pool id·리전·EC2 IP)는 자동:
 
 ▶ **실행** · 배포 EC2

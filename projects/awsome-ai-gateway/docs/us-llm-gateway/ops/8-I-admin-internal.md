@@ -8,8 +8,9 @@
 
 - **전제 = S2S VPN** (사용자망 → VPC 라우팅). VK 발급(`api-key-helper` → admin-api)도 이 경로를
   타므로 **VPN 없이 적용하면 게이트웨이 사용 자체가 불가** — 개통 전 적용 금지.
-- **신규 설치**: `US-01`([install-guide.md](../install-guide.md)) 진행 중 §3(헬름 설치) **전에**
-  values 주석만 해제하면 admin ALB 가 처음부터 internal 로 만들어진다 — 아래 전환 절차는 불필요.
+- **신규 설치**: `US-01`([install-guide.md](../install-guide.md)) 의 **§3-6 시점**(values 채우기,
+  §3-7 설치 실행 전)에 values 주석만 해제하면 admin ALB 가 처음부터 internal 로 만들어진다 —
+  아래 전환 절차는 불필요. (§3-6 본문에 같은 안내가 있다.)
 
 ## 절차 (기존 배포의 전환)
 
