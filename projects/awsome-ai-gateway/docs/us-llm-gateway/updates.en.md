@@ -7,6 +7,7 @@ Grades — **Required** · **Recommended** (feature does not work without it) ·
 
 | ID (doc) | What | Grade · new installs | Existing deployments do |
 |---|---|---|---|
+| [**US-07**](ops/8-I-admin-internal.md) 2026/08 | Customer final architecture — both admin ALBs internal (private subnets) | Optional · requires site-to-site VPN · new installs: during US-01 via values | uncomment 2 values blocks → helm (ALB recreation) → swap admin SG · CNAMEs |
 | [**US-06**](ops/8-H-alb-https.md) 2026/08 | ALB HTTPS — custom domain + ACM certificate | Optional · **strongly recommended for production** · new installs: same steps at §3-6 | get a domain → switch → update 2 client URLs (~30 min) |
 | [**US-05**](ops/8-E-eks-upgrade.md) 2026/08 | EKS 1.31 → 1.34 | Required (support expiry · cost) · included in new installs | apply one minor at a time ×3 + restart pods in all namespaces |
 | [**US-04**](ops/8-N-vpc-endpoint.md) 2026/08 | Bedrock · STS over VPC Endpoints instead of NAT | Required (compliance) · included in new installs | apply endpoints → restart gateway-proxy |
@@ -16,6 +17,7 @@ Grades — **Required** · **Recommended** (feature does not work without it) ·
 
 ## Why · pitfalls (per item)
 
+- **US-07** — Final customer posture: move the control-plane ALBs (admin-api · admin-ui) to internal in the private subnets, reachable only over the site-to-site VPN; the data plane (gateway) stays public. No terraform change — the vpc module already creates the subnets and tags. New installs include it during `US-01` (uncomment the values before §3, no extra steps); running deployments follow the [§8-I runbook](ops/8-I-admin-internal.md) — an ALB recreation, so swap the admin CNAMEs (a few minutes of admin downtime). ⚠️ Applying without the VPN breaks VK issuance (api-key-helper → admin-api) and thus the gateway itself — do not apply before the VPN exists. Internal ALB creation and in-VPC reachability were verified by rehearsal (2026-08-20).
 - **US-06** — Serve the 3 ALBs as `https://gateway-<env>.<domain>` instead of http:80 on the temporary ALB address: TLS terminated at ACM, a fixed name, no CloudFront needed for Cowork. If your account cannot register domains (e.g. Amazon-internal), register in another account and delegate NS. Afterwards replace `ANTHROPIC_BASE_URL` · `ADMIN_API_URL` on clients.
 - **US-05** — 1.31 is past standard support: extended-support surcharge (~$365/month per cluster) and after end of support (2026-11-26) AWS force-upgrades automatically. One minor version at a time (3 applies); restart pods in every namespace after each step (on Fargate a pod is a node).
 - **US-04** — Bedrock · STS calls go over PrivateLink inside the VPC instead of NAT + public internet. Only VPCs created before the endpoint declaration existed are affected (new installs already include it) — nothing tells you, Bedrock keeps working. Restart gateway-proxy right after applying: dead sockets left in the pool cause consecutive 502s that look like the endpoint is broken.

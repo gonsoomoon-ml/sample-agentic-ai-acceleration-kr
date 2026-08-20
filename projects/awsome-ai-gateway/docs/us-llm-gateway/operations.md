@@ -22,6 +22,7 @@
 | §8-N | Bedrock 을 NAT 대신 VPC Endpoint(PrivateLink)로 | 기존 VPC 1회 (US-04) | [ops/8-N-vpc-endpoint.md](ops/8-N-vpc-endpoint.md) |
 | §8-E | EKS 버전 업그레이드 (1.31 → 1.34) | EKS 버전 올릴 때 (US-05) | [ops/8-E-eks-upgrade.md](ops/8-E-eks-upgrade.md) |
 | §8-H | ALB HTTPS — 커스텀 도메인 + ACM (방식 A → B) | 도메인이 있을 때 (US-06, 선택 · 운영이면 강력 권장) | [ops/8-H-alb-https.md](ops/8-H-alb-https.md) |
+| §8-I | admin ALB 2개를 internal 로 (고객사 최종형) | S2S VPN 개통 후 (US-07, 선택) | [ops/8-I-admin-internal.md](ops/8-I-admin-internal.md) |
 | §8-T | teardown (과금 중단 · 초기화) | 과금 중단 | [아래](#8-t-teardown-과금-중단--초기화) |
 | §8-Z | 토큰 TTL 조절 | 토큰 수명 바꿀 때 | [ops/8-Z-token-ttl.md](ops/8-Z-token-ttl.md) |
 | §8-P | dev → prod 승격 (검증 후 운영 전환) | prod 승격 | [아래](#8-p-dev--prod-승격-검증-후-운영-전환) |
@@ -75,6 +76,13 @@
 
 `US-06` 선택(POC) · 운영이면 강력 권장 — 도메인 + ACM 으로 ALB 3개를 https:443 으로. `https-env.sh` 로 값 추출 → `10-switch-https.sh` → `install-eks.sh` → `11-route53-cname.sh`. CloudFront(US-02 `03`)는 폐기. 2026-08-16 US 배포에서 종단 검증(Mac·Windows Claude Code/Cowork).
 → **[ops/8-H-alb-https.md](ops/8-H-alb-https.md)**
+
+---
+
+### 8-I. admin ALB 2개를 internal 로 — 고객사 최종형
+
+`US-07` 선택 — 전제 S2S VPN. values 주석 2곳 해제 → `install-eks.sh`(ALB 재생성) → admin SG·CNAME 교체. VPN 없이 적용하면 VK 발급이 끊겨 게이트웨이 사용 불가. terraform 무변경. 신규 설치는 `US-01` 때 values 로 포함.
+→ **[ops/8-I-admin-internal.md](ops/8-I-admin-internal.md)**
 
 ---
 

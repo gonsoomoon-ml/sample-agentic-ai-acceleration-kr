@@ -131,10 +131,17 @@ ingress:
     host: ""
     tls:
       enabled: false
+    # 최종형(고객 권장): admin 을 private 서브넷 internal ALB 로 — 아래 2줄 해제.
+    # 전제 S2S VPN. 상세: docs/us-llm-gateway/architecture.md 「고객사 최종 아키텍처」
+    # annotations:
+    #   alb.ingress.kubernetes.io/scheme: internal
   adminApi:
     host: ""
     tls:
       enabled: false
+    # 최종형(고객 권장): 위 adminUi 와 동일 — 아래 2줄 해제 (gateway 는 public 유지)
+    # annotations:
+    #   alb.ingress.kubernetes.io/scheme: internal
 
 # === 방식 B (주석): 도메인 있음, HTTPS ===
 # 위 "방식 A" 블록 전체(ingress: ... adminApi 까지)를 주석 처리하고 아래 주석을 해제하세요.

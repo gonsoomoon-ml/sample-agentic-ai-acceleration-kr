@@ -7,6 +7,7 @@ README 의 「최신 업데이트」는 최근 5개만 보여준다 — 여기�
 
 | ID (문서) | 무엇 | 등급 · 신규 설치 | 기존 배포가 할 일 |
 |---|---|---|---|
+| [**US-07**](ops/8-I-admin-internal.md) 2026/08 | 고객사 최종 아키텍처 — admin ALB 2개를 internal 로 | 선택 · 전제 S2S VPN · 신규는 US-01 때 values 로 포함 | values 주석 2곳 해제 → helm(ALB 재생성) → admin SG·CNAME 교체 |
 | [**US-06**](ops/8-H-alb-https.md) 2026/08 | ALB HTTPS — 커스텀 도메인 + ACM 인증서 | 선택 · **운영이면 강력 권장** · 신규는 §3-6 시점에 같은 절차 | 도메인 확보 → 전환 → 클라이언트 URL 2개 교체 (약 30분) |
 | [**US-05**](ops/8-E-eks-upgrade.md) 2026/08 | EKS 1.31 → 1.34 | 필수(지원 만료·비용) · 신규 포함 | 1단계씩 3회 apply + 전 ns 파드 재시작 |
 | [**US-04**](ops/8-N-vpc-endpoint.md) 2026/08 | Bedrock·STS 를 NAT 대신 VPC Endpoint 로 | 필수(컴플라이언스) · 신규 포함 | 엔드포인트 apply → gateway-proxy 재시작 |
@@ -16,6 +17,7 @@ README 의 「최신 업데이트」는 최근 5개만 보여준다 — 여기�
 
 ## 왜 · 함정 (항목별)
 
+- **US-07** — 고객사 최종형: 컨트롤 플레인(admin-api·admin-ui) ALB 를 private 서브넷 internal 로 내려 S2S VPN 으로만 접근(데이터 플레인 gateway 는 public 유지). terraform 무변경 — vpc 모듈이 서브넷·태그를 이미 만든다. 신규 설치는 `US-01` 때 §3 전 values 주석 해제로 처음부터 internal(별도 절차 없음), 운영 중 배포는 [§8-I 전환 절차](ops/8-I-admin-internal.md) — ALB 재생성이라 admin CNAME 교체 + 수 분 단절. ⚠️ S2S VPN 없이 적용하면 VK 발급(api-key-helper → admin-api)이 끊겨 게이트웨이 사용 자체가 불가 — VPN 개통 전 적용 금지. internal ALB 생성·in-VPC 통신은 리허설로 실증(2026-08-20).
 - **US-06** — ALB 3개를 http:80(임시 ALB 주소) 대신 `https://gateway-<env>.<도메인>` 으로. ACM TLS 종료·고정 이름, Cowork 용 CloudFront 불필요. 등록이 막힌 계정(Amazon 내부 등)은 타 계정 등록 + NS 위임. 적용 후 `ANTHROPIC_BASE_URL`·`ADMIN_API_URL` 교체.
 - **US-05** — 1.31 은 표준 지원 종료로 연장 요금(클러스터당 월 ~$365) · 최종 종료(2026-11-26) 후 강제 자동 업그레이드. 마이너 1단계씩만(3회 apply), 단계마다 전 ns 파드 재시작(Fargate 는 파드=노드).
 - **US-04** — Bedrock·STS 호출이 NAT·퍼블릭 인터넷 대신 VPC 내부 PrivateLink 로. 엔드포인트 선언이 들어가기 전에 만든 VPC 만 대상(신규는 이미 포함) — Bedrock 은 계속 성공하니 아무도 안 알려준다. 적용 직후 gateway-proxy 재시작 필수(풀에 남은 죽은 소켓 → 연속 502 를 엔드포인트 탓으로 오진).

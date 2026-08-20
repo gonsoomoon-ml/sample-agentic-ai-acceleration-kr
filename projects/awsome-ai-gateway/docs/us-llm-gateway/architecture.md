@@ -85,3 +85,49 @@ clients: Claude Code / Cowork (Mac, Windows, Linux) - inference: US Geo (us.anth
 
 
 
+## 고객사 최종 아키텍처 (목표형) — admin ALB 2개를 private 으로
+
+> 위 「전체 그림」은 현재 배포(ALB 3개 모두 public + IP 허용목록)다. 고객사 운영의 **최종형**은
+> 데이터 플레인(Gateway)만 public 에 남기고, 컨트롤 플레인(Admin API·Admin UI)은 private 서브넷의
+> internal ALB 로 내려 **S2S VPN 으로만** 접근하게 한다.
+
+```text
+┌─ Office / Employee PC ───┐            ┌─ AWS VPC ────────────────────────────────────────────┐
+│ Claude Code / Cowork     │            │  ┌─ public subnet ────────────────────────────────┐  │
+│ (1) LLM call, Bearer VK  ├─internet───┼─▶│ ALB Gateway   internet-facing :443             │  │
+│                          │            │  │ SG: corp egress IP allowlist                   │  │
+│                          │            │  └──────────────────────────┬─────────────────────┘  │
+│                          │            │                             │ targets: EKS pods      │
+│                          │            │                             │                        │
+│                          │            │                             │                        │
+│ admin: browser           │            │                             ▼                        │
+│ (2) get VK (helper)      │            │  ┌─ private subnet ───────────────────────────────┐  │
+│ (A) admin console        ├─S2S VPN────┼─▶│ ALB Admin API  internal :443                   │  │
+└──────────────────────────┘            │  │ ALB Admin UI   internal :443                   │  │
+                                        │  │                                                │  │
+                                        │  │ EKS Fargate pods (all services)                │  │
+                                        │  └────────────────────────────────────────────────┘  │
+                                        │                                                      │
+                                        └──────────────────────────────────────────────────────┘
+
+(1) LLM 호출(데이터 플레인)만 인터넷 경유 — SG 허용목록(사내 출구 IP)으로 잠근다
+(2)(A) VK 발급·관리 콘솔(컨트롤 플레인)은 S2S VPN 이 유일한 경로 —
+       VPN 없이는 접근 불가가 정상이며, 그것이 의도된 보안 속성이다
+```
+
+- **terraform 은 무변경** — vpc 모듈이 private 서브넷과 `kubernetes.io/role/internal-elb=1` 태그를
+  이미 만든다. ALB 는 terraform 이 아니라 ALB Controller 가 Ingress 어노테이션을 보고 생성한다.
+- **적용 = values 두 곳의 주석 해제** — adminUi·adminApi 의 전용 어노테이션(`scheme: internal`)이
+  공통(`internet-facing`)을 덮어쓴다. [values-eks-fargate-prod.yaml](../../deployment/charts/llm-gateway/values-eks-fargate-prod.yaml) 참조.
+  신규 설치는 `US-01` 때 여기까지, 기존 배포의 전환 절차 = [§8-I](ops/8-I-admin-internal.md) (`US-07`).
+- **전제조건 2개** (values 적용보다 먼저):
+  1. **S2S VPN** — 사용자망 → VPC 라우팅. VK 발급(`api-key-helper` → admin-api)도 이 경로를 타므로,
+     VPN 없이는 admin 접근만이 아니라 **게이트웨이 사용 자체가 불가**해진다.
+  2. **admin SG 인바운드 = 온프레 CIDR** — internal 전환 후 소스가 사설 IP 로 바뀌어 기존 공인 IP
+     허용목록은 하나도 맞지 않는다.
+- **신규 설치**는 이 values 로 깔면 admin ALB 가 day-1 부터 internal 로 태어난다(전환 절차 없음).
+  **기존(전부 public) 환경**에 적용하면 scheme 은 생성 시 고정이라 ALB 재생성 → admin 도메인의
+  CNAME 값 교체 + 수 분 단절이 따른다. gateway ALB 와 추론 트래픽은 무영향.
+
+
+

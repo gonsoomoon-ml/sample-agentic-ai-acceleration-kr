@@ -21,13 +21,14 @@
 
 ## 1. 신규 설치 범위 — 무엇을 쓰느냐 · POC 인가 운영인가
 
-| 사용 구성 | POC (도메인 없음 · http ALB + IP 제한) | 운영 (도메인 있음 · https) |
+| 사용 구성 | POC (도메인 없음 · http ALB + IP 제한) | 운영 (도메인 있음 · https · S2S VPN 있으면 + `US-07`) |
 |---|---|---|
 | Claude Code 만 (Opus 4.8 · Sonnet 5 · Haiku 4.5) | `US-01` | `US-01` + `US-06` |
 | Claude Code 만 + **Opus 5** | `US-01` + `US-02` 의 `02`(모델 등록) | `US-01` + `US-02` 의 `02` + `US-06` |
 | Claude Code + **Cowork** | `US-01` + `US-02` 전체 (`01` 라우팅 · `02` 모델 · `03` CloudFront) | `US-01` + `US-02` 의 `01`·`02` + `US-06` (`03` 불필요) |
 
 > `US-06`(ALB HTTPS) = 도메인 + ACM 으로 https 접속 — 운영이면 **강력 권장**. Cowork 는 https 필수라 도메인 없으면 CloudFront(`03`), 있으면 US-06 — 둘 다는 불필요. `US-03·04·05` 는 신규 설치에 포함(필수).
+> `US-07`(admin ALB internal) = **S2S VPN 이 있는 운영의 최종형**(선택) — 신규는 `US-01` 중 §3 전에 values 주석 해제로 포함, 기존 배포는 [전환 절차](ops/8-I-admin-internal.md). VPN 없으면 적용 금지.
 > ⚠️ **신규 설치도 `US-02` 가 필요합니다** — 마이그레이션이 Cowork 라우팅 행을 없는 계정으로 심어 그대로 두면 Cowork 전부 502. Claude Code 만 + 시드 모델이면 US-02 생략 가능.
 
 ---
@@ -38,12 +39,11 @@
 
 | ID (문서) | 무엇 | 등급 · 신규 설치 | 기존 배포가 할 일 |
 |---|---|---|---|
+| [**US-07**](ops/8-I-admin-internal.md) 2026/08 | 고객사 최종 아키텍처 — admin ALB 2개를 internal 로 | 선택 · 전제 S2S VPN · 신규는 US-01 때 values 로 포함 | values 주석 2곳 해제 → helm(ALB 재생성) → admin SG·CNAME 교체 |
 | [**US-06**](ops/8-H-alb-https.md) 2026/08 | ALB HTTPS — 커스텀 도메인 + ACM | 선택 · **운영이면 강력 권장** · 신규는 §3-6 시점에 | 도메인 확보 → 전환 → 클라이언트 URL 2개 교체 (30분) |
 | [**US-05**](ops/8-E-eks-upgrade.md) 2026/08 | EKS 1.31 → 1.34 | 필수(지원 만료·비용) · 신규 포함 | 1단계씩 3회 apply + 전 ns 재시작 |
 | [**US-04**](ops/8-N-vpc-endpoint.md) 2026/08 | Bedrock·STS 를 VPC Endpoint 로 | 필수(컴플라이언스) · 신규 포함 | 엔드포인트 apply → gateway-proxy 재시작 |
 | [**US-03**](ops/8-U-update.md) 2026/08 | Admin UI 한/영 토글 | 필수(영문 지원) · 신규 포함 | admin-ui 이미지 재빌드 → install-eks |
-| [**US-02**](update-scripts/README.md#실행-순서) 2026/08 | Cowork 연결 + Opus 5 등록 | 항목별 — Cowork 는 `01`·`03`, Opus 5 는 `02` 필수 · 🔴 **신규도 해당** | 01 라우팅 · 02 모델(단가 필수) · 03 CloudFront(도메인 없을 때만) |
-
 그 이전(`US-01` 최초 설치)과 항목별 이유·함정 → [updates.md](updates.md)
 
 ---
