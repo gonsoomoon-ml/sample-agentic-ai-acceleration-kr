@@ -4,7 +4,7 @@
 
 > 📒 **`US-05` · 등급 필수(지원 만료·비용)** — [README.md 「최신 업데이트」](../README.md#2-최신-업데이트). 적용 여부는 `update-scripts/status.sh` 로 확인한다.
 
-> **신규 설치는 할 일이 없다.** terraform 기본값이 1.34 이고, `terraform.tfvars.example` 에도 `eks_cluster_version = "1.34"` 가 **보이게 명시**돼 있다 — 지금 만든 클러스터는 처음부터 1.34 이고, tfvars 에 버전 pin 도 설치 시점부터 존재한다(그래서 아래 「pull 직후 함정」은 신규 설치에는 해당 없다).
+> **신규 설치는 할 일이 없다.** `terraform.tfvars.example` 에 `eks_cluster_version = "1.34"` 와 짝이 맞는 `eks_addon_versions` 가 **보이게 명시**돼 있고 설치 절차(§3-2)가 이 파일을 복사하므로, 지금 만든 클러스터는 처음부터 1.34 이고 tfvars 의 버전·애드온 pin 도 설치 시점부터 존재한다(그래서 아래 「pull 직후 함정」은 신규 설치에는 해당 없다). terraform **기본값**은 upstream 과 같은 1.30(모듈 1.29·애드온 1.29 계열)이다 — 기본값에 기대지 말 것, tfvars 가 진실원이다.
 >
 > **이 절의 대상은 그 전에 만든 클러스터**다. EKS 는 만들어 둔다고 최신을 따라가지 않는데 Kubernetes 는 해마다 마이너를 세 번 올린다. 1.31 은 2025-11-26 에 표준 지원이 끝나 **연장 지원 요금(클러스터당 월 ~$365 추가)이 이미 붙고 있고**, 최종 지원 종료(1.31 은 2026-11-26)가 지나면 **AWS 가 강제로 자동 업그레이드해 버린다** — 그 전에 우리 손으로, 단계마다 검증하며 올리는 것이 이 절이다.
 
@@ -14,7 +14,7 @@
 - **다운그레이드는 불가**하다 → 각 단계의 `terraform plan` 확인이 유일한 안전장치다.
 - add-on(coredns 등)은 클러스터 버전과 **짝이 맞아야** 한다 → 단계마다 둘을 같이 올린다.
 
-> 🔴 **pull 직후 함정 — 업그레이드를 시작하기 전이라도, 이 업데이트를 받았으면 tfvars 에 현재 버전을 pin 한다.** 이 업데이트로 terraform 기본값이 1.34 로 올라갔다. 클러스터가 1.31 인 채 tfvars 에 `eks_cluster_version` 이 없으면 **다른 목적의 apply 도** 1.31→1.34 점프를 시도하다 실패한다. pin 명령은 아래 (0) 다음의 「pin」 블록에 있다.
+> 🔴 **pull 직후 함정 — 업그레이드를 시작하기 전이라도, tfvars 에 현재 버전과 애드온을 pin 한다.** terraform 기본값(1.30, 애드온 1.29 계열)은 운영 클러스터(1.34)보다 낮다. tfvars 에 `eks_cluster_version` 이 없으면 **다른 목적의 apply 도** 1.34→1.30 다운그레이드를 계획하다 EKS 가 거부해 실패하고, `eks_addon_versions` 가 없으면 애드온 3종을 1.29 계열로 되돌리려 한다. pin 명령은 아래 (0) 다음의 「pin」 블록에 있다 — 애드온 블록까지 함께 pin 한다.
 
 > ℹ️ **시작 전에 저장소부터 최신화한다** — [README §3 ①](../README.md#3-적용하기-배포-ec2-에서). 이 절의 절차와 terraform 변경(`eks_addon_versions` 변수 포함) 자체가 US-05 로 배포되므로, 옛 체크아웃에는 아래에서 쓰는 변수가 없다.
 
@@ -140,7 +140,7 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/smoke-test.sh
 bash docs/us-llm-gateway/update-scripts/status.sh   # US-05 가 OK 인지
 ```
 
-tfvars 의 `eks_addon_versions` 블록은 지워도 된다 — 이제 기본값(1.34 호환)과 같다. `eks_cluster_version = "1.34"` 는 **남겨 둔다**. 다음에 기본값이 또 올라갔을 때, 위 「pull 직후 함정」이 재발하지 않는 방어가 된다.
+tfvars 의 `eks_addon_versions` 블록은 **지우지 말고 남겨 둔다** — 모듈 기본값은 1.29 계열(upstream 과 동일)이라, 지우면 다음 apply 가 애드온 3종을 되돌리려 한다. `eks_cluster_version = "1.34"` 도 **남겨 둔다**. 둘이 함께 있어야 기본값이 어떻게 바뀌든 위 「pull 직후 함정」이 재발하지 않는다.
 
 ```bash
 cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
