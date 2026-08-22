@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, get_current_user
 from app.core.db import get_db_session
-from app.core.usage_filters import cost_period_filter, current_kst_period
+from app.core.usage_filters import cost_period_filter, current_kst_period, reporting_tz_sql
 from app.models.budget import BudgetConfig, BudgetScope, BudgetUsage
 from app.models.usage import UsageLog
 
@@ -75,7 +75,7 @@ async def get_my_usage(
     if not period:
         period = current_kst_period()  # KST 월 — 아래 _kst_day 집계와 경계 통일
 
-    _kst_day = func.date(func.timezone("Asia/Seoul", UsageLog.requested_at))
+    _kst_day = func.date(func.timezone(reporting_tz_sql(), UsageLog.requested_at))
     daily_stmt = (
         select(
             _kst_day.label("day"),
