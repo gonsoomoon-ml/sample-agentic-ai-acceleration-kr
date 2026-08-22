@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
 from app.core.exceptions import ForbiddenError, ValidationError
-from app.core.usage_filters import client_filter, reporting_timezone
+from app.core.usage_filters import client_filter, reporting_tz_sql
 from app.models.auth import UserRole
 from app.models.usage import ROIScope
 from app.repositories.analytics_repository import AnalyticsRepository
@@ -177,7 +177,7 @@ class AnalyticsService:
         from app.models.usage import UsageLog
         from app.core.usage_filters import cost_period_filter
 
-        _kst_day = func.date(func.timezone(reporting_timezone(), UsageLog.requested_at))
+        _kst_day = func.date(func.timezone(reporting_tz_sql(), UsageLog.requested_at))
         trend_stmt = (
             select(
                 _kst_day.label("day"),
@@ -245,7 +245,7 @@ class AnalyticsService:
         _validate_period_date(period, date)
 
         period_start = f"{period}-01"
-        kst_day = func.date(func.timezone(reporting_timezone(), UsageLog.requested_at))
+        kst_day = func.date(func.timezone(reporting_tz_sql(), UsageLog.requested_at))
 
         stmt = (
             select(
@@ -329,7 +329,7 @@ class AnalyticsService:
         _validate_period_date(period, date)
 
         period_start = f"{period}-01"
-        kst_day = func.date(func.timezone(reporting_timezone(), UsageLog.requested_at))
+        kst_day = func.date(func.timezone(reporting_tz_sql(), UsageLog.requested_at))
 
         stmt = (
             select(

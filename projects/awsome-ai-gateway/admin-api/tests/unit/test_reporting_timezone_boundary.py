@@ -73,3 +73,23 @@ def test_default_is_seoul_when_env_absent(reporting_tz):
     reporting_tz(None)
     assert uf.reporting_timezone() == "Asia/Seoul"
     assert "Asia/Seoul" in str(uf.kst_month_expr().compile(compile_kwargs={"literal_binds": True}))
+
+
+@pytest.mark.unit
+def test_month_expr_renders_timezone_and_format_as_literals(reporting_tz):
+    """SELECT 와 GROUP BY 에 식을 따로 만들어 넣어도 SQL 텍스트가 같아야 한다.
+
+    바인드(`$1`/`$2`)로 갈리면 PostgreSQL 이 42803 으로 거부한다 — 그래서 타임존과 포맷을
+    literal_execute 로 인라인한다. 컴파일 결과에 바인드 자리표시자가 없어야 한다.
+    """
+    from sqlalchemy import func, select
+    from sqlalchemy.dialects import postgresql
+
+    reporting_tz("America/Los_Angeles")
+    stmt = select(uf.kst_month_expr().label("m"), func.count()).group_by(uf.kst_month_expr())
+    sql = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"render_postcompile": True}))
+    assert "timezone('America/Los_Angeles'" in sql and "'YYYY-MM'" in sql
+    assert "%(timezone_" not in sql and "%(to_char_" not in sql
+    select_part, group_part = sql.split("GROUP BY")
+    assert "to_char(timezone('America/Los_Angeles', usage.usage_logs.requested_at), 'YYYY-MM')" in select_part
+    assert "to_char(timezone('America/Los_Angeles', usage.usage_logs.requested_at), 'YYYY-MM')" in group_part

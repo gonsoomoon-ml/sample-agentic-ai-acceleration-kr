@@ -23,7 +23,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import ColumnElement, and_, func
+from sqlalchemy import ColumnElement, and_, func, literal
 
 from app.core.config import get_settings
 from app.core.exceptions import ValidationError
@@ -41,6 +41,20 @@ def reporting_timezone() -> str:
     값의 유효성은 Settings 의 validator 가 기동 시점에 검사한다.
     """
     return get_settings().REPORTING_TIMEZONE
+
+
+def reporting_tz_sql() -> ColumnElement:
+    """SQL 식에 박아 넣는 리포팅 타임존 — 바인드 파라미터가 아니라 **실행 시 리터럴**로 렌더.
+
+    `func.timezone("Asia/Seoul", col)` 처럼 문자열을 그냥 넘기면 SQLAlchemy 는 그것을
+    바인드(`$1`)로 만든다. 같은 식을 SELECT 와 GROUP BY 에 **따로 만들어** 넣으면 두 자리가
+    `$1`/`$2` 로 갈리고, PostgreSQL 은 파라미터 번호가 다른 식을 같은 식으로 보지 않아
+    `column "requested_at" must appear in the GROUP BY clause` (42803) 로 거부한다(PG16 실측).
+    식 객체를 한 번 만들어 재사용하면 피할 수 있지만 호출자 규율에 기대는 셈이라, 값을
+    `literal_execute` 로 인라인해 두 자리의 SQL 텍스트 자체가 같아지게 한다. 값은 Settings
+    validator 가 검증한 IANA 이름이라 인라인해도 인젝션 여지가 없다.
+    """
+    return literal(reporting_timezone(), literal_execute=True)
 
 
 def _reporting_tz() -> ZoneInfo:
@@ -89,7 +103,11 @@ def kst_month_expr() -> ColumnElement:
     컬럼을 함수로 감싸 non-sargable 이 되어 인덱스를 못 쓴다(아래 참조).
     기간 필터가 필요하면 `cost_period_filter()` / `period_to_utc_range()` 를 쓴다.
     """
-    return func.to_char(func.timezone(reporting_timezone(), UsageLog.requested_at), "YYYY-MM")
+    # 타임존·포맷 둘 다 리터럴로 — 둘 중 하나라도 바인드면 위 reporting_tz_sql 의 함정이 남는다.
+    return func.to_char(
+        func.timezone(reporting_tz_sql(), UsageLog.requested_at),
+        literal("YYYY-MM", literal_execute=True),
+    )
 
 
 def period_to_utc_range(period: str) -> tuple[datetime, datetime]:
