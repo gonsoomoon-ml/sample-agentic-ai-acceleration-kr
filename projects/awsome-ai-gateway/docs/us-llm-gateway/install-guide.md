@@ -598,7 +598,9 @@ cd ~/awsome-ai-gateway
 bash deployment/scripts/fill-org-values.sh dev
 ```
 
-요약을 보여준 뒤 `y` 하면 org 값 5곳(`COGNITO_USER_POOL_ID`·`COGNITO_REGION`·`adminBootstrap.emails`·ingress `inbound-cidrs`·`global.reportingTimezone`)을 채우고, 파일에 남은 placeholder(계정·미사용 chat-agent ARN)도 실제값/빈값으로 정리한다 — 관리자가 열어도 헷갈릴 값이 없게. 멱등이라 나중에 IP 넓힐 때 다시 실행하면 된다(직원 오픈 전 하드닝: operations.md §8-S(2)).
+요약을 보여준 뒤 `y` 하면 org 값 5곳(`COGNITO_USER_POOL_ID`·`COGNITO_REGION`·`adminBootstrap.emails`·ingress `inbound-cidrs`·`global.reportingTimezone`)과 `CHAT_ENABLED`를 채우고, 파일에 남은 placeholder(계정·미사용 chat-agent ARN)도 실제값/빈값으로 정리한다 — 관리자가 열어도 헷갈릴 값이 없게. 멱등이라 나중에 IP 넓힐 때 다시 실행하면 된다(직원 오픈 전 하드닝: operations.md §8-S(2)).
+
+> 🔑 `auth.adminUiJwt.privateKeySecretName`은 terraform 출력값이 아니라 **admin-ui Cognito 로그인 활성화 시** `setup-admin-ui-login.sh`가 자동으로 채우는 값이다. 초기 설치부터 Cognito 로그인을 쓰려면 [ops/8-L-admin-ui-login.md](ops/8-L-admin-ui-login.md)를 `install-eks.sh` 직후(또는 dev-login 먼저 켜고 확인 뒤)에 따른다. §3-6 `fill-org-values.sh`는 이 값을 건드리지 않는다.
 
 > 🕒 **리포팅 타임존** — 대시보드·일별 집계·이메일 발송시각의 **달력 경계**(월/일이 어디서 끊기나). 차트 기본이 `Asia/Seoul` 이라 미국 배포는 반드시 바꾼다(스크립트가 리전 기준 기본값 `America/Los_Angeles` 를 제안, Enter 로 수락). **정규 IANA 이름만**(`KST`·`PST`·`US/Pacific` 은 서비스가 부팅을 거부). 예산 **강제** 월 경계(gateway-proxy)는 이 값과 무관하게 UTC. 운영 중 바꾸면 이미 쌓인 `daily_aggregates` 는 옛 기준으로 남으므로 설치 때 확정한다.
 
@@ -624,6 +626,7 @@ global:
     alb.ingress.kubernetes.io/inbound-cidrs: "<EC2>/32,<PC>/32"
 ```
 
+> ℹ️ `notification-worker`는 기본 `mock` 발송으로 설치되어 실제 메일을 보내지 않는다. `internal_api`·`smtp`·`ses` 전환은 [§8-W Notification 발송 채널 변경](ops/8-W-notifications.md)을 참조한다.
 
 
 **Web Search 키만 예외** — `AGENTCORE_GATEWAY_URL` 은 §5 에서 프로비저닝 후 채운다. 지금은 비워둔다(비면 web search 만 꺼지고 나머지는 정상). `AGENTCORE_REGION: "us-east-1"` 은 `aws.region`(us-west-2)과 **일부러 다르다** — 관리형 커넥터가 us-east-1 전용이라 cross-region 이다. (`WEB_SEARCH_ENABLED` 는 죽은 설정 — 전역 off 는 URL 비우기, §5-5.)
@@ -666,7 +669,7 @@ kubectl get externalsecret -n llm-gateway
 
 > **한 줄**: terraform 이 만든 **빈** Cognito 풀에 첫 관리자를 넣는다 — 그룹은 §3-2 `cognito_groups` 에서 이미 만들어져 있고(여기서 생성하지 않는다) 사용자를 **거기에 넣기만** 한다. 그래서 이메일은 §3-6 `adminBootstrap.emails` 와, 그룹명은 §3-2 tfvars 와 **글자까지 같아야** 한다.
 >
-> 🔑 **여기서 만드는 이메일 + 비번(TEMP_PW)이 나중에 로그인 계정이다** — §5-3 admin-ui(`/models`) 로그인, §6 클라이언트 `gateway-cli login` 팝업에 이걸 쓴다. **AWS 콘솔/CLI 계정과는 별개**(그건 인프라 구축용 IAM, 이건 게이트웨이용 Cognito). 첫 로그인 때 임시비번을 새 비번으로 바꾸라고 강제된다.
+> 🔑 **여기서 만드는 이메일 + 비번(TEMP_PW)이 나중에 로그인 계정이다** — §5-3 admin-ui(`/models`) 로그인, §6 클라이언트 `gateway-cli login` 팝업에 이걸 쓴다. **AWS 콘솔/CLI 계정과는 별개**(그건 인프라 구축용 IAM, 이건 게이트웨이용 Cognito). 첫 로그인 때 임시비번을 새 비번으로 바꾸라고 강제된다. `gateway-cli login`(Cognito Hosted UI)은 이 화면을 그 자리에서 보여준다. admin-ui 는 기본이 dev-login(이 절 시점엔 아직 Cognito 로그인 미적용)이라 해당 없음 — [§8-L](ops/8-L-admin-ui-login.md) 로 전환한 뒤에는 admin-ui `/login` 도 임시비번 로그인 시 새 비밀번호 설정 화면을 자동으로 보여준다.
 >
 > 여기서는 **관리자 1명**만 만든다. 직원 계정 추가는 [operations.md 8-Y 직원 온보딩](ops/8-Y-onboarding.md).
 

@@ -7,7 +7,7 @@
  * `secure` flag matches the actual connection scheme (HTTP vs HTTPS) and
  * the redirect URL preserves the original Host header (avoids 0.0.0.0 in
  * containerized envs). The redirect lands on '/' which middleware then
- * sends to '/api/auth/dev-login' since the cookie is gone.
+ * sends to '/login' since the cookie is gone.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

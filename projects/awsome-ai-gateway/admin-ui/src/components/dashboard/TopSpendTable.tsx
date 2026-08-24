@@ -15,8 +15,16 @@ import { Table, THead, TBody, Tr, Th, Td } from '@/components/common/Table';
 interface TopSpendRow {
   id: string;
   name: string;
+  /** 이름 아래 작게 표시하는 보조 정보 (사용자 행의 소속 팀명 등). */
+  subtitle?: string | null;
   usedUsd: number;
   usagePct: number | null;
+  /** usagePct 가 null 인 이유가 "본인 예산 미설정 + 팀 예산 적용"인 경우 true.
+   *  순수 무예산(팀도 예산 없음)과 구분해 "팀 예산 적용" 문구를 보여준다. */
+  teamBudgetApplied?: boolean;
+  /** teamBudgetApplied 일 때 팀 예산 사용액/한도 — "팀 예산 적용" 문구만으론
+   *  실제 얼마나 쓰고 있는지 안 보여서 한눈에 보이도록 병기. */
+  teamBudget?: { used: number; limit: number } | null;
 }
 
 interface TopSpendTableProps {
@@ -25,10 +33,14 @@ interface TopSpendTableProps {
   rows: TopSpendRow[];
   /** 진행바 색상 (chart 토큰). */
   accentVar?: string;
+  noBudgetLabel?: string;
+  teamBudgetAppliedLabel?: string;
 }
 
+// $1.55 처럼 소수점까지 보여야 소액 사용자 비용이 뭉개지지 않는다(이전엔 정수 반올림으로
+// $1 미만 차이가 전부 "$1"로 보여 실사용액을 구분 못 했다).
 function fmtUsd(n: number): string {
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function TopSpendTable({
@@ -36,6 +48,8 @@ export function TopSpendTable({
   subtitle,
   rows,
   accentVar = 'var(--chart-1)',
+  noBudgetLabel,
+  teamBudgetAppliedLabel,
 }: TopSpendTableProps) {
   const t = useTranslations('dashboard');
   return (
@@ -74,7 +88,14 @@ export function TopSpendTable({
                     >
                       {i + 1}
                     </span>
-                    <span className="truncate">{r.name}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate">{r.name}</span>
+                      {r.subtitle && (
+                        <span className="block truncate text-[11px] font-normal text-muted-foreground">
+                          {r.subtitle}
+                        </span>
+                      )}
+                    </span>
                   </span>
                 </Td>
                 <Td numeric className="font-semibold">{fmtUsd(r.usedUsd)}</Td>
@@ -94,8 +115,21 @@ export function TopSpendTable({
                         {r.usagePct.toFixed(0)}%
                       </span>
                     </div>
+                  ) : r.teamBudgetApplied ? (
+                    <span className="block max-w-[160px]">
+                      <span className="block truncate text-[11px] text-muted-foreground italic">
+                        {teamBudgetAppliedLabel ?? t('noBudgetSet')}
+                      </span>
+                      {r.teamBudget && (
+                        <span className="block text-[11px] tabular-nums text-muted-foreground/80">
+                          {fmtUsd(r.teamBudget.used)} / {fmtUsd(r.teamBudget.limit)}
+                        </span>
+                      )}
+                    </span>
                   ) : (
-                    <span className="text-[11px] text-muted-foreground">{t('noBudgetSet')}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {noBudgetLabel ?? t('noBudgetSet')}
+                    </span>
                   )}
                 </Td>
               </Tr>

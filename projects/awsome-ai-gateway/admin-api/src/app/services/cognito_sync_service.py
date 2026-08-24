@@ -29,16 +29,42 @@ BATCH_SIZE = 500  # 유저 upsert 배치 commit 단위. 초과 시 commit + expu
                   # identity map 을 비워 sync_all 메모리 상한을 확보한다.
 
 
+def _effective_role(
+    existing_role: UserRole | None,
+    existing_team_id,
+    derived_role: UserRole,
+    new_team_id,
+) -> UserRole:
+    """TEAM_LEADER 는 Cognito 그룹이 아니라 admin-ui("팀 리더 지정")에서만 부여되므로
+    (``_derive_role`` 는 ADMIN/DEVELOPER 만 반환), sync/재로그인이 이를 DEVELOPER 로
+    되돌리지 않도록 보존한다. ADMIN_GROUPS 승격/강등은 그대로 반영된다.
+
+    ``_needs_update`` (gate) 와 ``_upsert_one_user`` (실제 upsert) 양쪽이 반드시 이
+    함수를 통해서만 role 을 비교/대입해야 결과가 일치한다.
+    """
+    if existing_role == UserRole.TEAM_LEADER:
+        if existing_team_id != new_team_id:
+            # 팀 리더십은 팀별 속성: 이관되면 DEVELOPER 로 강등
+            return UserRole.DEVELOPER
+        if derived_role == UserRole.DEVELOPER:
+            return UserRole.TEAM_LEADER
+    return derived_role
+
+
 def _needs_update(
     snap: dict, *, email: str, name: str, team_id, role, enabled: bool
 ) -> bool:
     """prefetch gate 판정. _upsert_one_user 의 update 분기와 1:1 동일 조건이어야 한다.
-    (email 이 truthy 이고 다르면) OR display_name/team_id/role/is_active 변경."""
+    (email 이 truthy 이고 다르면) OR display_name/team_id/role/is_active 변경.
+
+    role 비교는 ``_effective_role`` 로 보존된 값 기준 — 안 그러면 팀 리더는 실제로
+    아무것도 안 바뀌어도 매번 "role 이 다르다"고 오판해 불필요한 upsert 를 탄다."""
     return (
         (bool(email) and snap["email"] != email)
         or snap["display_name"] != name
         or snap["team_id"] != team_id
-        or snap["role"] != role
+        or snap["role"]
+        != _effective_role(snap["role"], snap.get("team_id"), role, team_id)
         or snap["is_active"] != enabled
     )
 
@@ -310,6 +336,7 @@ class CognitoSyncService:
             if existing.display_name != name:
                 existing.display_name = name
                 updated = True
+            role = _effective_role(existing.role, existing.team_id, role, team_id)
             if existing.team_id != team_id:
                 existing.team_id = team_id
                 updated = True
@@ -696,6 +723,11 @@ class CognitoSyncService:
         """ADMIN_EMAILS / ADMIN_GROUPS 매칭 시 ADMIN.
 
         user_groups 는 해당 사용자가 속한 Cognito 그룹 이름 목록.
+
+        TEAM_LEADER 는 여기서 부여하지 않는다 — admin-ui 의 "팀 리더 지정"
+        (``UserTeamService.set_team_leader``)으로만 설정되며, ``_upsert_one_user``
+        가 sync 때 그 값을 DEVELOPER 로 덮어쓰지 않도록 보존한다 (oidc_service.py
+        의 ``_derive_role``/``_upsert_user`` 와 동일한 정책).
         """
         settings = get_settings()
         admin_emails = {e.lower() for e in settings.ADMIN_EMAILS}

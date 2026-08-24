@@ -239,27 +239,60 @@ async function TeamUserRanking({ period, client }: { period: string; client: str
   const topUsers = topUsersResult.status === 'fulfilled' ? topUsersResult.value : [];
   const budgetItems = budgetResult.status === 'fulfilled' ? budgetResult.value : [];
 
-  // 팀명 → 예산 소진율 룩업(예산 설정된 팀만 존재; 없으면 null).
-  const teamPctByName = new Map<string, number | null>(
+  // target_id(팀/사용자 uuid) 기준 예산 소진율/한도 룩업 — 이름 매칭은 부서 접두어
+  // 유무 등으로 어긋날 수 있어 id 기준이 안전(§60.9 팔로업).
+  const teamPctById = new Map<string, number | null>(
     budgetItems
       .filter((i) => i.target_type === 'team')
-      .map((i) => [i.target_name || '', i.usage_pct != null ? parseFloat(i.usage_pct) : null]),
+      .map((i) => [i.target_id, i.usage_pct != null ? parseFloat(i.usage_pct) : null]),
+  );
+  // target_id(팀 uuid) → 예산 한도/사용액. "팀 예산 적용" 표기 시 "얼마나 쓰고
+  // 있는지"까지 병기하기 위함(팀명만으론 한눈에 안 보인다는 피드백 반영).
+  // (팀명 매칭은 부서 접두어 유무 등으로 어긋날 수 있어 id 기준이 안전).
+  const teamLimitById = new Map<string, number | null>(
+    budgetItems
+      .filter((i) => i.target_type === 'team')
+      .map((i) => [i.target_id, i.limit_usd != null ? parseFloat(i.limit_usd) : null]),
+  );
+  const teamUsedById = new Map<string, number>(
+    budgetItems
+      .filter((i) => i.target_type === 'team')
+      .map((i) => [i.target_id, parseFloat(i.used_usd || '0')]),
+  );
+  const userPctById = new Map<string, number | null>(
+    budgetItems
+      .filter((i) => i.target_type === 'user')
+      .map((i) => [i.target_id, i.usage_pct != null ? parseFloat(i.usage_pct) : null]),
   );
 
-  const teamRows: TopSpendRow[] = topTeams.map((t) => ({
-    id: t.name,
-    name: t.name,
-    usedUsd: t.cost_usd,
-    usagePct: teamPctByName.get(t.name) ?? null,
+  const teamRows: TopSpendRow[] = topTeams.map((tm) => ({
+    id: tm.team_id,
+    name: tm.name,
+    usedUsd: tm.cost_usd,
+    usagePct: teamPctById.get(tm.team_id) ?? null,
   }));
 
-  // 실제 비용 기준 — usagePct 는 예산 미설정자가 많아 의미 없어 미표시(null).
-  const userRows: TopSpendRow[] = topUsers.map((u) => ({
-    id: u.email,
-    name: u.name || u.email,
-    usedUsd: u.cost_usd,
-    usagePct: null,
-  }));
+  // 실제 비용 기준. 본인 예산이 없더라도(usagePct=null) 소속 팀에 예산이 설정돼
+  // 있으면 "팀 예산 적용"으로 표기(§60.9 팔로업) — 완전 무예산과 구분. 소속 팀명을
+  // 이름 아래 병기하고, 팀 예산 적용 시엔 팀의 사용액/한도도 함께 보여줘 어떤
+  // 유저가 어떤 팀에서 얼마를 쓰는지 한눈에 보이게 한다.
+  const userRows: TopSpendRow[] = topUsers.map((u) => {
+    const usagePct = userPctById.get(u.user_id) ?? null;
+    const teamLimit = u.team_id ? teamLimitById.get(u.team_id) ?? null : null;
+    const teamBudgetApplied = usagePct == null && !!u.team_id && teamLimit != null;
+    return {
+      id: u.user_id,
+      name: u.name || u.email,
+      subtitle: u.team_name,
+      usedUsd: u.cost_usd,
+      usagePct,
+      teamBudgetApplied,
+      teamBudget:
+        teamBudgetApplied && u.team_id && teamLimit != null
+          ? { used: teamUsedById.get(u.team_id) ?? 0, limit: teamLimit }
+          : null,
+    };
+  });
 
   return (
     <section className="space-y-3">
@@ -272,12 +305,14 @@ async function TeamUserRanking({ period, client }: { period: string; client: str
           subtitle={t('topTeamByCostSubtitle')}
           rows={teamRows}
           accentVar="var(--chart-1)"
+          teamBudgetAppliedLabel={t('teamBudgetApplied')}
         />
         <TopSpendTable
           title={t('topUserByCost')}
           subtitle={t('topUserByCostSubtitle')}
           rows={userRows}
           accentVar="var(--chart-2)"
+          teamBudgetAppliedLabel={t('teamBudgetApplied')}
         />
       </div>
     </section>

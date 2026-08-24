@@ -236,6 +236,7 @@ async def get_budget_summary(
         scope=scope,
         target_id=uuid.UUID(target_id) if target_id else None,
         period=period,
+        actor=user,
     )
 
 

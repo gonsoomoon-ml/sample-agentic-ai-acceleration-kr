@@ -15,15 +15,17 @@ logger = logging.getLogger(__name__)
 
 class EventType(str, Enum):
     BUDGET_THRESHOLD = "budget_threshold"
-    KEY_EXPIRING = "key_expiring"
-    KEY_EXPIRED = "key_expired"
+    # api-key-helper가 자동 갱신하므로 key_expiring/expired 는 비활성화
+    # KEY_EXPIRING = "key_expiring"
+    # KEY_EXPIRED = "key_expired"
+    # 관리자/정책에 의한 폐기 시 발행
     KEY_REVOKED = "key_revoked"
     AUTH_FAILURE_SPIKE = "auth_failure_spike"
-    PERMISSION_VIOLATION = "permission_violation"
-    SUSPICIOUS_USAGE = "suspicious_usage"
+    # PERMISSION_VIOLATION = "permission_violation"
+    # SUSPICIOUS_USAGE = "suspicious_usage"
     DEGRADATION_MODE = "degradation_mode"
-    PROVIDER_ERROR = "provider_error"
-    SERVICE_HEALTH_CHANGE = "service_health_change"
+    # PROVIDER_ERROR = "provider_error"
+    # SERVICE_HEALTH_CHANGE = "service_health_change"
 
 
 class Channel(str, Enum):

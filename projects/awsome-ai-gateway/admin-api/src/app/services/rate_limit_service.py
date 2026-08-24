@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.auth import Team, User
 from app.models.model import ModelAlias, RateLimitConfig, RateLimitScope
@@ -20,6 +21,17 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.rate_limits import RateLimitConfigItem, RateLimitResponse, RateLimitSetRequest, RateLimitTreeNode
 
 logger = structlog.get_logger()
+
+
+def _team_display_name(team: Team) -> str:
+    """부서가 default가 아니면 '부서명_팀명' 형태로 반환한다.
+    예: Claude_NDS_Developers 그룹 → Team.name='Developers', department='NDS' → 'NDS_Developers'"""
+    settings = get_settings()
+    default_dept_id = uuid.UUID(settings.DEFAULT_DEPT_ID)
+    dept = getattr(team, "department", None)
+    if dept is not None and team.dept_id != default_dept_id:
+        return f"{dept.name}_{team.name}"
+    return team.name
 
 
 class RateLimitService:
@@ -161,7 +173,7 @@ class RateLimitService:
             nodes.append(
                 RateLimitTreeNode(
                     id=team_id,
-                    label=team.name,
+                    label=_team_display_name(team),
                     scope="TEAM",
                     is_active=has_active_members,
                     config=_make_config(team_cfg, "TEAM") if team_cfg else None,

@@ -1,0 +1,34 @@
+{% extends 'base_email.en.html' %}
+{% block title %}Model Downgrade{% endblock %}
+{% block body %}
+<table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
+  <tr>
+    <td style='padding-bottom:8px;'>
+      <h2 style='margin:0; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; font-size:18px; font-weight:600; color:#2dd4bf; line-height:1.4;'>Model Downgrade</h2>
+    </td>
+  </tr>
+  <tr>
+    <td style='padding-bottom:16px;'>
+      <p style='margin:0; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#f4f5f6;'>The model has been changed due to increased budget usage.</p>
+    </td>
+  </tr>
+  <tr>
+    <td style='padding-top:16px; border-top:1px solid #202126;'>
+      <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse;'>
+        <tr>
+          <td style='padding:10px 8px; width:140px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; font-size:14px; color:#9a9fa8; border-bottom:1px solid #202126; vertical-align:top;'>From Model</td>
+          <td style='padding:10px 8px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; font-size:14px; color:#f4f5f6; border-bottom:1px solid #202126; vertical-align:top;'>{{ payload.from_model | default('') }}</td>
+        </tr>
+        <tr>
+          <td style='padding:10px 8px; width:140px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; font-size:14px; color:#9a9fa8; border-bottom:1px solid #202126; vertical-align:top;'>To Model</td>
+          <td style='padding:10px 8px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; font-size:14px; color:#f4f5f6; border-bottom:1px solid #202126; vertical-align:top;'>{{ payload.to_model | default('') }}</td>
+        </tr>
+        <tr>
+          <td style='padding:10px 8px; width:140px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; font-size:14px; color:#9a9fa8; border-bottom:1px solid #202126; vertical-align:top;'>Budget Threshold</td>
+          <td style='padding:10px 8px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; font-size:14px; color:#f4f5f6; border-bottom:1px solid #202126; vertical-align:top;'>{{ payload.threshold_pct | default('') }}%</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+{% endblock %}

@@ -51,7 +51,19 @@ variable "eks_cluster_version" {
   # 기본값은 기존 배포가 apply 때 흔들리지 않도록 그대로 둔다 — 신규 설치 권장 버전은
   # terraform.tfvars.example 에 eks_addon_versions 와 한 쌍으로 적어 두었다.
   type    = string
-  default = "1.30"
+  default = "1.34"
+}
+
+variable "eks_addon_versions" {
+  # EKS add-on(coredns·kube-proxy·vpc-cni) 버전. null 이면 모듈 기본값(= eks_cluster_version
+  # 기본값과 호환) 사용. 기존 클러스터를 단계 업그레이드할 때만 tfvars 로 현재 단계 호환값을
+  # 지정한다 — 각 버전의 호환값은 operations.md §8-E 의 표 참조.
+  type = object({
+    coredns    = string
+    kube_proxy = string
+    vpc_cni    = string
+  })
+  default = null
 }
 
 variable "eks_addon_versions" {
@@ -143,7 +155,7 @@ variable "cognito_logout_urls" {
 }
 
 variable "cognito_groups" {
-  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩. prod는 dev 검증에서 결정된 깨끗한 셋만 — 빈 팀 잔재(aws-test, S/W-Culture-Office) 미포함."
+  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩. team_leader 는 Cognito 그룹이 아니라 admin-ui 에서 지정(PUT /admin/teams/{id}/leader). prod는 dev 검증에서 결정된 깨끗한 셋만 — 빈 팀 잔재(aws-test, S/W-Culture-Office) 미포함."
   type        = list(string)
   default     = ["Claude_AWS-AI-Specialist", "ClaudeAdmin"]
 }

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker.models.auth import Team, User
@@ -119,10 +119,13 @@ class RecipientResolver:
         return [Recipient(email=leader.email, name=leader.display_name, user_id=leader.id, role=RecipientRole.TEAM_LEADER)]
 
     async def _resolve_admins(self, session: AsyncSession) -> list[Recipient]:
+        # auth.users.role 은 PostgreSQL enum. asyncpg/SQLAlchemy 조합에서
+        # enum 컬럼에 직접 문자열 비교하면 타입 불일치 예외가 날 수 있어
+        # LOWER(role) 로 비교한다.
         result = await session.execute(
             select(User).where(
                 User.is_active.is_(True),
-                User.role == "ADMIN",
+                func.lower(User.role) == "admin",
             )
         )
         admins = result.scalars().all()

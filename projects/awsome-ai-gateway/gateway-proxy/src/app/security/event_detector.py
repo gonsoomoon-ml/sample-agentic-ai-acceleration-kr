@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -72,9 +73,24 @@ class SecurityEventDetector:
 
             if self._redis is not None:
                 try:
+                    # notification-worker NotificationEvent 스키마(payload 기반)에 맞춤
+                    notification_event = {
+                        "event_id": event.event_id,
+                        "type": event.type.value.lower(),
+                        "timestamp": event.timestamp,
+                        "source": event.source,
+                        "payload": {
+                            "source_ip": event.source_ip,
+                            "failure_count": event.failure_count,
+                            "time_window": f"{event.window_minutes}분",
+                            "period": f"{event.window_minutes}분",
+                            "auth_type": event.auth_type.value,
+                            "details": event.details,
+                        },
+                    }
                     await self._redis.publish(
                         "notifications:security",
-                        event.model_dump_json(),
+                        json.dumps(notification_event),
                     )
                     logger.warning(
                         "security_event_published",

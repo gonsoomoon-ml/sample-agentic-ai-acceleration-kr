@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.models.auth import Department, Team, User, UserRole
 from app.models.budget import BudgetScope
 from app.models.model import RateLimitScope
@@ -125,14 +125,30 @@ class UserTeamService:
         ip_address: str = "0.0.0.0",
         request_id: str = "",
     ) -> TeamResponse:
+        """팀원 한 명을 팀 리더로 지정한다.
+
+        팀 하나에 여러 명이 리더일 수 있다 — 이미 리더인 다른 사람을 내리지 않는다
+        (role=TEAM_LEADER 는 팀당 배타적 단일값이 아니라 팀원 각자의 속성).
+        ``Team.leader_user_id`` 는 "가장 최근에 지정된 리더"를 가리키는 표시용
+        포인터일 뿐, 실제 권한(``require_team_leader_of`` 등)은 각 사용자의
+        ``role``+``team_id`` 로 판정되므로 이 값과 무관하게 정상 동작한다.
+        """
         repo = UserRepository(session)
 
-        team = await repo.set_leader(team_id, user_id)
+        team = await repo.get_team(team_id)
         if team is None:
             raise NotFoundError("Team", str(team_id))
 
-        # Update user role to TEAM_LEADER
+        target_user = await repo.get_user(user_id)
+        if target_user is None:
+            raise NotFoundError("User", str(user_id))
+        if target_user.team_id != team_id:
+            raise ValidationError(
+                f"User {user_id} does not belong to team {team_id} — transfer them first."
+            )
+
         await repo.update_user_role(user_id, UserRole.TEAM_LEADER)
+        team.leader_user_id = user_id
 
         await audit_logger.log(
             session,
@@ -142,6 +158,70 @@ class UserTeamService:
             resource_type="Team",
             resource_id=str(team_id),
             changes={"after": {"leader_user_id": str(user_id)}},
+            ip_address=ip_address,
+            request_id=request_id,
+        )
+
+        return TeamResponse(
+            id=str(team.id),
+            name=team.name,
+            department_id=str(team.dept_id),
+            leader_user_id=str(team.leader_user_id) if team.leader_user_id else None,
+            created_at=team.created_at,
+        )
+
+    async def unset_team_leader(
+        self,
+        session: AsyncSession,
+        *,
+        team_id: uuid.UUID,
+        user_id: uuid.UUID,
+        actor: CurrentUser,
+        ip_address: str = "0.0.0.0",
+        request_id: str = "",
+    ) -> TeamResponse:
+        """팀 리더 지정 해제(한 명) — 그 사람의 role 만 DEVELOPER 로 되돌린다.
+
+        팀에 리더가 여러 명일 수 있으므로 어느 사용자를 해제할지 반드시 지정해야
+        한다. ``Team.leader_user_id`` (표시용 포인터)가 이 사람을 가리키고 있었다면
+        남은 리더 중 한 명으로 옮기고, 아무도 없으면 비운다.
+
+        ADMIN 은 영향받지 않는다(_derive_role 이 ADMIN_GROUPS 로 별도 판정) — 여기서
+        DEVELOPER 로 되돌려도 그 사람이 ClaudeAdmin 이면 다음 Cognito 로그인 때 다시
+        ADMIN 으로 복원된다.
+        """
+        repo = UserRepository(session)
+
+        team = await repo.get_team(team_id)
+        if team is None:
+            raise NotFoundError("Team", str(team_id))
+
+        target_user = await repo.get_user(user_id)
+        if target_user is None or target_user.team_id != team_id:
+            raise NotFoundError("Team leader", str(user_id))
+        if target_user.role != UserRole.TEAM_LEADER:
+            raise ValidationError(f"User {user_id} is not currently a team leader of this team.")
+
+        await repo.update_user_role(user_id, UserRole.DEVELOPER)
+
+        if team.leader_user_id == user_id:
+            remaining_leader = next(
+                (m for m in team.members if m.id != user_id and m.role == UserRole.TEAM_LEADER),
+                None,
+            )
+            team.leader_user_id = remaining_leader.id if remaining_leader else None
+
+        await audit_logger.log(
+            session,
+            actor_user_id=actor.user_id,
+            actor_role=actor.role.value,
+            action="UNSET_TEAM_LEADER",
+            resource_type="Team",
+            resource_id=str(team_id),
+            changes={
+                "before": {"leader_user_id": str(user_id)},
+                "after": {"leader_user_id": str(team.leader_user_id) if team.leader_user_id else None},
+            },
             ip_address=ip_address,
             request_id=request_id,
         )
@@ -170,6 +250,29 @@ class UserTeamService:
         if user is None:
             raise NotFoundError("User", str(user_id))
         old_team_id = user.team_id
+
+        # 팀 리더십은 팀별 속성이라 이관되지 않는다 — 그대로 두면 옛 팀의 leader_user_id
+        # 가 이제 그 팀 소속도 아닌 사람을 계속 가리키고(스테일 포인터), 동시에
+        # require_team_leader_of(role+team_id 로만 판정)가 새 팀에서 이 사람을
+        # 명시적 지정 없이 리더로 인가해버리는 의도치 않은 권한 상승이 발생한다.
+        # (authenticate_for_admin_ui 가 Cognito 그룹 변경 시 이 메서드를 자동 호출하므로,
+        # 이 버그는 관리자 조작 없이도 Cognito 그룹 재배정만으로 트리거될 수 있었다.)
+        # 같은 팀으로의 no-op 호출(new_team_id == old_team_id)까지 강등시키지 않도록
+        # 실제로 팀이 바뀌는 경우에만 적용한다.
+        if user.role == UserRole.TEAM_LEADER and new_team_id != old_team_id:
+            await repo.update_user_role(user_id, UserRole.DEVELOPER)
+            if old_team_id is not None:
+                old_team = await repo.get_team(old_team_id)
+                if old_team is not None and old_team.leader_user_id == user_id:
+                    remaining_leader = next(
+                        (
+                            m
+                            for m in old_team.members
+                            if m.id != user_id and m.role == UserRole.TEAM_LEADER
+                        ),
+                        None,
+                    )
+                    old_team.leader_user_id = remaining_leader.id if remaining_leader else None
 
         # BR-BUD-04: Deactivate existing user budget configs
         budget_repo = BudgetRepository(session)
@@ -315,6 +418,7 @@ class UserTeamService:
                         meta=OrgNodeMeta(
                             member_count=len(active_members),
                             leader_name=leader.display_name if leader else None,
+                            leader_user_id=str(team.leader_user_id) if team.leader_user_id else None,
                             email=leader.email if leader else None,
                             role=None,
                             team_name=None,

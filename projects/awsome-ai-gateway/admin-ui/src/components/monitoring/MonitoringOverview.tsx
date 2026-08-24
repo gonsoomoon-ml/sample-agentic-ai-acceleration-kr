@@ -2,7 +2,7 @@
 
 // Copyright 2026 © Amazon.com and Affiliates: This deliverable is considered Developed Content as defined in the AWS Service Terms.
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import type { MonitoringOverviewResponse } from '@/lib/actions/monitoring';
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -17,6 +17,7 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 
 export function MonitoringOverview({ data }: { data: MonitoringOverviewResponse }) {
   const t = useTranslations('monitoring');
+  const locale = useLocale();
   const h = data.last_1h;
 
   return (
@@ -24,7 +25,7 @@ export function MonitoringOverview({ data }: { data: MonitoringOverviewResponse 
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold">{t('lastHourSummary')}</h2>
         <span className="text-xs text-muted-foreground">
-          {new Date(data.timestamp).toLocaleString('ko-KR')}
+          {new Date(data.timestamp).toLocaleString(locale)}
         </span>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">

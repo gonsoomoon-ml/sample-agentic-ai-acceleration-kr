@@ -4,6 +4,7 @@
 
 
 import { useState, useEffect, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { OrgTreeNode, ModelListItem } from '@/types/entities';
 import {
@@ -15,6 +16,8 @@ import {
   clearUserClientBudgetAction,
   getUserAllowedModelsAction,
   setUserAllowedModelsAction,
+  setTeamLeaderAction,
+  unsetTeamLeaderAction,
 } from '@/lib/actions/users';
 import { listActiveModelsAction } from '@/lib/actions/models';
 import { SpinnerButton } from '@/components/common/SpinnerButton';
@@ -487,11 +490,21 @@ function TeamPanel({ node }: { node: OrgTreeNode }) {
   const t = useTranslations('users');
   const tc = useTranslations('common');
   const { toast } = useToast();
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isLeaderPending, startLeaderTransition] = useTransition();
+  const [selectedMemberId, setSelectedMemberId] = useState('');
+  // 해제할 리더를 확인 모달에서 명확히 지정 — 팀에 리더가 여러 명일 수 있으므로
+  // "리더 해제" 버튼 하나로는 어느 사람을 내릴지 알 수 없다.
+  const [leaderToRemove, setLeaderToRemove] = useState<{ id: string; name: string } | null>(null);
 
-  const leader = node.meta.leader_name ?? t('leaderUnassigned');
   const memberCount = node.meta.member_count ?? 0;
+  const members = node.children ?? [];
+  // 리더 목록은 트리에 이미 실려오는 멤버별 role 로 계산 — 팀 하나에 여러 명일 수 있다
+  // (role=TEAM_LEADER 는 팀당 배타적 단일값이 아니라 팀원 각자의 속성).
+  const leaders = members.filter((m) => m.meta.role === 'TEAM_LEADER');
+  const nonLeaderMembers = members.filter((m) => m.meta.role !== 'TEAM_LEADER');
 
   const handleForceReauth = () => {
     startTransition(async () => {
@@ -509,17 +522,127 @@ function TeamPanel({ node }: { node: OrgTreeNode }) {
     });
   };
 
+  const handleAssignLeader = () => {
+    if (!selectedMemberId) return;
+    startLeaderTransition(async () => {
+      const result = await setTeamLeaderAction(selectedMemberId, node.id);
+      if (result.success) {
+        toast({ type: 'success', message: t('leaderAction.assignSuccess'), auto_dismiss_ms: 4000 });
+        setSelectedMemberId('');
+        router.refresh();
+      } else {
+        toast({ type: 'error', message: result.error, auto_dismiss_ms: 4000 });
+      }
+    });
+  };
+
+  const handleConfirmRemoveLeader = () => {
+    if (!leaderToRemove) return;
+    startLeaderTransition(async () => {
+      const result = await unsetTeamLeaderAction(node.id, leaderToRemove.id);
+      setLeaderToRemove(null);
+      if (result.success) {
+        toast({ type: 'success', message: t('leaderAction.unassignSuccess'), auto_dismiss_ms: 4000 });
+        router.refresh();
+      } else {
+        toast({ type: 'error', message: result.error, auto_dismiss_ms: 4000 });
+      }
+    });
+  };
+
   return (
     <div>
       <h2 className="text-lg font-semibold mb-4">{node.name}</h2>
-      <div className="flex items-center gap-2 text-sm mb-2">
-        <span className="text-muted-foreground">{t('leaderName')}</span>
-        <span className="font-medium">{leader}</span>
-      </div>
       <div className="flex items-center gap-2 text-sm mb-4">
         <span className="text-muted-foreground">{t('memberCount')}</span>
         <span className="font-medium">{t('memberCountValue', { count: memberCount })}</span>
       </div>
+
+      <div className="border rounded-apple-md p-3 mb-4">
+        <p className="text-sm font-medium mb-2">{t('leaderAction.currentLeaders')}</p>
+        {leaders.length === 0 ? (
+          <p className="text-xs text-muted-foreground mb-3">{t('leaderAction.noLeaders')}</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5 mb-3">
+            {leaders.map((leaderNode) => (
+              <li
+                key={leaderNode.id}
+                className="flex items-center justify-between gap-2 rounded-apple-sm border px-3 py-1.5"
+              >
+                <span className="text-sm">
+                  {leaderNode.name} <span className="text-muted-foreground">({leaderNode.meta.email})</span>
+                </span>
+                <button
+                  type="button"
+                  disabled={isLeaderPending}
+                  onClick={() => setLeaderToRemove({ id: leaderNode.id, name: leaderNode.name })}
+                  className="text-xs text-destructive hover:underline disabled:opacity-50"
+                >
+                  {t('leaderAction.unassignButton')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {nonLeaderMembers.length === 0 ? (
+          leaders.length === 0 && <p className="text-xs text-muted-foreground">{t('leaderAction.noMembers')}</p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedMemberId}
+              onChange={(e) => setSelectedMemberId(e.target.value)}
+              disabled={isLeaderPending}
+              className="glass flex-1 rounded-apple-sm border px-3 py-1.5 text-sm disabled:opacity-50"
+            >
+              <option value="">{t('leaderAction.selectPlaceholder')}</option>
+              {nonLeaderMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.meta.email})
+                </option>
+              ))}
+            </select>
+            <SpinnerButton
+              type="button"
+              isLoading={isLeaderPending}
+              disabled={!selectedMemberId}
+              onClick={handleAssignLeader}
+            >
+              {t('leaderAction.assignButton')}
+            </SpinnerButton>
+          </div>
+        )}
+      </div>
+
+      {leaderToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-background border rounded-lg shadow-lg max-w-md w-full mx-4 p-6">
+            <h3 className="text-base font-semibold mb-3">{t('leaderAction.removeModalTitle')}</h3>
+            <p className="text-sm text-muted-foreground mb-2">
+              {t('leaderAction.removeModalBody', { name: leaderToRemove.name })}
+            </p>
+            <p className="text-sm text-muted-foreground mb-4">{t('leaderAction.removeModalNote')}</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setLeaderToRemove(null)}
+                disabled={isLeaderPending}
+                className="px-3 py-1.5 text-sm rounded-md border hover:bg-muted"
+              >
+                {tc('cancel')}
+              </button>
+              <SpinnerButton
+                type="button"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                isLoading={isLeaderPending}
+                onClick={handleConfirmRemoveLeader}
+              >
+                {t('leaderAction.unassignButton')}
+              </SpinnerButton>
+            </div>
+          </div>
+        </div>
+      )}
 
       <SpinnerButton
         type="button"

@@ -256,7 +256,34 @@ imagePullSecrets:
   value: {{ .Values.adminApi.autoProvisioning.defaultDeptId | quote }}
 - name: SYSTEM_USER_ID
   value: {{ .Values.adminApi.autoProvisioning.systemUserId | quote }}
+{{- /* Admin-UI 로그인(Cognito ROPC) — OIDC 가 켜져 있을 때만 의미 있으므로 같은 조건 블록. */}}
+- name: COGNITO_APP_CLIENT_ID
+  value: {{ .Values.adminApi.adminUiLogin.cognitoAppClientId | default "" | quote }}
+- name: ADMIN_UI_JWT_CONFIG_ID
+  value: {{ .Values.adminApi.adminUiLogin.jwtConfigId | quote }}
+- name: ADMIN_UI_JWT_ISSUER
+  value: {{ .Values.adminApi.adminUiLogin.jwtIssuer | quote }}
+- name: ADMIN_UI_JWT_AUDIENCE
+  value: {{ .Values.adminApi.adminUiLogin.jwtAudience | quote }}
+- name: ADMIN_UI_JWT_TTL_HOURS
+  value: {{ .Values.adminApi.adminUiLogin.jwtTtlHours | quote }}
+{{- if .Values.auth.adminUiJwt.privateKeySecretName }}
+- name: ADMIN_UI_JWT_PRIVATE_KEY_PEM
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.auth.adminUiJwt.privateKeySecretName | quote }}
+      key: {{ .Values.auth.adminUiJwt.privateKeySecretKey | quote }}
+{{- end }}
 {{- end -}}
+{{- end -}}
+
+{{/* ------------------------------------------------------------------------
+  DEV_LOGIN_ENABLED — admin-api·admin-ui 양쪽에 동일 값을 주입하는 단일 소스.
+  호출: {{ include "llm-gateway.devLoginEnv" . | nindent 12 }}
+-------------------------------------------------------------------------- */}}
+{{- define "llm-gateway.devLoginEnv" -}}
+- name: DEV_LOGIN_ENABLED
+  value: {{ .Values.global.devLoginEnabled | quote }}
 {{- end -}}
 
 {{/* ------------------------------------------------------------------------

@@ -51,6 +51,10 @@ class CostStreamEntry(BaseModel):
     date: str  # YYYY-MM-DD (for daily counter + daily_aggregates)
 
     threshold_triggered: int | None = None
+    # "user" | "team" — 어느 스코프의 크로싱이 threshold_triggered 를 채웠는지.
+    # 이전엔 TEAM 스코프 crossing 결과를 버려서, 개인 예산 없이 팀 예산만 쓰는
+    # 케이스에서 budget_threshold 알림이 전혀 발행되지 않는 버그가 있었다.
+    threshold_scope: str | None = None
     threshold_policy: str | None = None
 
     sso_subject: str | None = None  # OIDC sub or stable user identifier for Bedrock metadata
@@ -83,6 +87,7 @@ class CostStreamEntry(BaseModel):
         downgraded_from: str | None,
         availability_fallback_from: str | None = None,
         threshold_triggered: int | None = None,
+        threshold_scope: str | None = None,
         threshold_policy: str | None = None,
         sso_subject: str | None = None,
         bedrock_request_id: str | None = None,
@@ -114,6 +119,7 @@ class CostStreamEntry(BaseModel):
             period=now.strftime("%Y-%m"),
             date=now.strftime("%Y-%m-%d"),
             threshold_triggered=threshold_triggered,
+            threshold_scope=threshold_scope,
             threshold_policy=threshold_policy,
             sso_subject=sso_subject,
             bedrock_request_id=bedrock_request_id,

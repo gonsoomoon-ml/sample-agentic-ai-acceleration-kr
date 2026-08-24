@@ -3,108 +3,100 @@
 // Copyright 2026 © Amazon.com and Affiliates: This deliverable is considered Developed Content as defined in the AWS Service Terms.
 
 
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import type { RateLimitTreeNode } from '@/types/entities';
+import type { OrgTreeNode, RateLimitTreeNode } from '@/types/entities';
+import { RateLimitScope } from '@/types/enums';
+import { OrgTree } from '@/components/users/OrgTree';
 import { RateLimitTree } from './RateLimitTree';
 import { RateLimitConfigPanel } from './RateLimitConfigPanel';
 
 interface RateLimitTreeViewProps {
-  nodes: RateLimitTreeNode[];
+  root: OrgTreeNode | null;
+  rateTree: RateLimitTreeNode[];
 }
 
-const EXPANDED_NODES_STORAGE_KEY = 'rate-limits:tree:expandedNodes';
-
-function collectDefaultExpanded(nodes: RateLimitTreeNode[]): Set<string> {
-  // 기본적으로 GLOBAL 만 펼침. TEAM 은 접혀 있어서 USER 리스트 숨김.
-  const ids = new Set<string>();
-  for (const n of nodes) {
-    if (n.scope === 'GLOBAL') ids.add(n.id);
-  }
-  return ids;
+function collectAllIds(node: OrgTreeNode, set: Set<string>) {
+  set.add(node.id);
+  node.children.forEach((child) => collectAllIds(child, set));
 }
 
-export function RateLimitTreeView({ nodes }: RateLimitTreeViewProps) {
+function flattenRateTree(nodes: RateLimitTreeNode[]): Record<string, RateLimitTreeNode> {
+  const map: Record<string, RateLimitTreeNode> = {};
+  const walk = (n: RateLimitTreeNode) => {
+    map[n.id] = n;
+    n.children.forEach(walk);
+  };
+  nodes.forEach(walk);
+  return map;
+}
+
+export function RateLimitTreeView({ root, rateTree }: RateLimitTreeViewProps) {
   const t = useTranslations('rateLimits');
-  const [selectedNode, setSelectedNode] = useState<RateLimitTreeNode | null>(null);
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() =>
-    collectDefaultExpanded(nodes)
-  );
-  const [showInactive, setShowInactive] = useState(false);
-  const hasMountedRef = useRef(false);
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [selectedRateLimit, setSelectedRateLimit] = useState<RateLimitTreeNode | null>(null);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
+    const set = new Set<string>();
+    if (root) collectAllIds(root, set);
+    return set;
+  });
 
-  const hasInactive = nodes.some(n => n.is_active === false);
-  const filteredNodes = showInactive
-    ? nodes
-    : nodes.filter(n => n.is_active !== false).map(n => ({
-        ...n,
-        children: n.children.filter(c => c.is_active !== false),
-      }));
-
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(EXPANDED_NODES_STORAGE_KEY);
-      if (raw) {
-        const ids = JSON.parse(raw) as unknown;
-        if (Array.isArray(ids) && ids.every((x) => typeof x === 'string')) {
-          setExpandedNodes(new Set(ids as string[]));
-        }
-      }
-    } catch {
-      // 손상/비활성 storage 무시
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
-      return;
-    }
-    try {
-      sessionStorage.setItem(
-        EXPANDED_NODES_STORAGE_KEY,
-        JSON.stringify([...expandedNodes])
-      );
-    } catch {
-      // quota/비활성 storage 무시
-    }
-  }, [expandedNodes]);
+  const rateLimitMap = useMemo(() => flattenRateTree(rateTree), [rateTree]);
+  const globals = rateTree.filter((n) => n.scope === RateLimitScope.GLOBAL);
 
   const handleToggle = (id: string) => {
-    setExpandedNodes((prev) => {
-      if (prev.has(id)) {
-        return new Set([...prev].filter((x) => x !== id));
-      }
-      return new Set([...prev, id]);
+    setExpandedNodes((prev: Set<string>) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
+  };
+
+  const handleOrgSelect = (node: OrgTreeNode) => {
+    setSelectedOrgId(node.id);
+    setSelectedRateLimit(rateLimitMap[node.id] ?? null);
+  };
+
+  const handleGlobalSelect = (node: RateLimitTreeNode) => {
+    setSelectedOrgId(null);
+    setSelectedRateLimit(node);
   };
 
   return (
     <div className="space-y-3">
-      {hasInactive && (
-        <label className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={e => setShowInactive(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-gray-300"
-          />
-          {t('includeInactive')}
-        </label>
-      )}
       <div className="flex gap-0 border rounded-lg overflow-hidden min-h-[600px]">
-      <div className="w-72 border-r overflow-y-auto">
-        <RateLimitTree
-          nodes={filteredNodes}
-          selectedNodeId={selectedNode?.id ?? null}
-          expandedNodes={expandedNodes}
-          onSelect={setSelectedNode}
-          onToggle={handleToggle}
-        />
-      </div>
-      <div className="flex-1 p-6">
-        <RateLimitConfigPanel node={selectedNode} />
-      </div>
+        <div className="w-72 border-r overflow-y-auto py-1">
+          {globals.length > 0 && (
+            <div className="border-b pb-2 mb-2">
+              <p className="px-3 py-1.5 text-xs font-semibold text-muted-foreground">{t('scopeLabel.GLOBAL')}</p>
+              {/* OrgTree 와 expandedNodes Set 를 공유하지만, RateLimitTreeNode.id 와
+                  OrgTreeNode.id 는 서로 다른 네임스페이스라 충돌하지 않는다. */}
+              <RateLimitTree
+                nodes={globals}
+                selectedNodeId={selectedRateLimit?.scope === RateLimitScope.GLOBAL ? selectedRateLimit.id : null}
+                expandedNodes={expandedNodes}
+                onSelect={handleGlobalSelect}
+                onToggle={handleToggle}
+                depth={0}
+              />
+            </div>
+          )}
+          {root ? (
+            <OrgTree
+              node={root}
+              selectedNodeId={selectedOrgId}
+              expandedNodes={expandedNodes}
+              onSelect={handleOrgSelect}
+              onToggle={handleToggle}
+            />
+          ) : (
+            <p className="p-4 text-sm text-muted-foreground">{t('noConfigData')}</p>
+          )}
+        </div>
+        <div className="flex-1 p-6">
+          <RateLimitConfigPanel node={selectedRateLimit} />
+        </div>
       </div>
     </div>
   );

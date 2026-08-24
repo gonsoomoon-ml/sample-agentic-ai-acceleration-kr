@@ -130,10 +130,8 @@ export function AutoDowngradeConfig({ scopeType, scopeId, scopeName, models }: A
     <div className="space-y-4 glass rounded-apple p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold">{t('autoDowngrade')}</h3>
-          <p className="text-xs text-muted-foreground">
-            {t('autoDowngradeDesc', { scope: scopeName })}
-          </p>
+          <h3 className="text-base font-semibold">{scopeName}</h3>
+          <p className="text-xs text-muted-foreground">{t('autoDowngrade')}</p>
         </div>
         <label className="flex items-center gap-2 cursor-pointer">
           <input

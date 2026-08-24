@@ -171,6 +171,31 @@ class KeyService:
             virtual_key=raw_key,
         )
 
+    async def _publish_key_revoked(
+        self, vk: VirtualKey, actor: CurrentUser
+    ) -> None:
+        """VK 폐기 시 notification-worker에 key_revoked 이벤트 발행."""
+        redis = self._cache_mgr._redis
+        if redis is None:
+            return
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "type": "key_revoked",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": "admin-api",
+            "payload": {
+                "user_id": str(vk.user_id),
+                "key_id": str(vk.id),
+                "key_prefix": vk.key_prefix,
+                "revoked_by": actor.role.value,
+                "reason": None,
+            },
+        }
+        try:
+            await redis.publish("notifications:key", json.dumps(event, default=str))
+        except Exception:
+            logger.warning("key_revoked.publish_failed", exc_info=True)
+
     async def revoke_key(
         self,
         session: AsyncSession,
@@ -218,6 +243,9 @@ class KeyService:
             ip_address=ip_address,
             request_id=request_id,
         )
+
+        # notification-worker 에 key_revoked 발행
+        await self._publish_key_revoked(vk, actor)
 
     async def list_keys(
         self,

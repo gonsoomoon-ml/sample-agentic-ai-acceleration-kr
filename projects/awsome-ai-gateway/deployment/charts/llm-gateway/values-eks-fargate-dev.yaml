@@ -14,6 +14,9 @@
 global:
   environment: dev
   deploymentMode: eks-fargate
+  # dev 환경에서만 허용 — admin-api·admin-ui 양쪽에 동시 주입됨(단일 스위치).
+  # Cognito 로그인(adminApi.oidc/adminApi.adminUiLogin)이 준비되면 false 로.
+  devLoginEnabled: true
   # CHANGE_ME (org): 리포팅 타임존 — 대시보드·일별 집계(daily_aggregates)·이메일 발송시각의
   # 달력 경계. **정규 IANA 이름만**(예: America/Los_Angeles · Asia/Seoul · UTC — "KST"/"PST"/
   # "US/Pacific" 은 배포 이미지에서 거부). fill-org-values.sh 가 프롬프트로 채운다.
@@ -257,7 +260,7 @@ adminApi:
   autoscaling:
     enabled: false
   env:
-    DEV_LOGIN_ENABLED: "true"  # dev 환경에서만 허용
+    # DEV_LOGIN_ENABLED 는 global.devLoginEnabled (이 파일 상단) 로 주입됨.
     # CHANGE_ME (terraform output): Cognito User Pool ID. terraform output -raw cognito_user_pool_id
     COGNITO_USER_POOL_ID: "ap-northeast-2_XXXXXXXXX"
     COGNITO_REGION: "ap-northeast-2"
@@ -293,6 +296,13 @@ adminApi:
     groups:
       - "ClaudeAdmin"
 
+  # admin-ui 커스텀 로그인 폼(Cognito ROPC). 비활성 상태로 두면(빈 값) admin-ui 는
+  # devLoginEnabled 로만 로그인 가능 — 활성화하려면 아래 CHANGE_ME 를 채우고
+  # auth.adminUiJwt.privateKeySecretName 도 함께 설정할 것 (03-secrets.md 참고).
+  adminUiLogin:
+    # CHANGE_ME (terraform output): terraform output -raw cognito_client_id
+    cognitoAppClientId: ""
+
 adminUi:
   replicaCount: 1
   image:
@@ -306,10 +316,6 @@ adminUi:
       memory: "1Gi"
   autoscaling:
     enabled: false
-  env:
-    # admin-ui (Next.js) 도 dev-login route 를 렌더하려면 이 env 가 필요.
-    # admin-api 쪽 DEV_LOGIN_ENABLED 와 별개 (두 컨테이너 따로 주입).
-    DEV_LOGIN_ENABLED: "true"
 
 scheduler:
   image:

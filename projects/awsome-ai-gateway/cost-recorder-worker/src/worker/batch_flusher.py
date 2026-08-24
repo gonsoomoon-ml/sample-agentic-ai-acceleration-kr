@@ -314,13 +314,16 @@ class BatchFlusher:
                     "type": "budget_threshold",
                     "timestamp": e.completed_at,
                     "source": "cost-recorder-worker",
-                    "user_id": e.user_id,
-                    "team_id": e.team_id,
-                    "threshold_pct": e.threshold_triggered,
-                    "current_used_usd": str(e.cost_usd),
-                    "period": e.period,
-                    "policy": e.threshold_policy or "hard_block",
-                    "target_type": "user",
+                    "payload": {
+                        "user_id": e.user_id,
+                        "team_id": e.team_id,
+                        "threshold_pct": e.threshold_triggered,
+                        "current_usage_usd": str(e.cost_usd),
+                        "period": e.period,
+                        "policy": e.threshold_policy or "hard_block",
+                        "scope": e.threshold_scope or "user",
+                        "target_type": e.threshold_scope or "user",
+                    },
                 }
                 await self._redis.publish("notifications:budget", json.dumps(event))
             except Exception:

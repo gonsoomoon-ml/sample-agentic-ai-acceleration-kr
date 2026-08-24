@@ -34,6 +34,7 @@ class TemplateEngine:
             autoescape=select_autoescape(["html"]),
             undefined=StrictUndefined,
         )
+        self._locale = get_settings().notification_locale
 
     def render(
         self,
@@ -46,24 +47,40 @@ class TemplateEngine:
         return subject, html_body
 
     def _render_subject(self, event_type: str, context: dict) -> str:
-        template_name = f"{event_type}.subject.txt"
+        template_name = f"{event_type}.{self._locale}.subject.txt"
         try:
             tmpl = self._env.get_template(template_name)
         except TemplateNotFound:
-            logger.debug("subject_template_fallback", event_type=event_type)
-            tmpl = self._env.get_template("default.subject.txt")
+            logger.debug("subject_locale_fallback", event_type=event_type, locale=self._locale)
+            # 비로켈 기본값 fallback
+            try:
+                tmpl = self._env.get_template(f"{event_type}.subject.txt")
+            except TemplateNotFound:
+                logger.debug("subject_template_fallback", event_type=event_type)
+                try:
+                    tmpl = self._env.get_template(f"default.{self._locale}.subject.txt")
+                except TemplateNotFound:
+                    tmpl = self._env.get_template("default.subject.txt")
 
         raw = tmpl.render(**context).strip()
         # 이메일 헤더 인젝션 방지: 줄바꿈/제어문자 제거 (BR-SEC-02)
         return _NEWLINE_RE.sub(" ", raw)
 
     def _render_body(self, event_type: str, context: dict) -> str:
-        template_name = f"{event_type}.html"
+        template_name = f"{event_type}.{self._locale}.html"
         try:
             tmpl = self._env.get_template(template_name)
         except TemplateNotFound:
-            logger.debug("body_template_fallback", event_type=event_type)
-            tmpl = self._env.get_template("default.html")
+            logger.debug("body_locale_fallback", event_type=event_type, locale=self._locale)
+            # 비로켈 기본값 fallback
+            try:
+                tmpl = self._env.get_template(f"{event_type}.html")
+            except TemplateNotFound:
+                logger.debug("body_template_fallback", event_type=event_type)
+                try:
+                    tmpl = self._env.get_template(f"default.{self._locale}.html")
+                except TemplateNotFound:
+                    tmpl = self._env.get_template("default.html")
 
         return tmpl.render(**context)
 
@@ -81,6 +98,7 @@ class TemplateEngine:
             "recipient_email": recipient_email,
             "gateway_name": "LLM Gateway",
             "timestamp_kr": now_local,
+            "locale": get_settings().notification_locale,
         }
 
 

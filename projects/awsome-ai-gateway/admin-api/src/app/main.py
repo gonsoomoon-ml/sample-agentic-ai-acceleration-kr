@@ -156,6 +156,31 @@ async def lifespan(app: FastAPI):
         app.state.oidc_verifier = None
         logger.info("oidc.disabled", reason="OIDC_ISSUER_URL or OIDC_AUDIENCE empty")
 
+    # ── Admin-UI 로그인 (Cognito ROPC) — OIDC + Cognito app client + 서명키 모두 필요 ──
+    app.state.admin_auth_service = None
+    if (
+        app.state.oidc_service is not None
+        and settings.COGNITO_APP_CLIENT_ID
+        and settings.COGNITO_USER_POOL_ID
+        and settings.ADMIN_UI_JWT_PRIVATE_KEY_PEM.get_secret_value()
+    ):
+        import boto3
+        from app.services.admin_auth_service import AdminAuthService
+
+        admin_cognito_client = boto3.client("cognito-idp", region_name=settings.COGNITO_REGION)
+        app.state.admin_auth_service = AdminAuthService(
+            cognito_client=admin_cognito_client,
+            app_client_id=settings.COGNITO_APP_CLIENT_ID,
+            oidc_service=app.state.oidc_service,
+            redis=redis,
+        )
+        logger.info("admin_auth.enabled", client_id=settings.COGNITO_APP_CLIENT_ID)
+    else:
+        logger.info(
+            "admin_auth.disabled",
+            reason="OIDC/COGNITO_APP_CLIENT_ID/ADMIN_UI_JWT_PRIVATE_KEY_PEM not fully configured",
+        )
+
     # TEAM budget config cold-cache warmup
     # init SQL / alembic 백필로 DB에 삽입된 TEAM 예산이 Redis에 없어
     # gateway-proxy 가 team_budget_unset 429 를 반환하는 문제를 startup 시 봉합.
@@ -288,6 +313,9 @@ def create_app() -> FastAPI:
     app.include_router(service_tokens.router)
     from app.routers import auth_oidc
     app.include_router(auth_oidc.router)
+
+    from app.routers import auth_admin
+    app.include_router(auth_admin.router)
 
     from app.routers import chat_agent  # admin-chat-agent BI assistant (Phase 2)
     app.include_router(chat_agent.router)

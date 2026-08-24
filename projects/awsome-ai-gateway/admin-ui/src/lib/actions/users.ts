@@ -122,6 +122,28 @@ export async function setTeamLeaderAction(
   }
 }
 
+// ─── unsetTeamLeaderAction ────────────────────────────────────────────────────
+
+export async function unsetTeamLeaderAction(
+  teamId: string,
+  userId: string
+): Promise<ActionResult<void>> {
+  if (!teamId) {
+    return { success: false, error: 'Team ID is required' };
+  }
+  if (!userId) {
+    return { success: false, error: 'User ID is required' };
+  }
+
+  try {
+    await withRetry(() => adminAPI.delete(`/admin/teams/${teamId}/leaders/${userId}`));
+    revalidatePath('/users');
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: toErrorMessage(err) };
+  }
+}
+
 // ─── forceReauthTeamAction ────────────────────────────────────────────────────
 // 팀 멤버 전원의 ACTIVE VK 일괄 revoke. 오프보딩/보안 사고/즉시 정책 반영 용도.
 // 사용자는 다음 호출 시 401 → Claude Code 재실행 필요 (UI 에서 명시).

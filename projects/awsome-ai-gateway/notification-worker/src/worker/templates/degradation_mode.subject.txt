@@ -1,1 +1,1 @@
-[DS Gateway] 서비스 저하 모드 전환
+[DS Gateway] 모델 다운그레이드 안내

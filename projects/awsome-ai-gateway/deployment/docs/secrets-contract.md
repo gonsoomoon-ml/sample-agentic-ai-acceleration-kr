@@ -9,6 +9,7 @@
 | `virtual_key_encryption_key` | Virtual Key AES-256-GCM DEK (64-char hex) | admin-api, gateway-proxy | **필수** | `openssl rand -hex 32` |
 | `nextauth_secret` | NextAuth.js 세션 서명 | admin-ui | **필수** | `openssl rand -hex 32` |
 | `jwt_jwks_cache_key` | JWKS 캐시 HMAC (위변조 방지) | admin-api, gateway-proxy | **필수** | `openssl rand -hex 32` |
+| `admin_ui_jwt_private_key_pem` | admin-ui 세션 JWT(RS256) 서명 개인키 (Cognito 로그인 활성화 시) | admin-api | **선택** (`auth.adminUiJwt.privateKeySecretName` 비우면 admin-ui Cognito 로그인 비활성 — dev-login 만 사용) | `python admin-api/scripts/generate_admin_jwt_keypair.py` — 공개키는 `db/init/03_seed_data.sql` 의 `admin_jwt_configs.public_key_pem` 에 반영 |
 | DB `password` (gateway 유저) | Aurora/PostgreSQL 연결 비번 | admin-api, gateway-proxy, cost-recorder-worker, scheduler, migration | **필수** | Aurora `manage_master_user_password=true`가 Secrets Manager에 자동 저장 |
 | DB `notification_worker_password` | notification_worker_user 비번 (권한 분리) | notification-worker | **on-prem 선택** (EKS는 단일 gateway 유저 사용) | 운영자가 수동 생성 (마이그레이션 후) |
 | Redis `password` (AUTH 토큰) | ElastiCache / 사내 Redis 인증 | 전 서비스 (worker 포함) | **선택** | ElastiCache는 Terraform이 `random_password`로 자동 생성 |
@@ -97,6 +98,9 @@ auth:
   virtualKey:
     encryptionKeySecretName: "llm-gateway-app"
     encryptionKeySecretKey: "virtual_key_encryption_key"
+  adminUiJwt:
+    privateKeySecretName: ""    # 비어있으면 admin-ui Cognito 로그인 비활성(dev-login 만 사용)
+    privateKeySecretKey: "admin_ui_jwt_private_key_pem"
 ```
 
 즉 chart는 **"이 이름의 Secret을 namespace에서 찾아 그 key를 읽겠다"**는 계약만 정의하고, **실제 Secret 객체 생성은 ESO 또는 운영자 책임**입니다.
@@ -114,6 +118,15 @@ auth:
       \"nextauth_secret\": \"$(openssl rand -hex 32)\",
       \"jwt_jwks_cache_key\": \"$(openssl rand -hex 32)\"
     }"
+  ```
+  admin-ui Cognito 로그인을 켤 경우, 위 secret에 `admin_ui_jwt_private_key_pem` 프로퍼티를
+  추가하고 `auth.adminUiJwt.privateKeySecretName: "llm-gateway-app"` 로 설정:
+  ```bash
+  python admin-api/scripts/generate_admin_jwt_keypair.py   # PRIVATE/PUBLIC KEY 출력
+  aws secretsmanager put-secret-value --secret-id /llm-gateway/prod/app \
+    --secret-string "$(aws secretsmanager get-secret-value --secret-id /llm-gateway/prod/app \
+      --query SecretString --output text | jq --arg k "<PRIVATE KEY PEM>" '. + {admin_ui_jwt_private_key_pem: $k}')"
+  # PUBLIC KEY 는 db/init/03_seed_data.sql 의 admin_jwt_configs.public_key_pem 을 UPDATE
   ```
 - [ ] `/llm-gateway/{env}/db` Secret 생성 (Aurora 마스터 비번을 gateway 유저용으로 사용 or 별도 유저 생성 후 그 비번):
   ```bash
@@ -158,6 +171,8 @@ auth:
     --from-literal=virtual_key_encryption_key="$(openssl rand -hex 32)" \
     --from-literal=nextauth_secret="$(openssl rand -hex 32)" \
     --from-literal=jwt_jwks_cache_key="$(openssl rand -hex 32)"
+    # admin-ui Cognito 로그인을 켤 경우에만 추가(선택):
+    # --from-literal=admin_ui_jwt_private_key_pem="$(python admin-api/scripts/generate_admin_jwt_keypair.py | ...)"
 
   kubectl create secret generic llm-gateway-redis -n llm-gateway \
     --from-literal=password='<redis AUTH>'
@@ -183,6 +198,7 @@ auth:
 | `virtual_key_encryption_key` | 1년 1회 | `extraKeys={v0: ...}` 다버전 복호화 지원 — 이전 키를 v0에 남기고 v1으로 교체. 자세히: [deployment-secrets.md](../../requirements-document/deployment-secrets.md) |
 | `nextauth_secret` | 6개월 1회 | 교체 시 모든 관리자 재로그인 필요 |
 | `jwt_jwks_cache_key` | 1년 1회 | 교체 시 서비스 재시작으로 캐시 초기화 |
+| `admin_ui_jwt_private_key_pem` | 1년 1회 (또는 유출 의심 시 즉시) | 새 키쌍 생성 후 공개키를 `admin_jwt_configs`에 UPDATE + Secret 교체 — 교체 시 기존 admin-ui 세션 전부 무효화(재로그인 필요), old `admin_jwt_configs` 행을 당분간 `is_active=true` 로 남겨두면 무중단 전환 가능(kid 매칭) |
 | DB `password` | 90일 1회 | Aurora `manage_master_user_password` 자동 로테이션 활용 or 수동 |
 | Redis `password` | 90일 1회 | ElastiCache `auth_token_update_strategy: ROTATE` — 2개 토큰 공존 기간 → 무중단 교체 |
 | TLS 인증서 | 만료 30일 전 | cert-manager 자동 갱신 권장 |

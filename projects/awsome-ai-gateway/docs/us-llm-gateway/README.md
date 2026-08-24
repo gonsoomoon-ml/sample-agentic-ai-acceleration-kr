@@ -29,6 +29,7 @@
 
 > `US-06`(ALB HTTPS) = 도메인 + ACM 으로 https 접속 — 운영이면 **강력 권장**. Cowork 는 https 필수라 도메인 없으면 CloudFront(`03`), 있으면 US-06 — 둘 다는 불필요. `US-03·04·05` 는 신규 설치에 포함(필수).
 > `US-07`(admin ALB internal) = **S2S VPN 이 있는 운영의 최종형**(선택) — 신규는 `US-01` 의 **§3-6 시점**에 values 주석 해제로 포함, 기존 배포는 [전환 절차](ops/8-I-admin-internal.md). VPN 없으면 적용 금지.
+> `US-08`(Admin UI Cognito 로그인) = dev-login(role 을 화면에서 직접 선택하는 MVP 우회) 대신 실제 로그인 — 선택이지만 **운영이면 강력 권장**(§8-S 하드닝의 네트워크 격리 없이도 admin 콘솔을 안전하게 열 수 있음). 신규 설치도 `US-01` 만으로는 dev-login 뿐이라 별도 적용 필요 — [ops/8-L-admin-ui-login.md](ops/8-L-admin-ui-login.md).
 > ⚠️ **신규 설치도 `US-02` 가 필요합니다** — 마이그레이션이 Cowork 라우팅 행을 없는 계정으로 심어 그대로 두면 Cowork 전부 502. Claude Code 만 + 시드 모델이면 US-02 생략 가능.
 
 ---
@@ -39,6 +40,7 @@
 
 | ID (문서) | 무엇 | 등급 · 신규 설치 | 기존 배포가 할 일 |
 |---|---|---|---|
+| [**US-08**](ops/8-L-admin-ui-login.md) 2026/08 | Admin UI Cognito 로그인 — dev-login 대체 | 선택 · **운영이면 강력 권장** · 신규 포함(별도 적용) | 이미지 재빌드 → 세션 키 발급/Secret 반영 → install-eks → devLoginEnabled=false |
 | [**US-07**](ops/8-I-admin-internal.md) 2026/08 | 고객사 최종 아키텍처 — admin ALB 2개를 internal 로 | 선택 · 전제 S2S VPN · 신규는 §3-6 시점에 values 주석 해제 | values 주석 2곳 해제 → helm(ALB 재생성) → admin SG·CNAME 교체 |
 | [**US-06**](ops/8-H-alb-https.md) 2026/08 | ALB HTTPS — 커스텀 도메인 + ACM | 선택 · **운영이면 강력 권장** · 신규는 §3-6 시점에 | 도메인 확보 → 전환 → 클라이언트 URL 2개 교체 (30분) |
 | [**US-05**](ops/8-E-eks-upgrade.md) 2026/08 | EKS 1.31 → 1.34 | 필수(지원 만료·비용) · 신규 포함 | 1단계씩 3회 apply + 전 ns 재시작 |

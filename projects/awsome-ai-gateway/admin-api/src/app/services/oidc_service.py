@@ -226,6 +226,78 @@ class OIDCService:
             rpm_limit=None,
         )
 
+    async def authenticate_for_admin_ui(
+        self,
+        session: AsyncSession,
+        *,
+        token: str,
+    ) -> User:
+        """admin-ui 로그인 전용 진입점 (``routers/auth_admin.py`` 가 호출).
+
+        ``exchange_jwt_for_vk`` 와 claim 검증/팀 매핑/user upsert 로직은 동일하지만:
+        - VK 를 발급하지 않는다 (admin-ui 세션은 자체 서명 JWT — ``admin_jwt_signer``).
+        - role 이 ADMIN/TEAM_LEADER 가 아니면 거부한다 (DEVELOPER 는 admin-ui 페이지가 없음).
+          TEAM_LEADER 는 Cognito 그룹이 아니라 admin-ui 에서 수동 지정되므로(``_derive_role``
+          참고), 이 체크는 **upsert 이후** ``user.role`` (수동 지정 보존 로직 반영)로 해야
+          기존 팀 리더가 정상적으로 로그인할 수 있다 — upsert 이전에 걸러버리면 항상 거부됨.
+        """
+        settings = get_settings()
+
+        try:
+            claims = await self._verifier.verify_async(token, self._http_client)
+        except OIDCVerifyError as e:
+            raise OIDCAuthError(str(e)) from e
+
+        sub = claims.get(settings.OIDC_USER_ID_CLAIM)
+        email = claims.get(settings.OIDC_EMAIL_CLAIM, "")
+        name = claims.get(settings.OIDC_NAME_CLAIM) or email or sub
+        groups = claims.get(settings.OIDC_GROUPS_CLAIM, []) or []
+        if not isinstance(groups, list):
+            groups = [groups]
+
+        if not sub:
+            raise OIDCAuthError(f"missing claim: {settings.OIDC_USER_ID_CLAIM}")
+        if not email:
+            email = claims.get("preferred_username") or ""
+        if not email:
+            email = (await self._email_from_cognito(str(sub))) or f"{sub}@unknown"
+
+        role = self._derive_role(email, groups)
+        team_id = await self._resolve_team(session, groups)
+
+        user, was_created, team_changed = await self._upsert_user(
+            session=session,
+            sso_subject=str(sub),
+            email=str(email),
+            display_name=str(name),
+            team_id=team_id,
+            role=role,
+        )
+
+        if user.role not in (UserRole.ADMIN, UserRole.TEAM_LEADER):
+            raise OIDCNotProvisionableError(
+                "admin_ui_access_denied: ADMIN 또는 TEAM_LEADER 만 admin-ui 에 로그인할 수 있습니다."
+            )
+
+        if not was_created and team_changed:
+            actor = CurrentUser(user_id=user.id, email=user.email, role=user.role, team_id=team_id)
+            try:
+                await self._user_team_service.transfer_user(
+                    session,
+                    user_id=user.id,
+                    new_team_id=team_id,
+                    actor=actor,
+                    ip_address="0.0.0.0",
+                    request_id="",
+                )
+            except Exception:
+                logger.exception("admin_ui_login.transfer_user_failed", user_id=str(user.id))
+
+        if not user.is_active:
+            raise OIDCNotProvisionableError("user_deactivated")
+
+        return user
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -382,7 +454,17 @@ class OIDCService:
 
     @staticmethod
     def _derive_role(email: str, groups: list[str]) -> UserRole:
-        """ADMIN_EMAILS / ADMIN_GROUPS 둘 중 하나라도 매칭되면 ADMIN."""
+        """ADMIN_EMAILS / ADMIN_GROUPS 둘 중 하나라도 매칭되면 ADMIN.
+
+        TEAM_LEADER 는 Cognito 그룹으로 부트스트랩하지 않는다 — "어느 팀"의
+        리더인지까지 그룹명만으로 명확히 표현하려면 팀 매핑용 그룹과 별도로 또
+        하나의 그룹(예: ClaudeTeamLeader)에 동시 가입해야 해서 운영 부담이 크고,
+        두 그룹 매핑이 어긋나면 엉뚱한 팀의 리더가 될 위험도 있다. 대신 관리자가
+        admin-ui 에서 팀원 한 명을 리더로 지정한다 (``PUT /admin/teams/{id}/leader``,
+        ``UserTeamService.set_team_leader``) — 팀이 명확히 고정되어 모호함이 없다.
+        ``_upsert_user`` 가 이 수동 지정을 Cognito 재로그인/재동기화 때 덮어쓰지
+        않도록 보존한다.
+        """
         settings = get_settings()
         admin_emails = {e.lower() for e in settings.ADMIN_EMAILS}
         if email and email.lower() in admin_emails:
@@ -468,7 +550,12 @@ class OIDCService:
         if existing.email != email and (not incoming_is_synthetic or existing_is_synthetic):
             existing.email = email
         existing.display_name = display_name
-        # role 변경은 admin 권한 변동이므로 명시 로그
+        # role 변경은 admin 권한 변동이므로 명시 로그.
+        # TEAM_LEADER 는 Cognito 그룹이 아니라 admin-ui("팀 리더 지정")에서만 설정되므로
+        # (_derive_role 은 ADMIN/DEVELOPER 만 반환), Cognito 재로그인 때 DEVELOPER 로
+        # 되돌아가지 않도록 보존한다. ADMIN_GROUPS 매칭(승격) / 제외(강등)는 그대로 반영.
+        if existing.role == UserRole.TEAM_LEADER and role == UserRole.DEVELOPER:
+            role = UserRole.TEAM_LEADER
         if existing.role != role:
             logger.info(
                 "oidc.user_role_changed",

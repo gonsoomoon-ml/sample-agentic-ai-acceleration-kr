@@ -14,8 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
+from app.core.config import get_settings
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
-from app.models.auth import UserRole
+from app.models.auth import Team, UserRole
 from app.models.budget import BudgetConfig, BudgetPolicy, BudgetScope, DowngradePolicy, PeriodType
 from app.repositories.budget_repository import BudgetRepository, DowngradePolicyRepository
 from app.repositories.user_repository import UserRepository
@@ -40,6 +41,18 @@ BUDGET_CONFIG_CACHE_TTL = 300  # 5 min; matches VK_AUTH_CACHE_TTL in key_service
 
 _PERIOD_RE = re.compile(r"^\d{4}-\d{2}$")
 _ALLOWED_CLIENTS = ("claude-code", "cowork", "codex")
+
+
+def _team_display_name(team: Team) -> str:
+    """Cognito 그룹명에서 부서_팀 형태(Claude_NDS_Developers → NDS_Developers)가
+    깨져 `Team.name`에 팀 부분만 들어가 있을 때, 부서명을 prefix로 붙여 보여준다.
+    default 부서 소속은 prefix를 붙이지 않는다(Claude_Developers → Developers)."""
+    settings = get_settings()
+    default_dept_id = uuid.UUID(settings.DEFAULT_DEPT_ID)
+    dept = getattr(team, "department", None)
+    if dept is not None and team.dept_id != default_dept_id:
+        return f"{dept.name}_{team.name}"
+    return team.name
 
 
 def _redis_usage_key(scope: str, scope_id: str, period: str, client: str | None) -> str:
@@ -637,7 +650,7 @@ class BudgetService:
         entries: list[AllocationEntry] = [
             AllocationEntry(
                 target_id=str(team_id),
-                target_name=team.name,
+                target_name=_team_display_name(team),
                 target_type="TEAM",
                 allocated_usd=total_budget,
                 used_usd=team_used,
@@ -668,7 +681,7 @@ class BudgetService:
 
         return TeamBudgetAllocation(
             team_id=str(team_id),
-            team_name=team.name,
+            team_name=_team_display_name(team),
             total_budget_usd=total_budget,
             entries=entries,
         )
@@ -681,6 +694,7 @@ class BudgetService:
         scope: str | None = None,
         target_id: uuid.UUID | None = None,
         period: str,
+        actor: CurrentUser | None = None,
     ) -> BudgetSummaryResponse:
         if not re.match(r'^\d{4}-\d{2}$', period):
             raise ValidationError(f"Invalid period format: {period}. Expected YYYY-MM")
@@ -701,6 +715,12 @@ class BudgetService:
         users = await user_repo.list_users(limit=500)
         teams = await user_repo.list_all_teams()
 
+        # TEAM_LEADER 는 본인 팀만 — scope/target_id 쿼리 파라미터로 다른 팀을 넘겨도
+        # 무시한다(analytics_service.py 의 동일 정책과 일관). ADMIN 은 무제한.
+        if actor is not None and actor.role == UserRole.TEAM_LEADER:
+            teams = [t for t in teams if t.id == actor.team_id]
+            users = [u for u in users if u.team_id == actor.team_id]
+
         # team_id(str) → (dept_id, dept_name). teams are loaded with
         # selectinload(Team.department), so this needs no extra query.
         dept_by_team: dict[str, tuple[str, str]] = {
@@ -711,32 +731,51 @@ class BudgetService:
 
         target_id_str = str(target_id) if target_id else None
 
-        async def _resolve_used(cfg: BudgetConfig) -> Decimal:
-            sid = str(cfg.scope_id)
-            scope_type = cfg.scope.value.lower()
-            used = Decimal("0")
+        # 예산 설정(BudgetConfig) 유무와 무관하게 실사용액은 항상 계산해야 한다.
+        # 이전엔 cfg 가 없으면(예: 팀 예산만 적용받는 사용자) used=0 으로 하드코딩돼
+        # 실제 usage_logs 비용이 있어도 "$0.00" 로 표시되는 버그가 있었다. 사용자/팀
+        # 전체를 한 번에 그룹집계(N+1 방지) 해두고 조회 시 dict lookup 만 한다.
+        from sqlalchemy import func, select as sa_select
+        from app.models.usage import UsageLog
+        from app.core.usage_filters import cost_period_filter
+
+        # 비용 집계 표준(§59): SUCCESS 만 + KST 월 경계. 대시보드 Top 사용자/팀·
+        # chat 과 동일 기준으로 통일(실패 호출 비용 제외, UTC 9시간 오차 제거).
+        user_usage_rows = (
+            await session.execute(
+                sa_select(UsageLog.user_id, func.coalesce(func.sum(UsageLog.cost_usd), 0))
+                .where(cost_period_filter(period))
+                .group_by(UsageLog.user_id)
+            )
+        ).all()
+        team_usage_rows = (
+            await session.execute(
+                sa_select(UsageLog.team_id, func.coalesce(func.sum(UsageLog.cost_usd), 0))
+                .where(cost_period_filter(period))
+                .group_by(UsageLog.team_id)
+            )
+        ).all()
+        user_used_by_id: dict[str, Decimal] = {
+            str(uid): Decimal(str(cost)) for uid, cost in user_usage_rows if uid is not None
+        }
+        team_used_by_id: dict[str, Decimal] = {
+            str(tid): Decimal(str(cost)) for tid, cost in team_usage_rows if tid is not None
+        }
+
+        async def _resolve_used(scope_enum: BudgetScope, sid: str) -> Decimal:
+            scope_type = scope_enum.value.lower()
             if redis is not None:
                 redis_key = f"budget:{scope_type}:{{{sid}}}:{period}"
                 try:
                     raw = await redis.get(redis_key)
                     if raw:
                         used = Decimal(raw.decode() if isinstance(raw, bytes) else raw)
+                        if used != 0:
+                            return used
                 except Exception:
                     pass
-            if used == 0:
-                from sqlalchemy import func, select as sa_select
-                from app.models.usage import UsageLog
-                from app.core.usage_filters import cost_period_filter
-                col = UsageLog.user_id if cfg.scope == BudgetScope.USER else UsageLog.team_id
-                # 비용 집계 표준(§59): SUCCESS 만 + KST 월 경계. 대시보드 Top 사용자/팀·
-                # chat 과 동일 기준으로 통일(실패 호출 비용 제외, UTC 9시간 오차 제거).
-                stmt = sa_select(func.coalesce(func.sum(UsageLog.cost_usd), 0)).where(
-                    col == cfg.scope_id,
-                    cost_period_filter(period),
-                )
-                result = await session.execute(stmt)
-                used = Decimal(str(result.scalar_one()))
-            return used
+            fallback = user_used_by_id if scope_enum == BudgetScope.USER else team_used_by_id
+            return fallback.get(sid, Decimal("0"))
 
         items: list[BudgetSummaryItem] = []
 
@@ -750,13 +789,12 @@ class BudgetService:
             department_name: str | None = None,
         ) -> None:
             cfg = cfg_by_target.get((scope_enum, sid))
+            used = await _resolve_used(scope_enum, sid)
             if cfg is not None:
-                used = await _resolve_used(cfg)
                 limit = cfg.max_budget_usd
                 remaining = limit - used
                 pct = (used / limit * 100) if limit > 0 else Decimal("0")
             else:
-                used = Decimal("0")
                 limit = None
                 remaining = None
                 pct = None
@@ -803,7 +841,7 @@ class BudgetService:
                 await _append(
                     BudgetScope.TEAM,
                     tid,
-                    t.name,
+                    _team_display_name(t),
                     is_active=has_active_members,
                     department_id=t_dept[0] if t_dept else None,
                     department_name=t_dept[1] if t_dept else None,

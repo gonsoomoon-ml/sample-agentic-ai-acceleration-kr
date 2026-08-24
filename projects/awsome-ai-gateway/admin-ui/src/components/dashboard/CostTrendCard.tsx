@@ -50,6 +50,10 @@ export function CostTrendCard({ trends }: CostTrendCardProps) {
           {t('costTrendEmpty')}
         </div>
       ) : (
+        // recharts 는 SVG에 클릭/포커스 시 접근성용 포커스 링을 기본 표시한다.
+        // 이 카드는 클릭 인터랙션이 없으므로(툴팁은 hover 로 충분) 시각적 잔상만
+        // 남기지 않도록 아웃라인을 제거한다.
+        <div className="[&_.recharts-wrapper]:outline-none [&_.recharts-wrapper_*]:outline-none [&_svg]:outline-none">
         <ResponsiveContainer width="100%" height={200}>
           <ComposedChart data={data} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
             <defs>
@@ -108,6 +112,7 @@ export function CostTrendCard({ trends }: CostTrendCardProps) {
             />
           </ComposedChart>
         </ResponsiveContainer>
+        </div>
       )}
     </div>
   );

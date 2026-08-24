@@ -114,6 +114,7 @@ cat <<SUMMARY
   inbound-cidrs        : $CIDRS   (EC2 $EC2_IP + PC $PC_IP)
   reportingTimezone    : $REPORTING_TZ   (global.reportingTimezone — 대시보드/집계 달력 경계, 예산 월은 UTC)
   masterPasswordRemoteKey : ${RDS_SECRET:-(없음 — /db:master_password 유지)}
+  CHAT_ENABLED         : $CHAT_ENABLED   (enable_chat_agent=$CHAT_AGENT, enable_chat_db_tools=$CHAT_DB)
   + placeholder 정리   : 123456789012 → $ACCOUNT, ap-northeast-2 → $REGION
                          chat-agent(미사용) ARN/버킷 → 빈 값
 SUMMARY
@@ -126,6 +127,17 @@ read -rp "진행할까요? (y/N) " ok
 # 그 경로를 건너뛰고 없는 ARN 으로 호출을 시도해 지저분한 AWS 에러를 낸다.
 sed -i 's#\(AGENTCORE_RUNTIME_ARN: \).*#\1""#' "$V"
 sed -i 's#\(CHAT_STAGING_BUCKET: \).*#\1""#' "$V"
+
+# ---- chat UI on/off: terraform.tfvars 의 enable_chat_agent/enable_chat_db_tools 를 기준 ----
+# admin-ui 사이드바/퀵챗 메뉴를 숨기려면 둘 중 하나라도 false 면 false.
+CHAT_AGENT=$(sed -n 's/^enable_chat_agent[[:space:]]*=[[:space:]]*\(true\|false\).*/\1/p' "$TF_DIR/terraform.tfvars" | head -1)
+CHAT_DB=$(sed -n 's/^enable_chat_db_tools[[:space:]]*=[[:space:]]*\(true\|false\).*/\1/p' "$TF_DIR/terraform.tfvars" | head -1)
+if [ "$CHAT_AGENT" = "true" ] && [ "$CHAT_DB" = "true" ]; then
+    CHAT_ENABLED="true"
+else
+    CHAT_ENABLED="false"
+fi
+sed -i 's#^\(    CHAT_ENABLED: \).*#\1"'"$CHAT_ENABLED"'"#' "$V"
 
 # ---- placeholder 계정·리전 정리 (미관: 자동주입 값이 파일에도 실제값으로 보이게) ----
 # web search 의 us-east-1 은 다른 토큰이라 안 건드려짐. 자동주입되는 값들도 여기서
@@ -174,5 +186,5 @@ fi
 
 echo
 echo "✅ 완료. 반영된 줄:"
-grep -n 'COGNITO_USER_POOL_ID:\|^    COGNITO_REGION:\|inbound-cidrs:\|masterPasswordRemoteKey:\|^  reportingTimezone:' "$V"
+grep -n 'COGNITO_USER_POOL_ID:\|^    COGNITO_REGION:\|inbound-cidrs:\|masterPasswordRemoteKey:\|^  reportingTimezone:\|CHAT_ENABLED:' "$V"
 grep -n -A1 '^    emails:$' "$V" | tail -1

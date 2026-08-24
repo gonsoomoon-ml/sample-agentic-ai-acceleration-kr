@@ -104,6 +104,7 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 | `05-allow-client-ip.sh`     | Ingress `inbound-cidrs` 어노테이션                          | 낮음                         |
 | `06-persist-annotations.sh` | **helm values 파일** (`05-allow-client-ip.sh` 의 IP 허용목록을 영구화)               | 낮음. helm 을 돌리지 않음          |
 | `07-client-values.sh`       | **없음** — 직원에게 줄 env 4줄 출력                              | 없음                         |
+| `08-setup-notification-ses-irsa.sh` | **IAM 역할 + values 어노테이션** (`notification-worker` SES 용 IRSA) | 낮음. install-eks.sh 는 별도 실행     |
 | `09-update-admin-ui.sh`     | admin-ui **이미지 빌드→ECR→롤아웃** + values 태그                | 낮음. 대시보드만. helm 을 돌리지 않음   |
 | `https-env.sh` (source)     | **없음** — US-06 용 값 12개 export (도메인만 입력)                | 없음                         |
 | `10-switch-https.sh`        | **helm values 파일** Ingress 블록 → 방식 B(https·인증서·host)     | 낮음. helm 을 돌리지 않음(install-eks.sh 가) |

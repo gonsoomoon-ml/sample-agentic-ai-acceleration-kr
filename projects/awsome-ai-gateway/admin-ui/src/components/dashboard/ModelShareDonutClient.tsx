@@ -130,7 +130,7 @@ export function ModelShareDonutClient({ initialData, teams, period, client }: Pr
             <option value="all">{t('scopeAll')}</option>
             {teams.map((team) => (
               <option key={team.id} value={team.id}>
-                {team.name}
+                {team.department_name ? `${team.name} (${team.department_name})` : team.name}
               </option>
             ))}
           </select>
