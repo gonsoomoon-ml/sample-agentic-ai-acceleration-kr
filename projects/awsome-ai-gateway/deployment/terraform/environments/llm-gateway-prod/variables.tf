@@ -56,18 +56,6 @@ variable "eks_cluster_version" {
 
 variable "eks_addon_versions" {
   # EKS add-on(coredns·kube-proxy·vpc-cni) 버전. null 이면 모듈 기본값(= eks_cluster_version
-  # 기본값과 호환) 사용. 기존 클러스터를 단계 업그레이드할 때만 tfvars 로 현재 단계 호환값을
-  # 지정한다 — 각 버전의 호환값은 operations.md §8-E 의 표 참조.
-  type = object({
-    coredns    = string
-    kube_proxy = string
-    vpc_cni    = string
-  })
-  default = null
-}
-
-variable "eks_addon_versions" {
-  # EKS add-on(coredns·kube-proxy·vpc-cni) 버전. null 이면 모듈 기본값(= eks_cluster_version
   # 기본값과 호환) 사용. eks_cluster_version 을 바꾸는 설치·업그레이드에서는 반드시 같이
   # 지정한다 — 한 버전의 addon 은 다른 버전에 존재하지 않아 apply 가 실패한다.
   # 호환값 조회:
