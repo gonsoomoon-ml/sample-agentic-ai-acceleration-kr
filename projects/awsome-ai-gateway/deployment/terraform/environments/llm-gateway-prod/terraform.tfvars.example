@@ -112,3 +112,15 @@ cognito_groups = [
   "Claude_AWS-AI-Specialist",
   "ClaudeAdmin",
 ]
+
+# ------------------------------------------------------------------------------
+# admin-chat-agent (BI 분석 에이전트) 인프라
+# ------------------------------------------------------------------------------
+# 본 deliverable 운영 환경은 BI 챗을 포함하므로 둘 다 true 로 배포돼 있다.
+# 신규 계정에서 동일 스택을 재현하려면 true. (이미 배포된 환경에서 false 로 apply 하면
+# 운영 리소스 ECR/S3/Lambda 가 파괴되니 주의.)
+#   enable_chat_agent    : ECR + S3 staging + IAM + KMS
+#   enable_chat_db_tools : query_db/get_schema Lambda + reader secret + SG
+# AgentCore Runtime 인스턴스 자체는 terraform 아니라 deploy_agent.sh 로 별도 배포.
+enable_chat_agent    = true
+enable_chat_db_tools = true
