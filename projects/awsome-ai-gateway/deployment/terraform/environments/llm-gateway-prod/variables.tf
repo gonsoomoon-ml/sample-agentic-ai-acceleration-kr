@@ -178,16 +178,39 @@ variable "eks_access_entries" {
   default = {}
 }
 
+variable "cowork_role_arn" {
+  # Cowork cross-account Mantle role (905, Tokyo Opus 4.8). gateway-proxy AssumeRole into it.
+  # Must match model.routing_profiles.account_role_arn for client=cowork (migration 0009).
+  # The 905 role's trust must allow this env's gateway-proxy IRSA + sts:ExternalId=cowork-bedrock.
+  type    = string
+  default = "arn:aws:iam::234567890123:role/llm-gateway-cowork-bedrock"
+}
+
+variable "claude_code_374_role_arn" {
+  # Claude Code cross-account Bedrock NATIVE role (374). gateway-proxy AssumeRole into it,
+  # builds a 374 bedrock-runtime client (boto3 invoke_model). Must match
+  # model.routing_profiles.account_role_arn for client=claude-code (migration 0022).
+  # The 374 role trust must allow this env's gateway-proxy IRSA + sts:ExternalId=claude-code-bedrock.
+  type    = string
+  default = "arn:aws:iam::345678901234:role/llm-gateway-claude-code-bedrock"
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
 }
 
 # ─── admin-chat-agent (Phase 1 부트스트랩 — 활성 시 ECR/S3/IAM 만 생성) ───
-# AgentCore Runtime 자체 (CreateAgentRuntime) 는 image push 후 별도 단계.
-# 처음엔 false 로 두고, image 가 빌드/push 가능한 상태가 되면 true 로 enable.
 variable "enable_chat_agent" {
   description = "admin-chat-agent 인프라 (ECR + S3 staging + IAM + KMS) 생성 여부"
+  type        = bool
+  default     = false
+}
+
+# ─── admin-chat-agent BI tool Lambdas (query_db / get_schema) ───
+# enable_chat_agent=true 가 선행 조건 (같은 모듈에 추가됨).
+variable "enable_chat_db_tools" {
+  description = "admin-chat-agent 의 query_db/get_schema Lambda + reader secret + SG 생성 여부"
   type        = bool
   default     = false
 }
