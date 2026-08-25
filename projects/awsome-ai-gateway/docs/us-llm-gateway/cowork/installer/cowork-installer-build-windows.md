@@ -5,7 +5,7 @@ clone → packaging\site-config.json 채우기 → build.ps1
       → dist\installer\gateway-cli-cowork-setup-<ver>.exe
 ```
 
-[관리자 E2E](cowork-installer-admin-e2e-windows.md) 의 1)~3) 단계. 결과물 파일 하나를 §5 대로 전달하면 끝난다.
+[관리자 E2E](cowork-installer-admin-e2e-windows.md) 의 1)~3) 단계. 결과물 파일 하나를 §4 대로 전달하면 끝난다.
 빌드 자체는 🔵 **일반 PowerShell**(본인 계정)에서 한다 — 관리자 권한이 필요 없다. §0 의 사전 설치만 🔴 **관리자 PowerShell**.
 
 ## 0. 빌드 PC 준비 (1회)
@@ -179,30 +179,9 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 
 - `dist\installer\gateway-cli-cowork-setup-<ver>.exe` — **전달물이자 유일 산출물**
   (`<ver>` 은 pyproject 버전 — 실측 `0.1.0`. 끝의 `WARNING: Installer is UNSIGNED` 는 테스트 빌드에서 정상)
-- `dist\gateway-cli-cowork-suite\` — PyInstaller 중간물. **기본은 빌드 끝에 삭제된다** —
-  §4 를 하려면 `build.ps1 -KeepIntermediate` 로 빌드
+- `dist\gateway-cli-cowork-suite\` — PyInstaller 중간물. **빌드 끝에 삭제된다**(남기려면 `build.ps1 -KeepIntermediate`)
 
-## 4. 빌드 직후 확인 (선택 — `-KeepIntermediate` 로 빌드했을 때만)
-
-기본 빌드였으면 건너뛴다 — 같은 확인을 **설치 후** `gateway-cli-cowork verify` 로 한다
-([관리자 E2E](cowork-installer-admin-e2e-windows.md) §4). 아래 표의 기대값은 그때도 같다.
-
-▶ **실행** · 🔵 일반 PowerShell — installer 폴더
-
-```powershell
-dist\gateway-cli-cowork-suite\gateway-cli-cowork.exe verify
-```
-
-이 시점의 `overall` 실패는 정상이다 — `setup` 전이라 정책이 없다. 나머지 항목이 **주입한 값이 맞다는 증거**다. (실측 후 갱신)
-
-| 검사                     | 기대         | 뜻                                 |
-| ---------------------- | ---------- | --------------------------------- |
-| `cowork-config`        | ✗          | `setup` 전 — 정상                    |
-| `cowork-inference-url` | ✓ HTTP 401 | 주입된 게이트웨이 주소에 닿음(VK 없으니 401 이 정답) |
-| `cowork-egress`        | ✓ HTTP 403 | `downloads.claude.ai` 도달          |
-| `cowork-hklm`          | ✓          | HKLM 에 기존 정책 값이 없음                |
-
-## 5. 전달
+## 4. 전달
 
 `dist\installer\gateway-cli-cowork-setup-<ver>.exe` 를 그 PC 의 관리자에게 전달 → [관리자 E2E](cowork-installer-admin-e2e-windows.md) §2.
 

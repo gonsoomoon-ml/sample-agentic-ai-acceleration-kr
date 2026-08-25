@@ -47,7 +47,7 @@
 
 ## 1. 빌드
 
-[빌드 가이드](cowork-installer-build-windows.md) §0–§5. 결과물 = `dist\installer\gateway-cli-cowork-setup-<ver>.exe` 하나.
+[빌드 가이드](cowork-installer-build-windows.md) §0–§4. 결과물 = `dist\installer\gateway-cli-cowork-setup-<ver>.exe` 하나.
 
 ## 2. 배포 — 설치 파일 전달
 
