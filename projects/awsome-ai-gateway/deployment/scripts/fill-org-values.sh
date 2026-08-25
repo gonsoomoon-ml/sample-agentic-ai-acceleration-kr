@@ -104,6 +104,16 @@ elif [ ! -d /usr/share/zoneinfo ] && command -v python3 >/dev/null 2>&1; then
         || { echo "❌ 알 수 없는 타임존: '$REPORTING_TZ'"; exit 1; }
 fi
 
+# ---- chat UI on/off: terraform.tfvars 의 enable_chat_agent/enable_chat_db_tools 를 기준 ----
+# admin-ui 사이드바/퀵챗 메뉴를 숨기려면 둘 중 하나라도 false 면 false.
+CHAT_AGENT=$(sed -n 's/^enable_chat_agent[[:space:]]*=[[:space:]]*\(true\|false\).*/\1/p' "$TF_DIR/terraform.tfvars" | head -1)
+CHAT_DB=$(sed -n 's/^enable_chat_db_tools[[:space:]]*=[[:space:]]*\(true\|false\).*/\1/p' "$TF_DIR/terraform.tfvars" | head -1)
+if [ "$CHAT_AGENT" = "true" ] && [ "$CHAT_DB" = "true" ]; then
+    CHAT_ENABLED="true"
+else
+    CHAT_ENABLED="false"
+fi
+
 # ---- 요약 후 확인 ----
 cat <<SUMMARY
 
