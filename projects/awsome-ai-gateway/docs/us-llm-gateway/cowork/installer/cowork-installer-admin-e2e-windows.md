@@ -62,6 +62,24 @@
 Cowork 점검 도구(`…/cowork-readiness-check/latest/redirect`, ~2 MB)·Claude Desktop offline `.msix`(`…/win32/x64/offline/latest/redirect`, ~1.8 GB).
 단 `downloads.claude.ai:443` 은 Cowork 세션마다 필요하므로 파일 배포와 별개로 허용 목록에 넣어야 한다.
 
+**설치기 실행** — 받은 파일이 있는 폴더에서(탐색기 더블클릭도 같다). 미서명 테스트 빌드면
+SmartScreen 경고 → "추가 정보" → "실행".
+
+▶ **실행** · 사용자 PC — 🔴 관리자 PowerShell
+
+```powershell
+.\gateway-cli-cowork-setup-<ver>.exe
+```
+
+마법사: 정책 스코프 **HKLM(machine-wide)** 기본값 유지 → "Add to PATH" 켜짐 유지 → Install → Finish.
+고객 IT 배포 도구로 무인 설치할 때(기본값 그대로 적용):
+
+▶ **실행 (무인)** · 관리자 컨텍스트
+
+```powershell
+.\gateway-cli-cowork-setup-<ver>.exe /VERYSILENT /NORESTART
+```
+
 설치가 끝나면 사용자 PC 는 이렇게 된다(수동·무인 동일):
 
 | 항목        | 결과                                                                                                                                 |
