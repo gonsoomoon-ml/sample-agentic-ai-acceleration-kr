@@ -51,7 +51,8 @@ output "application_db_endpoint" {
 }
 
 output "elasticache_endpoint" {
-  value = module.elasticache.primary_endpoint_address
+  # prod(cluster mode)에는 configuration endpoint 가, dev(standalone)에는 primary endpoint 가 유효하다.
+  value = coalesce(module.elasticache.configuration_endpoint_address, module.elasticache.primary_endpoint_address)
 }
 output "elasticache_auth_token_secret_arn" {
   value     = module.elasticache.auth_token_secret_arn
