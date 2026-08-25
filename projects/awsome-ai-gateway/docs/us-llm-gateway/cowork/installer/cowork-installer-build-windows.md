@@ -135,7 +135,11 @@ admin-ui **모델** 화면의 `ACTIVE` 목록과 같은 값이다.
 
 ### (2) 파일 작성 — 빌드 PC 에서
 
-저장소에 없는 파일이다(커밋 금지). 새로 만들고 아래를 붙여 넣은 뒤 `<…>` 를 (1) 에서 얻은 값으로 바꾼다.
+저장소에 없는 파일이라 새로 만든다(커밋 금지).
+
+- 전체 경로: `%USERPROFILE%\sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\cowork-installer\installer\packaging\site-config.json`
+- §1 의 installer 폴더에서 아래를 실행하면 메모장이 "파일을 찾을 수 없습니다. 새로 만드시겠습니까?" 를 묻는다 → **예**.
+- 아래 JSON 을 붙여 넣고 `<…>` 를 (1) 에서 얻은 값으로 바꾼 뒤 저장(`Ctrl+S`, 파일 이름·확장자 `.json` 그대로).
 
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell (§1 의 installer 폴더)
 
