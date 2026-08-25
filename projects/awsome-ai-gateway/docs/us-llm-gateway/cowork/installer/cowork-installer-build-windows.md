@@ -32,7 +32,13 @@ winget install --id Python.Python.3.12 -e --scope machine
 Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
-→ `True`. `False` 면:
+→ `True`. `False` 면 사용자별 설치 경로도 본다 — winget 은 여기에 깔기도 한다(실측 6.7.3):
+
+```powershell
+Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+```
+
+**둘 중 하나가 `True` 면 된다**(`build.ps1` 이 두 경로 모두 찾는다). 둘 다 `False` 면:
 
 ▶ **실행 (없을 때만)** · 🔴 관리자 PowerShell
 
