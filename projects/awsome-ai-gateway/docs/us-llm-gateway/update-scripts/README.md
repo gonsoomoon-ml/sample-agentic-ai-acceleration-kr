@@ -172,7 +172,7 @@ bash 07-client-values.sh                   # 직원에게 전달할 env 4줄
 
 `Ctrl+C` 로 끊지 마십시오 — `--apply` 중이라면 스냅샷만 남고 변경이 반쯤 들어갈 수 있습니다.
 
-게이트웨이 쪽은 여기까지입니다. 이어지는 클라이언트(Cowork) 설치는 `docs/us-llm-gateway/cowork/cowork-client-install-windows.md`.
+게이트웨이 쪽은 여기까지입니다. 이어지는 클라이언트(Cowork) 설치는 `docs/us-llm-gateway/cowork/manual/cowork-client-install-windows.md`.
 
 ---
 
