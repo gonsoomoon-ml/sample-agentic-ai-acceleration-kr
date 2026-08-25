@@ -147,6 +147,8 @@ class UserTeamService:
                 f"User {user_id} does not belong to team {team_id} — transfer them first."
             )
 
+        if target_user.role == UserRole.ADMIN:
+            raise ValidationError("Admin users cannot be set as a team leader.")
         await repo.update_user_role(user_id, UserRole.TEAM_LEADER)
         team.leader_user_id = user_id
 

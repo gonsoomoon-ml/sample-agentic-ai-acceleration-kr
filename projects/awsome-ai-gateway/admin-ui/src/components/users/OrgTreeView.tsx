@@ -52,6 +52,26 @@ export function OrgTreeView({ root }: OrgTreeViewProps) {
     }
   }, [expandedNodes]);
 
+  // root 가 서버에서 갱신되면(router.refresh) selectedNode 도 새 트리의
+  // 동일 id 노드로 동기화. 안 그러면 팀 리더 변경 후에도 우측 패널이 stale 상태로 남는다.
+  useEffect(() => {
+    if (!root || !selectedNode) return;
+
+    const findById = (n: OrgTreeNode, id: string): OrgTreeNode | null => {
+      if (n.id === id) return n;
+      for (const child of n.children ?? []) {
+        const found = findById(child, id);
+        if (found) return found;
+      }
+      return null;
+    };
+
+    const next = findById(root, selectedNode.id);
+    if (next && next !== selectedNode) {
+      setSelectedNode(next);
+    }
+  }, [root, selectedNode?.id]);
+
   const handleToggle = (id: string) => {
     setExpandedNodes((prev) => {
       if (prev.has(id)) {

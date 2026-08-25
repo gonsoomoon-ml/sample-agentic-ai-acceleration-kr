@@ -134,12 +134,15 @@ export function AutoDowngradeConfig({ scopeType, scopeId, scopeName, models }: A
           <p className="text-xs text-muted-foreground">{t('autoDowngrade')}</p>
         </div>
         <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={e => setEnabled(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300"
-          />
+          <div className="relative inline-flex items-center">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={e => setEnabled(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-muted-foreground/30 peer-checked:bg-primary rounded-full transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-background after:rounded-full after:transition-transform peer-checked:after:translate-x-4" />
+          </div>
           <span className="text-sm">{t('configure')}</span>
         </label>
       </div>

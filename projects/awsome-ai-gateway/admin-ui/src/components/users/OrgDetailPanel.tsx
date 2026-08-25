@@ -569,9 +569,7 @@ function TeamPanel({ node }: { node: OrgTreeNode }) {
                 key={leaderNode.id}
                 className="flex items-center justify-between gap-2 rounded-apple-sm border px-3 py-1.5"
               >
-                <span className="text-sm">
-                  {leaderNode.name} <span className="text-muted-foreground">({leaderNode.meta.email})</span>
-                </span>
+                <span className="text-sm">{leaderNode.meta.email}</span>
                 <button
                   type="button"
                   disabled={isLeaderPending}
@@ -597,8 +595,9 @@ function TeamPanel({ node }: { node: OrgTreeNode }) {
             >
               <option value="">{t('leaderAction.selectPlaceholder')}</option>
               {nonLeaderMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m.meta.email})
+                <option key={m.id} value={m.id} disabled={m.meta.role === 'ADMIN'}>
+                  {m.meta.email}
+                  {m.meta.role === 'ADMIN' ? ' [Admin]' : ''}
                 </option>
               ))}
             </select>

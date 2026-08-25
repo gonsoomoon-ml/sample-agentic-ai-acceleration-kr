@@ -15,7 +15,7 @@ from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
 from app.core.encryption import AESEncryptionService
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.models.auth import KeyStatus, User, VirtualKey
 from app.repositories.key_repository import KeyRepository
 from app.repositories.model_repository import TeamAllowedModelRepository
@@ -206,9 +206,16 @@ class KeyService:
         request_id: str = "",
     ) -> None:
         repo = KeyRepository(session)
-        vk = await repo.revoke(key_id, actor.user_id)
+        vk = await repo.get_by_id(key_id)
         if vk is None:
             raise NotFoundError("VirtualKey", str(key_id))
+        if vk.status != KeyStatus.ACTIVE:
+            raise ValidationError(
+                f"Only ACTIVE virtual keys can be revoked (status: {vk.status.value})"
+            )
+
+        original_status = vk.status
+        await repo.revoke(key_id, actor.user_id)
 
         # Invalidate Redis cache
         # We need the hash of the raw key, but we only have encrypted.
@@ -239,7 +246,10 @@ class KeyService:
             action="REVOKE_KEY",
             resource_type="VirtualKey",
             resource_id=str(key_id),
-            changes={"before": {"status": "ACTIVE"}, "after": {"status": "REVOKED"}},
+            changes={
+                "before": {"status": original_status.value},
+                "after": {"status": KeyStatus.REVOKED.value},
+            },
             ip_address=ip_address,
             request_id=request_id,
         )
