@@ -147,7 +147,23 @@ if [ "$CHAT_AGENT" = "true" ] && [ "$CHAT_DB" = "true" ]; then
 else
     CHAT_ENABLED="false"
 fi
-sed -i 's#^\(    CHAT_ENABLED: \).*#\1"'"$CHAT_ENABLED"'"#' "$V"
+if grep -q '^    CHAT_ENABLED:' "$V"; then
+    sed -i 's#^\(    CHAT_ENABLED: \).*#\1"'"$CHAT_ENABLED"'"#' "$V"
+else
+    # adminUi 블록에 env 가 없으면 다음 최상위 키 직전에 추가
+    awk -v c="$CHAT_ENABLED" '
+        /^adminUi:/ { in_admin=1 }
+        in_admin && /^[a-zA-Z_]/ && !/^adminUi:/ {
+            if (!inserted) {
+                print "  env:"
+                print "    CHAT_ENABLED: \"" c "\""
+                inserted=1
+            }
+            in_admin=0
+        }
+        { print }
+    ' "$V" > "$V.tmp" && mv "$V.tmp" "$V"
+fi
 
 # ---- placeholder 계정·리전 정리 (미관: 자동주입 값이 파일에도 실제값으로 보이게) ----
 # web search 의 us-east-1 은 다른 토큰이라 안 건드려짐. 자동주입되는 값들도 여기서
