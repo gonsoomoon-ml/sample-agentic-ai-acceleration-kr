@@ -119,6 +119,7 @@
     "cost": "Cost",
     "budgetSpend": "Budget Spend",
     "noBudgetSet": "No budget set",
+    "teamBudgetApplied": "Team budget applied",
     "noPeriods": "No periods to show",
     "periodSelect": "Select period",
     "periodSelectMonth": "Select period (month)",
@@ -470,6 +471,19 @@
     "teamNameLabel": "Team",
     "teamUnassigned": "Unassigned",
     "leaderUnassigned": "Unassigned",
+    "leaderAction": {
+      "currentLeaders": "Current team leaders",
+      "noLeaders": "No team leader assigned.",
+      "selectPlaceholder": "Select a member…",
+      "assignButton": "Set as team leader",
+      "unassignButton": "Remove",
+      "assignSuccess": "Set as team leader.",
+      "unassignSuccess": "Team leader unassigned.",
+      "removeModalTitle": "Remove team leader",
+      "removeModalBody": "Remove {name} as team leader?",
+      "removeModalNote": "Their role reverts to Developer (auto-restored on next login if they're in an admin group). Other leaders on this team are unaffected.",
+      "noMembers": "No eligible team members."
+    },
     "roleLabel": {
       "ADMIN": "Administrator",
       "TEAM_LEADER": "Team Leader",
@@ -598,7 +612,12 @@
     "spent": "Spent",
     "limit": "Limit: ${amount}",
     "remaining": "Remaining",
-    "overagePolicy": "Overage policy"
+    "overagePolicy": "Overage policy",
+    "policyLabel": {
+      "HARD_BLOCK": "Hard block",
+      "SOFT_WARNING": "Warn only",
+      "THROTTLE": "Throttle"
+    }
   },
   "chat": {
     "biInsight": "BI Insight",

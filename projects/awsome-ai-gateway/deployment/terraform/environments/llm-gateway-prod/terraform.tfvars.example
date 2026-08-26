@@ -102,10 +102,25 @@ tags = {
 #   <team> 팀 자동 생성 + 사용자 배정. (예: "Claude_test-department_aws-test")
 # - "Claude_" prefix 없는 그룹은 OIDC 로그인 거부 (REJECT_UNMATCHED_GROUPS=true).
 # - "ClaudeAdmin": 팀 매핑 제외. 멤버에게 admin role 자동 부여
-#   (adminBootstrap.groups=ClaudeAdmin).
+#   (admin-api ADMIN_GROUPS=ClaudeAdmin).
+# - team_leader 는 Cognito 그룹으로 부트스트랩하지 않는다. 팀원은 위 Claude_<team>
+#   그룹으로 정상 배정한 뒤, admin-ui 에서 관리자가 그 중 한 명을 팀 리더로 지정한다
+#   (PUT /admin/teams/{id}/leader) — 그룹 두 개를 맞춰야 하는 운영 부담/오배정 위험 없음.
 # 운영 중 추가: 이 리스트 수정 → terraform apply (IaC 권장). 또는 AWS Console / CLI 로
 # 직접 Cognito group 추가도 가능 (코드 변경 불필요).
 cognito_groups = [
   "Claude_AWS-AI-Specialist",
   "ClaudeAdmin",
 ]
+
+# ------------------------------------------------------------------------------
+# admin-chat-agent (BI 분석 에이전트) 인프라
+# ------------------------------------------------------------------------------
+# 본 deliverable 운영 환경은 BI 챗을 포함하므로 둘 다 true 로 배포돼 있다.
+# 신규 계정에서 동일 스택을 재현하려면 true. (이미 배포된 환경에서 false 로 apply 하면
+# 운영 리소스 ECR/S3/Lambda 가 파괴되니 주의.)
+#   enable_chat_agent    : ECR + S3 staging + IAM + KMS
+#   enable_chat_db_tools : query_db/get_schema Lambda + reader secret + SG
+# AgentCore Runtime 인스턴스 자체는 terraform 아니라 deploy_agent.sh 로 별도 배포.
+enable_chat_agent    = true
+enable_chat_db_tools = true

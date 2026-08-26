@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import CurrentUser, require_admin
+from app.core.auth import CurrentUser, require_admin, require_admin_or_team_leader
 from app.core.config import get_settings
 from app.core.db import get_db_session
 from app.schemas.models import (
@@ -44,9 +44,11 @@ def _build_pricing_sync_service():
 @router.get("", response_model=ModelListResponse)
 async def list_models(
     request: Request,
-    admin: CurrentUser = Depends(require_admin),
+    _actor: CurrentUser = Depends(require_admin_or_team_leader),
     session: AsyncSession = Depends(get_db_session),
 ):
+    # 읽기 전용 모델 카탈로그 — 조직 전체에 동일하므로 팀별 스코핑 불필요
+    # (대시보드 '활성 모델 수' KPI 등 TEAM_LEADER 화면에서도 사용).
     from app.services.model_service import ModelService
 
     svc: ModelService = request.app.state.model_service

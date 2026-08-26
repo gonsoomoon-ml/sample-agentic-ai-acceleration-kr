@@ -63,6 +63,12 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
 -- Admin JWT Config (placeholder — replace public_key_pem with actual key)
+--
+-- admin-ui 로그인(Cognito ROPC, POST /v1/auth/admin/login) 이 이 키쌍의 개인키로
+-- 세션 JWT 를 서명하고, core.auth.JWTVerifier 가 이 행의 public_key_pem 으로 검증한다.
+-- 키 생성: python admin-api/scripts/generate_admin_jwt_keypair.py
+--   → PUBLIC KEY 를 아래 값에 UPDATE, PRIVATE KEY 는 admin-api 의
+--     ADMIN_UI_JWT_PRIVATE_KEY_PEM 환경변수(비밀값)로 설정.
 -- ============================================================
 
 INSERT INTO auth.admin_jwt_configs (id, issuer, audience, public_key_pem, algorithm, is_active) VALUES

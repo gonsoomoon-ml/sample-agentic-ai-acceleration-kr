@@ -292,6 +292,57 @@ probe_us06() {
   fi
 }
 
+# ── 08 — Notification worker email / SES IRSA ─────────────────────────────────
+probe_08_ses() {
+  local role arn sa_arn role_state sa_state sender
+  role="llm-gateway-${DEPLOY_ENV}-notification-worker-ses"
+  sa_name="notification-worker"
+  role_state="ok"
+  sa_state="ok"
+
+  sender=$(kubectl get deploy "${HELM_RELEASE}-notification-worker" -n "$NS" \
+    -o jsonpath='{.spec.template.spec.containers[?(@.name=="notification-worker")].env[?(@.name=="EMAIL_SENDER_TYPE")].value}' 2>/dev/null)
+  raw "sender=$sender"
+
+  # mock 이면 이메일이 실제 발송되지 않는다. IRSA 상태와 무관하게 먼저 알린다.
+  if [ -z "$sender" ] || [ "$sender" = "mock" ]; then
+    row warn "08" "Notification email — 발송하지 않음 (provider=$sender)"
+    detail "set-notification-provider.sh 로 internal_api / smtp / ses 를 선택해야 실제 메일이 나간다"
+    TODO+=("bash ../../../deployment/scripts/set-notification-provider.sh $DEPLOY_ENV <internal_api|smtp|ses>")
+    return
+  fi
+
+  # smtp/internal_api 는 IRSA 가 필요 없다
+  if [ "$sender" != "ses" ]; then
+    row ok "08" "Notification worker ($sender)"
+    detail "provider=$sender"
+    return
+  fi
+
+  if ! aws iam get-role --role-name "$role" >/dev/null 2>&1; then
+    role_state="missing"
+    sa_state="unknown"
+    arn=""
+    sa_arn=""
+  else
+    arn=$(aws iam get-role --role-name "$role" --query 'Role.Arn' --output text 2>/dev/null)
+    sa_arn=$(kubectl get sa "$sa_name" -n "$NS" -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' 2>/dev/null)
+    [ "$sa_arn" = "$arn" ] || sa_state="mismatch"
+  fi
+
+  if [ "$role_state" = "ok" ] && [ "$sa_state" = "ok" ]; then
+    row ok "08" "Notification worker (ses) + IRSA"
+    detail "role=$role  SA=$sa_name"
+  else
+    row warn "08" "Notification worker (ses) + IRSA — 미적용"
+    [ "$role_state" = "missing" ] && detail "IAM role $role not found"
+    [ "$sa_state" = "mismatch" ] && detail "ServiceAccount annotation($sa_arn) != role($arn)"
+    [ "$sa_state" = "unknown" ]  && detail "ServiceAccount $sa_name not annotated"
+    TODO+=("bash 08-setup-notification-ses-irsa.sh --apply   # SES 사용 시")
+  fi
+  raw "role=$role arn=$arn sa=$sa_name sa_arn=$sa_arn"
+}
+
 # ── Report ──────────────────────────────────────────────────────────────────
 echo
 printf '%s AWSome AI Gateway 해외 배포판 — 업데이트 적용 상태%s\n' "$c_bold" "$c_reset"
@@ -306,6 +357,7 @@ probe_us03
 probe_us04
 probe_us05
 probe_us06
+probe_08_ses
 
 echo
 if [ "${#TODO[@]}" -eq 0 ]; then

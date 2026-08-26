@@ -2,19 +2,20 @@
 
 import { getTranslations } from 'next-intl/server';
 import { adminAPI } from '@/lib/api-client';
-import type { RateLimitTreeNode } from '@/types/entities';
+import type { OrgTreeNode, RateLimitTreeNode } from '@/types/entities';
 import { RateLimitTreeView } from '@/components/rate-limits/RateLimitTreeView';
 
 export default async function RateLimitsPage() {
   const t = await getTranslations('rateLimits');
-  const tree = await adminAPI
-    .get<RateLimitTreeNode[]>('/admin/rate-limits/tree')
-    .catch(() => [] as RateLimitTreeNode[]);
+  const [orgTree, rateTree] = await Promise.all([
+    adminAPI.get<OrgTreeNode | null>('/admin/users/tree').catch(() => null),
+    adminAPI.get<RateLimitTreeNode[]>('/admin/rate-limits/tree').catch(() => [] as RateLimitTreeNode[]),
+  ]);
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
-      <RateLimitTreeView nodes={tree} />
+      <RateLimitTreeView root={orgTree} rateTree={rateTree} />
     </div>
   );
 }

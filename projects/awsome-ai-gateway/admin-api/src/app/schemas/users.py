@@ -82,6 +82,7 @@ class TeamListResponse(BaseModel):
 class OrgNodeMeta(BaseModel):
     member_count: int | None = None
     leader_name: str | None = None
+    leader_user_id: str | None = None
     email: str | None = None
     role: UserRole | None = None
     team_name: str | None = None

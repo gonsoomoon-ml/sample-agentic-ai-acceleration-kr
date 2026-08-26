@@ -51,7 +51,7 @@ variable "eks_cluster_version" {
   # 기본값은 기존 배포가 apply 때 흔들리지 않도록 그대로 둔다 — 신규 설치 권장 버전은
   # terraform.tfvars.example 에 eks_addon_versions 와 한 쌍으로 적어 두었다.
   type    = string
-  default = "1.30"
+  default = "1.34"
 }
 
 variable "eks_addon_versions" {
@@ -133,7 +133,7 @@ variable "cognito_logout_urls" {
 }
 
 variable "cognito_groups" {
-  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩."
+  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩. team_leader 는 Cognito 그룹이 아니라 admin-ui 에서 지정(PUT /admin/teams/{id}/leader)."
   type        = list(string)
   default     = ["Claude_AI-Center_S/W-Culture-Office", "Claude_test-department_aws-test", "ClaudeAdmin"]
 }

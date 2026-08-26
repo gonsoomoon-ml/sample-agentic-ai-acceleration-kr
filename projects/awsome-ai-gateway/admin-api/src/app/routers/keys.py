@@ -7,9 +7,9 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import CurrentUser, require_admin
+from app.core.auth import CurrentUser, require_admin, require_admin_or_team_leader
 from app.core.db import get_db_session
-from app.models.auth import KeyStatus
+from app.models.auth import KeyStatus, UserRole
 from app.schemas.common import PaginationMeta
 from app.schemas.keys import KeyCountResponse, KeyListResponse
 
@@ -55,17 +55,28 @@ async def count_keys(
     team_id: str | None = None,
     status: KeyStatus | None = None,
     email: str | None = None,
-    admin: CurrentUser = Depends(require_admin),
+    actor: CurrentUser = Depends(require_admin_or_team_leader),
     session: AsyncSession = Depends(get_db_session),
 ):
+    """대시보드 '활성 API Key' KPI 등이 사용. TEAM_LEADER 는 team_id 쿼리 파라미터를
+    무시하고 본인 팀으로 고정(다른 팀 키 개수를 조회하는 것을 막는다)."""
     from app.services.key_service import KeyService
 
     svc: KeyService = request.app.state.key_service
     email_q = email.strip() if email else None
+
+    scoped_team_id: uuid.UUID | None
+    if actor.role == UserRole.TEAM_LEADER:
+        if actor.team_id is None:
+            return KeyCountResponse(count=0)
+        scoped_team_id = actor.team_id
+    else:
+        scoped_team_id = uuid.UUID(team_id) if team_id else None
+
     count = await svc.count_keys(
         session,
         user_id=uuid.UUID(user_id) if user_id else None,
-        team_id=uuid.UUID(team_id) if team_id else None,
+        team_id=scoped_team_id,
         status=status,
         email=email_q or None,
     )

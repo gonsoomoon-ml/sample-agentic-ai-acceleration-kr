@@ -87,6 +87,28 @@ async def set_team_leader(
     )
 
 
+@router.delete("/teams/{team_id}/leaders/{user_id}", response_model=TeamResponse)
+async def unset_team_leader(
+    request: Request,
+    team_id: str,
+    user_id: str,
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """팀 리더 지정 해제(한 명) — 그 사람 role 을 DEVELOPER 로 되돌린다(ADMIN 이면
+    다음 Cognito 로그인 때 ADMIN_GROUPS 로 복원됨). 팀에 리더가 여러 명일 수 있으므로
+    user_id 로 특정한다."""
+    svc: UserTeamService = request.app.state.user_team_service
+    return await svc.unset_team_leader(
+        session,
+        team_id=uuid.UUID(team_id),
+        user_id=uuid.UUID(user_id),
+        actor=admin,
+        ip_address=request.client.host if request.client else "0.0.0.0",
+        request_id=request.headers.get("x-request-id", ""),
+    )
+
+
 @router.post("/teams/{team_id}/force-reauth")
 async def force_reauth_team(
     request: Request,

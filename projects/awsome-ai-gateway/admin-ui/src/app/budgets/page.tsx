@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { adminAPI } from '@/lib/api-client';
 import { parseJWT } from '@/lib/auth';
-import type { BudgetSummaryItem, ModelListItem, TeamBudgetAllocation } from '@/types/entities';
+import type { AllocationEntry, BudgetSummaryItem, ModelListItem, TeamBudgetAllocation } from '@/types/entities';
 import { BudgetSummaryTable } from '@/components/budgets/BudgetSummaryTable';
 import { TeamAllocationView } from '@/components/budgets/TeamAllocationView';
 import { DowngradeSection } from '@/components/budgets/DowngradeSection';
@@ -54,11 +54,46 @@ export default async function BudgetsPage() {
     } as BudgetSummaryItem;
   });
 
+  interface RawAllocationEntry {
+    target_id: string;
+    target_name: string;
+    target_type: string;
+    allocated_usd: string;
+    used_usd: string;
+    remaining_usd: string;
+    alert_level: string;
+  }
+
+  interface RawTeamAllocation {
+    team_id: string;
+    team_name: string;
+    total_budget_usd: string;
+    entries: RawAllocationEntry[];
+  }
+
   let teamAllocation: TeamBudgetAllocation | null = null;
   if (!isAdmin && session?.team_id) {
-    teamAllocation = await adminAPI
-      .get<TeamBudgetAllocation>(`/admin/budgets/team/${session.team_id}/allocation`)
+    const rawAllocation = await adminAPI
+      .get<RawTeamAllocation>(`/admin/budgets/team/${session.team_id}/allocation`)
       .catch(() => null);
+    // Decimal 필드는 pydantic 이 JSON 문자열로 직렬화 — 여기서 숫자로 변환해야
+    // TeamAllocationView 의 .toFixed() 호출이 안전하다 (BudgetSummaryTable 경로와 동일 처리).
+    teamAllocation = rawAllocation
+      ? {
+          team_id: rawAllocation.team_id,
+          team_name: rawAllocation.team_name,
+          total_budget_usd: parseFloat(rawAllocation.total_budget_usd) || 0,
+          entries: (rawAllocation.entries ?? []).map((e) => ({
+            target_id: e.target_id,
+            target_name: e.target_name,
+            target_type: e.target_type.toUpperCase() as AllocationEntry['target_type'],
+            allocated_usd: parseFloat(e.allocated_usd) || 0,
+            used_usd: parseFloat(e.used_usd) || 0,
+            remaining_usd: parseFloat(e.remaining_usd) || 0,
+            alert_level: e.alert_level.toUpperCase() as AllocationEntry['alert_level'],
+          })),
+        }
+      : null;
   }
 
   interface APIModelItem {

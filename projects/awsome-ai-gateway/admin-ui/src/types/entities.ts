@@ -127,9 +127,25 @@ export interface RateLimitTreeNode {
 export interface OrgNodeMeta {
   member_count: number | null;
   leader_name: string | null;
+  leader_user_id: string | null;
   email: string | null;
   role: UserRole | null;
   team_name: string | null;
+  // budgets / rate-limits 트리에서 동일한 OrgTree 컴포넌트를 재사용하면서
+  // 우측 패널에 보여줄 데이터를 메타로 붙인다.
+  budget?: {
+    limit: number | null;
+    used: number;
+    remaining: number | null;
+    usage_pct: number | null;
+    alert_level: AlertLevel;
+  };
+  rateLimit?: {
+    config: RateLimitConfig | null;
+    scope: RateLimitScope;
+    inherited_from: string | null;
+    is_active: boolean;
+  };
 }
 
 export interface OrgTreeNode {

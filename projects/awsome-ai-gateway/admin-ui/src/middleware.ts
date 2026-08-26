@@ -45,6 +45,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (
     pathname.startsWith('/api/') ||
     pathname.startsWith('/cli') ||
+    pathname === '/login' ||
     pathname === '/403'
   ) {
     return response;
@@ -52,12 +53,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
   const jwtCookie = request.cookies.get('admin_jwt');
 
-  // No JWT present — redirect to dev-login (MVP) or 401
+  // No JWT present — redirect to the login page (Cognito). Use nextUrl (preserves
+  // original host header) instead of request.url (may resolve to 0.0.0.0 in Docker).
   if (!jwtCookie?.value) {
-    // Use nextUrl (preserves original host header) instead of request.url (may resolve to 0.0.0.0 in Docker)
-    const devLoginUrl = request.nextUrl.clone();
-    devLoginUrl.pathname = '/api/auth/dev-login';
-    const redirectResponse = NextResponse.redirect(devLoginUrl);
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = '/login';
+    const redirectResponse = NextResponse.redirect(loginUrl);
     applySecurityHeaders(redirectResponse);
     return redirectResponse;
   }
@@ -77,9 +78,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     }
   } catch {
     // Malformed JWT — treat as unauthenticated
-    const devLoginUrl = request.nextUrl.clone();
-    devLoginUrl.pathname = '/api/auth/dev-login';
-    const redirectResponse = NextResponse.redirect(devLoginUrl);
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = '/login';
+    const redirectResponse = NextResponse.redirect(loginUrl);
     applySecurityHeaders(redirectResponse);
     return redirectResponse;
   }

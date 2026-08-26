@@ -140,6 +140,7 @@ class CostRecorder:
 
         # 1. Redis 예산 차감 + 임계값 체크
         threshold_triggered = None
+        threshold_scope = "user"
         if redis is not None:
             from app.services.lua_loader import LuaScriptLoader
 
@@ -165,15 +166,24 @@ class CostRecorder:
             except Exception:
                 logger.exception("budget_deduct_failed", user_id=auth_context.user_id)
 
-            # 팀 예산 차감
+            # 팀 예산 차감. ⚠️ 이 결과의 threshold_triggered 를 이전엔 버렸다 —
+            # 대부분의 팀은 개인(USER) 예산 없이 팀(TEAM) 예산만 설정하므로, 그 경우
+            # user_config_key 가 비어(limit=0) budget_threshold 알림이 영원히 발행되지
+            # 않는 버그였다. USER 스코프에서 이미 트리거됐으면 그걸 우선하고, 아니면
+            # TEAM 스코프 교차도 threshold_triggered 로 채택한다.
             try:
-                await redis.eval(
+                team_raw = await redis.eval(
                     LuaScriptLoader.get("budget_deduct"),
                     2,
                     team_usage_key,
                     team_config_key,
                     str(cost_usd),
                 )
+                team_result = json.loads(team_raw)
+                if threshold_triggered is None:
+                    threshold_triggered = team_result.get("threshold_triggered")
+                    if threshold_triggered is not None:
+                        threshold_scope = "team"
             except Exception:
                 logger.warning("team_budget_deduct_failed", team_id=auth_context.team_id)
 
@@ -240,6 +250,7 @@ class CostRecorder:
                 duration_ms=duration_ms,
                 ttft_ms=ttft_ms,
                 threshold_triggered=threshold_triggered,
+                threshold_scope=threshold_scope if threshold_triggered is not None else None,
                 downgraded_from=downgraded_from,
                 availability_fallback_from=availability_fallback_from,
                 bedrock_request_id=bedrock_request_id,
@@ -261,6 +272,7 @@ class CostRecorder:
         duration_ms: int,
         ttft_ms: int | None = None,
         threshold_triggered: int | None,
+        threshold_scope: str | None = None,
         downgraded_from: str | None = None,
         availability_fallback_from: str | None = None,
         bedrock_request_id: str | None = None,
@@ -302,6 +314,7 @@ class CostRecorder:
             downgraded_from=downgraded_from,
             availability_fallback_from=availability_fallback_from,
             threshold_triggered=threshold_triggered,
+            threshold_scope=threshold_scope,
             threshold_policy=None,  # worker가 budget_configs에서 조회해 채움
             sso_subject=auth_context.sso_subject,
             bedrock_request_id=bedrock_request_id,

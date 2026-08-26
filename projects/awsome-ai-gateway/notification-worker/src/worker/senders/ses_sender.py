@@ -33,8 +33,14 @@ class SESEmailSender:
         import asyncio
 
         source = f"{self._sender_name} <{self._sender_address}>"
+        logger.info(
+            "ses_send_started",
+            recipient=email.recipient.email,
+            subject=email.subject,
+            sender=source,
+        )
         try:
-            await asyncio.get_event_loop().run_in_executor(
+            response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self._client.send_email(
                     Source=source,
@@ -44,6 +50,11 @@ class SESEmailSender:
                         "Body": {"Html": {"Data": email.html_body, "Charset": "UTF-8"}},
                     },
                 ),
+            )
+            logger.info(
+                "ses_send_succeeded",
+                recipient=email.recipient.email,
+                message_id=response.get("MessageId"),
             )
         except Exception as exc:
             error_code = getattr(getattr(exc, "response", {}).get("Error", {}), "get", lambda k: None)("Code")

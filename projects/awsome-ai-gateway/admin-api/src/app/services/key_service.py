@@ -15,7 +15,7 @@ from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
 from app.core.encryption import AESEncryptionService
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.models.auth import KeyStatus, User, VirtualKey
 from app.repositories.key_repository import KeyRepository
 from app.repositories.model_repository import TeamAllowedModelRepository
@@ -28,6 +28,7 @@ VK_PREFIX = "vk-"
 VK_RANDOM_BYTES = 32  # 32 bytes = 64 hex chars → total 67 chars with prefix
 VK_AUTH_CACHE_TTL = 300  # gateway-proxy auth_service.VK_CACHE_TTL와 일치
 VK_DEFAULT_TTL_HOURS = 24  # 호출자가 expires_at 을 지정하지 않은 경우의 기본값
+VK_DEDUP_SECONDS = 5  # 같은 사용자의 연속 issue_key 호출 중복 방지
 
 
 class KeyService:
@@ -58,6 +59,37 @@ class KeyService:
         10k boot storm 부하테스트에서 요청당 DB roundtrip 을 줄여 conn 점유 시간 감소.
         """
         repo = KeyRepository(session)
+
+        # ── Deduplicate rapid issue calls for the same user ──
+        # 클라이언트(CLI)가 짧은 시간 안에 같은 사용자로 여러 번 issue_key 호출 시
+        # (예: claude-code API key helper 재시도) 기존 ACTIVE 키를 재반환합니다.
+        dedup_now = datetime.now(timezone.utc)
+        if VK_DEDUP_SECONDS > 0:
+            recent_active = await repo.list_active_for_user(user_id)
+            if isinstance(recent_active, list):
+                for existing in recent_active:
+                    age_s = (dedup_now - existing.issued_at).total_seconds()
+                    if (
+                        age_s <= VK_DEDUP_SECONDS
+                        and (sso_session_expires_at is None or existing.expires_at >= sso_session_expires_at)
+                    ):
+                        logger.info(
+                            "key.dedup_returned_recent",
+                            user_id=str(user_id),
+                            key_id=str(existing.id),
+                            age_s=age_s,
+                            request_id=request_id,
+                        )
+                        raw_key = self._encryption.decrypt(existing.key_value_encrypted)
+                        return KeyCreateResponse(
+                            key_id=str(existing.id),
+                            key_prefix=existing.key_prefix,
+                            user_id=str(user_id),
+                            status=existing.status,
+                            created_at=existing.issued_at,
+                            expires_at=existing.expires_at,
+                            virtual_key=raw_key,
+                        )
 
         # Generate VK: vk- + 32-byte random hex (먼저 생성 — CTE 한 번에 expire+insert)
         raw_key = VK_PREFIX + secrets.token_hex(VK_RANDOM_BYTES)
@@ -171,6 +203,31 @@ class KeyService:
             virtual_key=raw_key,
         )
 
+    async def _publish_key_revoked(
+        self, vk: VirtualKey, actor: CurrentUser
+    ) -> None:
+        """VK 폐기 시 notification-worker에 key_revoked 이벤트 발행."""
+        redis = self._cache_mgr._redis
+        if redis is None:
+            return
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "type": "key_revoked",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": "admin-api",
+            "payload": {
+                "user_id": str(vk.user_id),
+                "key_id": str(vk.id),
+                "key_prefix": vk.key_prefix,
+                "revoked_by": actor.role.value,
+                "reason": None,
+            },
+        }
+        try:
+            await redis.publish("notifications:key", json.dumps(event, default=str))
+        except Exception:
+            logger.warning("key_revoked.publish_failed", exc_info=True)
+
     async def revoke_key(
         self,
         session: AsyncSession,
@@ -181,9 +238,16 @@ class KeyService:
         request_id: str = "",
     ) -> None:
         repo = KeyRepository(session)
-        vk = await repo.revoke(key_id, actor.user_id)
+        vk = await repo.get_by_id(key_id)
         if vk is None:
             raise NotFoundError("VirtualKey", str(key_id))
+        if vk.status != KeyStatus.ACTIVE:
+            raise ValidationError(
+                f"Only ACTIVE virtual keys can be revoked (status: {vk.status.value})"
+            )
+
+        original_status = vk.status
+        await repo.revoke(key_id, actor.user_id)
 
         # Invalidate Redis cache
         # We need the hash of the raw key, but we only have encrypted.
@@ -214,10 +278,16 @@ class KeyService:
             action="REVOKE_KEY",
             resource_type="VirtualKey",
             resource_id=str(key_id),
-            changes={"before": {"status": "ACTIVE"}, "after": {"status": "REVOKED"}},
+            changes={
+                "before": {"status": original_status.value},
+                "after": {"status": KeyStatus.REVOKED.value},
+            },
             ip_address=ip_address,
             request_id=request_id,
         )
+
+        # notification-worker 에 key_revoked 발행
+        await self._publish_key_revoked(vk, actor)
 
     async def list_keys(
         self,

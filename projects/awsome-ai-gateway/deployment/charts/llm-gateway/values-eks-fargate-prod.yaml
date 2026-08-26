@@ -11,7 +11,7 @@
 #    동일하게 내려둠:
 #    - Ingress: HTTPS/ACM/WAF/도메인 대신 HTTP + host="" (방식 A)
 #    - OTel: sidecar → in-cluster (Chart sidecar ConfigMap 템플릿 미완성)
-#    - DEV_LOGIN_ENABLED: true (고객 SSO 교체 전이므로 dev-login 우회)
+#    - global.devLoginEnabled: true (고객 SSO 교체 전이므로 dev-login 우회)
 #    - notificationWorkerUser: "gateway" (별도 DB role 생성 회피)
 #    ACM ARN / 도메인 / SSO / DB role 정책에 맞춰 재설정할 것.
 # ============================================================================
@@ -19,6 +19,9 @@
 global:
   environment: prod
   deploymentMode: eks-fargate
+  # 고객 SSO 교체 전이므로 dev-login 우회. admin-api·admin-ui 양쪽에 동시 주입됨.
+  # 고객 로그인 설정 필요 — Cognito 로그인(adminApi.oidc/adminApi.adminUiLogin) 전환 후 반드시 false 로 복구.
+  devLoginEnabled: true
   commonLabels:
     environment: prod
     managed-by: terraform
@@ -209,9 +212,7 @@ adminApi:
     enabled: true
     minAvailable: 2
   env:
-    # 고객 SSO 교체 전이므로 dev-login 허용.
-    # 고객 로그인 설정 필요 반드시 "false" 로 복구.
-    DEV_LOGIN_ENABLED: "true"
+    # DEV_LOGIN_ENABLED 는 global.devLoginEnabled (이 파일 상단) 로 주입됨.
     # CHANGE_ME (terraform output): Cognito User Pool ID. terraform output -raw cognito_user_pool_id
     COGNITO_USER_POOL_ID: "ap-northeast-2_XXXXXXXXX"
     COGNITO_REGION: "ap-northeast-2"
@@ -238,6 +239,12 @@ adminApi:
     groups:
       - "ClaudeAdmin"
 
+  # admin-ui 커스텀 로그인 폼(Cognito ROPC). 고객 SSO 전환 시 채울 것
+  # (auth.adminUiJwt.privateKeySecretName 도 함께 설정 — 03-secrets.md 참고).
+  adminUiLogin:
+    # CHANGE_ME (terraform output): terraform output -raw cognito_client_id
+    cognitoAppClientId: ""
+
 adminUi:
   replicaCount: 2
   image:
@@ -255,10 +262,6 @@ adminUi:
     enabled: true
     minReplicas: 2
     maxReplicas: 6
-  env:
-    # admin-ui (Next.js) 도 dev-login route 를 렌더하려면 필요 (admin-api 와 별개 env).
-    # 고객 로그인 설정 필요 SSO 교체후 "false" 로 복구.
-    DEV_LOGIN_ENABLED: "true"
 
 scheduler:
   resources:

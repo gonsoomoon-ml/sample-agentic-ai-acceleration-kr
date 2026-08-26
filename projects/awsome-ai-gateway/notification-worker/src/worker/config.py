@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     # admin-api 의 REPORTING_TIMEZONE 과 동일 값으로 맞추는 것을 권장(운영 기준 통일).
     reporting_timezone: str = "Asia/Seoul"
 
+    # 이메일 템플릿 언어 (ko | en)
+    notification_locale: str = "ko"
+
     @field_validator("reporting_timezone")
     @classmethod
     def _validate_reporting_timezone(cls, v: str) -> str:

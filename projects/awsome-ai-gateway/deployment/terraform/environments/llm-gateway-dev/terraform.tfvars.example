@@ -104,7 +104,10 @@ tags = {
 #   <team> 팀 자동 생성 + 사용자 배정. (예: "Claude_test-department_aws-test")
 # - "Claude_" prefix 없는 그룹은 OIDC 로그인 거부 (REJECT_UNMATCHED_GROUPS=true).
 # - "ClaudeAdmin": 팀 매핑 제외. 멤버에게 admin role 자동 부여
-#   (adminBootstrap.groups=ClaudeAdmin).
+#   (admin-api ADMIN_GROUPS=ClaudeAdmin).
+# - team_leader 는 Cognito 그룹으로 부트스트랩하지 않는다. 팀원은 위 Claude_<team>
+#   그룹으로 정상 배정한 뒤, admin-ui 에서 관리자가 그 중 한 명을 팀 리더로 지정한다
+#   (PUT /admin/teams/{id}/leader) — 그룹 두 개를 맞춰야 하는 운영 부담/오배정 위험 없음.
 # 운영 중 추가: 이 리스트 수정 → terraform apply (IaC 권장). 또는 AWS Console / CLI 로
 # 직접 Cognito group 추가도 가능 (코드 변경 불필요).
 cognito_groups = [

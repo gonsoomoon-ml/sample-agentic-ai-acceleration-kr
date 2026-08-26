@@ -66,6 +66,7 @@ spec:
             {{- include "llm-gateway.commonEnv" . | nindent 12 }}
             {{- include "llm-gateway.authEnv" . | nindent 12 }}
             {{- include "llm-gateway.oidcEnv" . | nindent 12 }}
+            {{- include "llm-gateway.devLoginEnv" . | nindent 12 }}
             {{- include "llm-gateway.downwardApiEnv" . | nindent 12 }}
             {{- range $key, $value := .Values.adminApi.env }}
             - name: {{ $key }}

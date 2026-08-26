@@ -51,7 +51,7 @@ variable "eks_cluster_version" {
   # 기본값은 기존 배포가 apply 때 흔들리지 않도록 그대로 둔다 — 신규 설치 권장 버전은
   # terraform.tfvars.example 에 eks_addon_versions 와 한 쌍으로 적어 두었다.
   type    = string
-  default = "1.30"
+  default = "1.34"
 }
 
 variable "eks_addon_versions" {
@@ -143,7 +143,7 @@ variable "cognito_logout_urls" {
 }
 
 variable "cognito_groups" {
-  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩. prod는 dev 검증에서 결정된 깨끗한 셋만 — 빈 팀 잔재(aws-test, S/W-Culture-Office) 미포함."
+  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩. team_leader 는 Cognito 그룹이 아니라 admin-ui 에서 지정(PUT /admin/teams/{id}/leader). prod는 dev 검증에서 결정된 깨끗한 셋만 — 빈 팀 잔재(aws-test, S/W-Culture-Office) 미포함."
   type        = list(string)
   default     = ["Claude_AWS-AI-Specialist", "ClaudeAdmin"]
 }
@@ -178,16 +178,39 @@ variable "eks_access_entries" {
   default = {}
 }
 
+variable "cowork_role_arn" {
+  # Cowork cross-account Mantle role (905, Tokyo Opus 4.8). gateway-proxy AssumeRole into it.
+  # Must match model.routing_profiles.account_role_arn for client=cowork (migration 0009).
+  # The 905 role's trust must allow this env's gateway-proxy IRSA + sts:ExternalId=cowork-bedrock.
+  type    = string
+  default = "arn:aws:iam::234567890123:role/llm-gateway-cowork-bedrock"
+}
+
+variable "claude_code_374_role_arn" {
+  # Claude Code cross-account Bedrock NATIVE role (374). gateway-proxy AssumeRole into it,
+  # builds a 374 bedrock-runtime client (boto3 invoke_model). Must match
+  # model.routing_profiles.account_role_arn for client=claude-code (migration 0022).
+  # The 374 role trust must allow this env's gateway-proxy IRSA + sts:ExternalId=claude-code-bedrock.
+  type    = string
+  default = "arn:aws:iam::345678901234:role/llm-gateway-claude-code-bedrock"
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
 }
 
 # ─── admin-chat-agent (Phase 1 부트스트랩 — 활성 시 ECR/S3/IAM 만 생성) ───
-# AgentCore Runtime 자체 (CreateAgentRuntime) 는 image push 후 별도 단계.
-# 처음엔 false 로 두고, image 가 빌드/push 가능한 상태가 되면 true 로 enable.
 variable "enable_chat_agent" {
   description = "admin-chat-agent 인프라 (ECR + S3 staging + IAM + KMS) 생성 여부"
+  type        = bool
+  default     = false
+}
+
+# ─── admin-chat-agent BI tool Lambdas (query_db / get_schema) ───
+# enable_chat_agent=true 가 선행 조건 (같은 모듈에 추가됨).
+variable "enable_chat_db_tools" {
+  description = "admin-chat-agent 의 query_db/get_schema Lambda + reader secret + SG 생성 여부"
   type        = bool
   default     = false
 }

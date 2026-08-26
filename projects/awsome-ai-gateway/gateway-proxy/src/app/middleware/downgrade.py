@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timezone
 
 import structlog
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -195,6 +196,17 @@ class DowngradeMiddleware:
         new_body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         state["downgraded_from"] = original
 
+        # notification-worker에 모델 다운그레이드 알림 발행
+        if auth_context is not None:
+            await _publish_degradation_event(
+                redis,
+                user_id=auth_context.user_id,
+                team_id=str(team_id) if team_id is not None else "",
+                from_model=original,
+                to_model=effective,
+                threshold_pct=current_pct,
+            )
+
         # Content-Length header 갱신 — body byte 길이가 바뀌었음
         new_headers = [
             (k, v) for (k, v) in scope.get("headers", []) if k.lower() != b"content-length"
@@ -243,6 +255,54 @@ def _replay(body: bytes, original_receive: Receive) -> Receive:
         return await original_receive()
 
     return receive
+
+
+# 동일 사용자/모델 조합 알림 쿨다운 — 다운그레이드가 유지되는 동안의 매 요청마다
+# 메일이 재발행되는 것을 막는다(budget_threshold 는 "새 크로싱"에만 1회 발행되는
+# 것과 동형 문제). 쿨다운 동안은 억제, 만료 후 여전히 다운그레이드 상태면 재발행.
+_DEGRADATION_NOTIFY_COOLDOWN_SEC = 3600
+
+
+async def _publish_degradation_event(
+    redis,
+    user_id: str,
+    team_id: str,
+    from_model: str,
+    to_model: str,
+    threshold_pct: int,
+) -> None:
+    """모델 다운그레이드 시 notification-worker에 degradation_mode 발행 (쿨다운 적용)."""
+    if redis is None:
+        return
+
+    dedup_key = f"degradation_notify:{{{user_id}}}:{from_model}:{to_model}"
+    try:
+        acquired = await redis.set(
+            dedup_key, "1", nx=True, ex=_DEGRADATION_NOTIFY_COOLDOWN_SEC
+        )
+        if not acquired:
+            return
+    except Exception:
+        # dedup 체크 실패는 알림을 막지 않음(발행 우선, 중복 감수)
+        logger.warning("degradation_mode.dedup_check_failed", exc_info=True)
+
+    event = {
+        "event_id": str(uuid.uuid4()),
+        "type": "degradation_mode",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "source": "gateway-proxy",
+        "payload": {
+            "user_id": user_id,
+            "team_id": team_id,
+            "from_model": from_model,
+            "to_model": to_model,
+            "threshold_pct": threshold_pct,
+        },
+    }
+    try:
+        await redis.publish("notifications:system", json.dumps(event))
+    except Exception:
+        logger.warning("degradation_mode.publish_failed", exc_info=True)
 
 
 def _coerce_uuid(value):

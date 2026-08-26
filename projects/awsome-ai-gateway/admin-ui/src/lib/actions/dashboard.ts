@@ -46,6 +46,9 @@ export interface ClientShareResponse {
 export interface TeamOption {
   id: string;
   name: string;
+  // 팀명이 부서 간 중복될 수 있어(예: 여러 부서에 "Developers" 팀), 드롭다운
+  // 표시에 부서명을 병기해 구분한다.
+  department_name: string | null;
 }
 
 export interface AvailablePeriods {
@@ -125,9 +128,11 @@ export async function fetchClientShare(period?: string): Promise<ClientShareResp
 
 export async function fetchTeamOptions(): Promise<TeamOption[]> {
   const res = await withRetry(() =>
-    adminAPI.get<{ items: Array<{ id: string; name: string }> }>('/admin/users/teams'),
+    adminAPI.get<{ items: Array<{ id: string; name: string; department_name: string | null }> }>(
+      '/admin/users/teams',
+    ),
   );
-  return res.items.map((t) => ({ id: t.id, name: t.name }));
+  return res.items.map((t) => ({ id: t.id, name: t.name, department_name: t.department_name ?? null }));
 }
 
 // ── Analytics (cost trend + breakdowns) — /admin/analytics ──
@@ -186,8 +191,12 @@ export async function fetchBudgetSummary(period: string): Promise<BudgetSummaryI
 // 실제 비용 기준 상위 사용자(§60.8) — usage_logs SUCCESS+KST 집계. 기존 'Top 사용자
 // by 비용' 위젯이 budgets/summary(예산설정자만)를 써 헤비유저를 누락하던 버그 수정.
 export interface TopUserItem {
+  user_id: string;
   name: string;
   email: string;
+  team_id: string | null;
+  team_name: string | null; // 부서 접두어 포함(예: "NDS_Developers") — budget_service 와 동일 규칙
+  department_name: string | null;
   cost_usd: number;
   call_count: number;
 }
@@ -205,7 +214,9 @@ export async function fetchTopUsers(period?: string, limit = 5, client?: string)
 // 실제 비용 기준 상위 팀(§60.9) — usage_logs.team_id 직접 집계(SUCCESS+KST). top-users 와
 // 동형으로, 예산 미설정 팀도 포함(기존 budgets/summary 소스는 예산설정 팀만 누락 위험).
 export interface TopTeamItem {
-  name: string;
+  team_id: string;
+  name: string; // 부서 접두어 포함(예: "NDS_Developers") — budget_service 와 동일 규칙
+  department_name: string | null;
   cost_usd: number;
   call_count: number;
 }

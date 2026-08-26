@@ -24,6 +24,7 @@ import { BrandLogo } from '@/components/brand/BrandLogo';
 
 interface SidebarProps {
   role?: UserRole;
+  chatEnabled?: boolean;
 }
 
 interface NavItemDef {
@@ -31,6 +32,7 @@ interface NavItemDef {
   href: string;
   icon: React.ReactNode;
   allowedRoles: UserRole[];
+  feature?: 'chat';
 }
 
 const NAV_ITEMS: NavItemDef[] = [
@@ -81,6 +83,7 @@ const NAV_ITEMS: NavItemDef[] = [
     href: '/chat',
     icon: <Sparkles size={18} />,
     allowedRoles: [UserRoleConst.ADMIN],
+    feature: 'chat',
   },
   {
     key: 'my',
@@ -90,12 +93,16 @@ const NAV_ITEMS: NavItemDef[] = [
   },
 ];
 
-export function Sidebar({ role }: SidebarProps) {
+export function Sidebar({ role, chatEnabled = true }: SidebarProps) {
   const pathname = usePathname();
   const t = useTranslations('nav');
 
   const visibleItems = role
-    ? NAV_ITEMS.filter((item) => item.allowedRoles.includes(role))
+    ? NAV_ITEMS.filter(
+        (item) =>
+          item.allowedRoles.includes(role) &&
+          (!item.feature || (item.feature === 'chat' && chatEnabled)),
+      )
     : NAV_ITEMS.filter((item) => item.href === '/');
 
   const isActive = (href: string): boolean => {

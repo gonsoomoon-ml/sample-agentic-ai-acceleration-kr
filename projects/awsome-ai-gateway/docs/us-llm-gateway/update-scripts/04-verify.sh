@@ -147,3 +147,30 @@ run_sql "SELECT COALESCE(client,'(legacy)') AS client, model_alias, status,
                 cost_usd, input_tokens, output_tokens, web_search_count AS ws,
                 completed_at
            FROM usage.usage_logs ORDER BY completed_at DESC LIMIT 5;"
+
+# ── (D) Notification worker ───────────────────────────────────────────────────
+hdr "D. Notification worker"
+note "Checks only: not every install uses real email (mock is the default)"
+
+SA_NAME="notification-worker"
+IRSA=$(kubectl get sa "$SA_NAME" -n "$NS" -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' 2>/dev/null)
+SENDER=$(kubectl get deploy "$SA_NAME" -n "$NS" -o jsonpath='{.spec.template.spec.containers[?(@.name=="notification-worker")].env[?(@.name=="EMAIL_SENDER_TYPE")].value}' 2>/dev/null)
+
+if [ -n "$IRSA" ]; then
+  ok "IRSA annotation present: ${IRSA##*/}"
+else
+  warn "IRSA annotation absent — use 08-setup-notification-ses-irsa.sh for SES"
+fi
+
+if [ -n "$SENDER" ]; then
+  detail "EMAIL_SENDER_TYPE=$SENDER"
+  case "$SENDER" in
+    ses) [ -n "$IRSA" ] || bad "EMAIL_SENDER_TYPE=ses but no IRSA — sending will fail" ;;
+    smtp) ok "SMTP sender selected" ;;
+    internal_api) ok "internal_api sender selected" ;;
+    mock) warn "EMAIL_SENDER_TYPE=mock — no real email is sent" ;;
+    *) warn "Unknown EMAIL_SENDER_TYPE: $SENDER" ;;
+  esac
+else
+  warn "Could not read EMAIL_SENDER_TYPE"
+fi

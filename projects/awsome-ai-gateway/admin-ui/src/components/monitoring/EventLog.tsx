@@ -4,7 +4,7 @@
 
 
 import { useState, useTransition } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import {
   fetchMonitoringEvents,
   type MonitoringEventsResponse,
@@ -29,6 +29,7 @@ function eventTone(type: string): BadgeTone {
 
 export function EventLog({ data: initialData }: { data: MonitoringEventsResponse }) {
   const t = useTranslations('monitoring');
+  const locale = useLocale();
   const [filter, setFilter] = useState<MonitoringEventTypeFilter>('all');
   const [data, setData] = useState<MonitoringEventsResponse>(initialData);
   const [isPending, startTransition] = useTransition();
@@ -100,7 +101,7 @@ export function EventLog({ data: initialData }: { data: MonitoringEventsResponse
             {data.events.map((ev, i) => (
               <Tr key={`${ev.timestamp}-${i}`}>
                 <Td className="text-muted-foreground whitespace-nowrap num">
-                  {new Date(ev.timestamp).toLocaleString('ko-KR', {
+                  {new Date(ev.timestamp).toLocaleString(locale, {
                     month: '2-digit',
                     day: '2-digit',
                     hour: '2-digit',

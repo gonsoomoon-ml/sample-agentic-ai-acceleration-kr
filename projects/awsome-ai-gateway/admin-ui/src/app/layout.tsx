@@ -49,6 +49,7 @@ export default async function RootLayout({
 
   const messages = await getMessages();
   const locale = cookieStore.get('locale')?.value || 'ko';
+  const chatEnabled = process.env.CHAT_ENABLED !== 'false';
 
   return (
     <html
@@ -60,20 +61,27 @@ export default async function RootLayout({
         <ThemeProvider>
           <NextIntlClientProvider messages={messages} locale={locale}>
             <ToastProvider>
-              <div className="flex h-screen bg-background">
-                <Sidebar role={session?.role} />
-                {/* ChatShell: 본문과 퀵챗 패널을 flex 형제로 배치(분할뷰). 채팅
-                    열리면 본문이 자동으로 좁아짐(overlay 아님). enabled=ADMIN 만
-                    채팅 UI 노출 — Provider 는 항상 감싸 페이지 hook 안전성 유지. */}
-                <ChatShell enabled={session?.role === 'ADMIN'}>
-                  <div className="flex flex-col flex-1 overflow-hidden">
-                    <Header session={session} />
-                    <main className="aurora-bg flex-1 overflow-auto p-6">
-                      {children}
-                    </main>
-                  </div>
-                </ChatShell>
-              </div>
+              {session ? (
+                <div className="flex h-screen bg-background">
+                  <Sidebar role={session.role} chatEnabled={chatEnabled} />
+                  {/* ChatShell: 본문과 퀵챗 패널을 flex 형제로 배치(분할뷰). 채팅
+                      열리면 본문이 자동으로 좁아짐(overlay 아님). enabled=ADMIN 만
+                      채팅 UI 노출 — Provider 는 항상 감싸 페이지 hook 안전성 유지. */}
+                  <ChatShell enabled={chatEnabled && session.role === 'ADMIN'}>
+                    <div className="flex flex-col flex-1 overflow-hidden">
+                      <Header session={session} />
+                      <main className="aurora-bg flex-1 overflow-auto p-6">
+                        {children}
+                      </main>
+                    </div>
+                  </ChatShell>
+                </div>
+              ) : (
+                // 세션 없음 — middleware 가 여기 닿는 걸 '/login'(과 '/403') 으로만
+                // 허용한다. 그 페이지들은 자체 전체화면 레이아웃을 그리므로 Sidebar/
+                // Header(로그인 전인데 Dashboard 메뉴만 보이는 어색한 상태)를 씌우지 않는다.
+                children
+              )}
             </ToastProvider>
           </NextIntlClientProvider>
         </ThemeProvider>

@@ -119,6 +119,7 @@
     "cost": "비용",
     "budgetSpend": "예산 소진",
     "noBudgetSet": "예산 미설정",
+    "teamBudgetApplied": "팀 예산 적용",
     "noPeriods": "표시할 기간이 없습니다",
     "periodSelect": "기간 선택",
     "periodSelectMonth": "기간 선택 (월)",
@@ -470,6 +471,19 @@
     "teamNameLabel": "소속 팀",
     "teamUnassigned": "미배정",
     "leaderUnassigned": "미지정",
+    "leaderAction": {
+      "currentLeaders": "현재 팀 리더",
+      "noLeaders": "지정된 팀 리더가 없습니다.",
+      "selectPlaceholder": "팀원 선택…",
+      "assignButton": "팀 리더로 지정",
+      "unassignButton": "해제",
+      "assignSuccess": "팀 리더로 지정되었습니다.",
+      "unassignSuccess": "팀 리더 지정이 해제되었습니다.",
+      "removeModalTitle": "팀 리더 해제",
+      "removeModalBody": "{name} 님의 팀 리더 지정을 해제할까요?",
+      "removeModalNote": "role 이 개발자로 되돌아갑니다(관리자 그룹 소속이면 다음 로그인 때 자동 복원). 팀에 다른 리더가 있으면 그대로 유지됩니다.",
+      "noMembers": "지정 가능한 팀원이 없습니다."
+    },
     "roleLabel": {
       "ADMIN": "관리자",
       "TEAM_LEADER": "팀장",
@@ -598,7 +612,12 @@
     "spent": "사용액",
     "limit": "한도: ${amount}",
     "remaining": "잔여",
-    "overagePolicy": "초과 정책"
+    "overagePolicy": "초과 정책",
+    "policyLabel": {
+      "HARD_BLOCK": "하드 차단",
+      "SOFT_WARNING": "경고만",
+      "THROTTLE": "쓰로틀링"
+    }
   },
   "chat": {
     "biInsight": "BI Insight",

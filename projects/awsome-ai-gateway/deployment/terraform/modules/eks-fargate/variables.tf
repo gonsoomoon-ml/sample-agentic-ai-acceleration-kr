@@ -54,9 +54,9 @@ variable "addon_versions" {
   # 들어와 var.addon_versions.coredns 참조가 plan 에서 터진다 (실제 겪음).
   nullable = false
   default = {
-    coredns    = "v1.11.3-eksbuild.1"
-    kube_proxy = "v1.29.7-eksbuild.2"
-    vpc_cni    = "v1.18.3-eksbuild.1"
+    coredns    = "v1.12.4-eksbuild.18"
+    kube_proxy = "v1.34.6-eksbuild.18"
+    vpc_cni    = "v1.22.4-eksbuild.3"
   }
 }
 
