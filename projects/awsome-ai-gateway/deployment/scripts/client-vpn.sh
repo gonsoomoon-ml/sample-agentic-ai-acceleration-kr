@@ -61,14 +61,20 @@ endpoint_id() {
 make_certs() {
   [ -f "$D/ca.crt" ] && { ok "인증서 재사용: $D"; return; }
   info "CA · 서버 · 클라이언트 인증서 생성 ($D)"
+  # OpenVPN(AWS VPN Client) 의 `remote-cert-tls server` 는 서버 인증서에 keyUsage + EKU serverAuth 를
+  # 요구한다 — keyUsage 가 빠지면 "TLS handshake error"(실제로 겪음). 클라이언트도 같은 형식으로.
   ( cd "$D"
+    printf 'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n' > ca.ext
     openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -keyout ca.key -out ca.crt \
-      -subj "/CN=$NAME-ca" >/dev/null 2>&1
+      -subj "/CN=$NAME-ca" -extensions v3_ca -config <(printf '[req]\ndistinguished_name=dn\n[dn]\n[v3_ca]\n'; cat ca.ext) >/dev/null 2>&1
     for kind in server client; do
       openssl req -newkey rsa:2048 -nodes -keyout $kind.key -out $kind.csr -subj "/CN=$NAME-$kind" >/dev/null 2>&1
-      printf 'extendedKeyUsage=%sAuth\nsubjectAltName=DNS:%s\n' "$kind" "$NAME-$kind" > $kind.ext
+      [ "$kind" = server ] && KU="digitalSignature,keyEncipherment" || KU="digitalSignature"
+      printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,%s\nextendedKeyUsage=%sAuth\nsubjectAltName=DNS:%s\n' \
+        "$KU" "$kind" "$NAME-$kind" > $kind.ext
       openssl x509 -req -in $kind.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 3650 \
         -out $kind.crt -extfile $kind.ext >/dev/null 2>&1
+      openssl x509 -in $kind.crt -noout -text | grep -q "Key Usage" || { echo "✗ $kind.crt 에 keyUsage 누락" >&2; exit 1; }
     done
     chmod 600 ./*.key )
   ok "인증서 생성 완료"
