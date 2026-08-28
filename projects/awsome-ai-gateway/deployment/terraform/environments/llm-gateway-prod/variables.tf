@@ -191,3 +191,11 @@ variable "enable_chat_agent" {
   type        = bool
   default     = false
 }
+
+# ─── admin-chat-agent BI tool Lambdas (query_db / get_schema) ───
+# enable_chat_agent=true 가 선행 조건 (같은 모듈에 추가됨). dev 와 동일 선언 — tfvars 를 dev 에서 복사해 그대로 쓰기 위함.
+variable "enable_chat_db_tools" {
+  description = "admin-chat-agent 의 query_db/get_schema Lambda + reader secret + SG 생성 여부"
+  type        = bool
+  default     = false
+}

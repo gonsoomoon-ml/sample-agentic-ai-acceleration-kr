@@ -181,5 +181,12 @@ module "agentcore_runtime" {
 
   staging_lifecycle_days = 1
 
+  # ── BI tool Lambdas (query_db / get_schema) — dev 와 동일 배선 ──
+  # query_db 는 Aurora cluster endpoint 로 직접 접속 (RDS Proxy 우회).
+  enable_db_tools          = var.enable_chat_db_tools
+  aurora_endpoint          = module.aurora.cluster_endpoint
+  aurora_security_group_id = module.aurora.security_group_id
+  db_name                  = "gateway"
+
   tags = var.tags
 }
