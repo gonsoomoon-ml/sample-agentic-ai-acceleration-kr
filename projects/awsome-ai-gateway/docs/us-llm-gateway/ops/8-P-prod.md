@@ -16,7 +16,9 @@
 **처음부터** https(US-06) + admin ALB 2개 internal(US-07) + gateway public · Claude Code + Cowork(**Windows
 설치기**, HKLM) + 서버측 web search.
 - **전제 5개**: (0) **prod 는 dev 와 다른 AWS 계정**에 올린다(계정 = 환경 경계) (a) 도메인 — 부모 `awsome-ai-gw.click`(dev 계정 zone)의 서브도메인 `prod.awsome-ai-gw.click`
-을 prod 계정 hosted zone 으로 **NS 위임**(2-0) (b) internal admin 에 닿을 경로 — 고객사는 S2S VPN, 테스트는 2-9 의 Client VPN 스탠드인 (c) 배포 EC2(§1-2)  (d) **Cowork 용 Windows 테스트 머신**(2-10, metal) — dev 용과 별개.
+을 prod 계정 hosted zone 으로 **NS 위임**(2-0) (b) internal admin 에 닿을 경로 — 고객사는 S2S VPN, 테스트는 2-9 의 Client VPN 스탠드인.
+VPN 이 아직 없으면 2-6 ④·2-9 를 생략(admin 도 dev 처럼 IP 허용목록 public)하고 개통 후 [8-I](8-I-admin-internal.md) 로 전환
+(c) 배포 EC2(§1-2)  (d) **Cowork 용 Windows 테스트 머신**(2-10, metal) — dev 용과 별개.
 - **비용**: dev 의 수 배(월 수천 달러대, 개략). 검증이 끝나면 4 로 teardown.
 
 

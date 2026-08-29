@@ -49,6 +49,15 @@
 
 [빌드 가이드](cowork-installer-build-windows.md) §0–§4. 결과물 = `dist\installer\gateway-cli-cowork-setup-<ver>.exe` 하나.
 
+소스는 fork 의 **`feat/cowork-installer-import`** 브랜치(빌드 가이드 §1) — 빌드 PC 에서:
+
+▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
+
+```powershell
+git clone --depth 1 -b feat/cowork-installer-import https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr.git
+cd sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\cowork-installer\installer
+```
+
 ## 2. 배포 — 설치 파일 전달
 
 설치 파일은 **그 PC 에서 4)·5) 를 실행할 사람**에게 전달한다. 둘 다 관리자 권한이 필요하므로 받는 사람은 보통 관리자다(사용자가 본인 PC 의 로컬 관리자라면 사용자 본인).
