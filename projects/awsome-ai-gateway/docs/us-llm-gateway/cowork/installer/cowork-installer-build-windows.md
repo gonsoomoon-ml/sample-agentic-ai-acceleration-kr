@@ -23,8 +23,10 @@ py --version
 ▶ **실행 (없을 때만)** · 🔴 관리자 PowerShell
 
 ```powershell
-winget install --id Python.Python.3.12 -e --scope machine
+winget install --id Python.Python.3.12 -e --scope machine --source winget --accept-source-agreements --accept-package-agreements
 ```
+
+> `Failed when searching source: msstore … 0x8a15005e` 가 나오면 Windows 이미지의 msstore 소스 문제다 — `--source winget` 이 해법(위 명령에 포함). 설치 후 `py`·`git`·`ISCC.exe` 확인은 **새 PowerShell 창**에서 한다(PATH 갱신).
 
 ▶ **실행** · 🔴 관리자 PowerShell
 
@@ -43,7 +45,7 @@ Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 ▶ **실행 (없을 때만)** · 🔴 관리자 PowerShell
 
 ```powershell
-winget install -e --id JRSoftware.InnoSetup
+winget install -e --id JRSoftware.InnoSetup --source winget --accept-source-agreements --accept-package-agreements
 ```
 
 ▶ **실행** · 🔴 관리자 PowerShell
@@ -57,7 +59,7 @@ git --version
 ▶ **실행 (없을 때만)** · 🔴 관리자 PowerShell
 
 ```powershell
-winget install --id Git.Git -e
+winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
 ```
 
 무엇이든 새로 설치했으면 **PowerShell 창을 닫고 새로 연 뒤** 위 확인 3개를 다시 실행한다 — 새로 깐 프로그램의 경로는 그 뒤에 연 창부터 반영된다.
