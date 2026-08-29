@@ -5,7 +5,7 @@
 **An LLM gateway that connects in-house Claude Code · Cowork to Amazon Bedrock** — the one-time installation and every update that follows, in one place.
 What sets this edition apart: a region outside Korea · direct to Bedrock (not Mantle) · public https entry · English UI. The "US" in update IDs `US-NN` is the **track name** from the first deployment region (us-west-2) — numbering continues even if you change region.
 
-> Synced with the Korean version through `US-07` (2026-08-20). **The linked procedure documents are Korean-only** (install guide, runbooks, update scripts) — this page tells you *what changed* and *whether this deployment has it*; the runbooks are for the operator who performs the change.
+> Synced with the Korean version through `US-08` (2026-08-29). **The linked procedure documents are Korean-only** (install guide, runbooks, update scripts) — this page tells you *what changed* and *whether this deployment has it*; the runbooks are for the operator who performs the change.
 
 **What you want to do**
 - **Install for the first time** — [install-overview.md](install-overview.md) (scope · flow, 10 min) → [install-guide.md](install-guide.md) (run §1–§6-0)
@@ -41,11 +41,11 @@ What sets this edition apart: a region outside Korea · direct to Bedrock (not M
 
 | ID (doc) | What | Grade · new installs | Existing deployments do |
 |---|---|---|---|
+| [**US-08**](ops/8-P-prod.md) 2026/08 | New prod stack — separate account · https + admin internal + VPN · Cowork Windows | Optional · when moving from POC to production · `environment=prod` | leave dev as is; rerun §1–§6 in the prod account (8-P order) |
 | [**US-07**](ops/8-I-admin-internal.md) 2026/08 | Customer final architecture — both admin ALBs internal (private subnets) | Optional · requires site-to-site VPN · new installs: at §3-6 via values | uncomment 2 values blocks → helm (ALB recreation) → swap admin SG · CNAMEs |
 | [**US-06**](ops/8-H-alb-https.md) 2026/08 | ALB HTTPS — custom domain + ACM | Optional · **strongly recommended for production** · new installs: at §3-6 | get a domain → switch → update 2 client URLs (30 min) |
 | [**US-05**](ops/8-E-eks-upgrade.md) 2026/08 | EKS 1.31 → 1.34 | Required (support expiry · cost) · included in new installs | apply one minor at a time ×3 + restart all ns |
 | [**US-04**](ops/8-N-vpc-endpoint.md) 2026/08 | Bedrock · STS over VPC Endpoints | Required (compliance) · included in new installs | apply endpoints → restart gateway-proxy |
-| [**US-03**](ops/8-U-update.md) 2026/08 | Admin UI KO/EN toggle | Required (English support) · included in new installs | rebuild admin-ui image → install-eks |
 Earlier (`US-01` initial install) and the why · pitfalls per item → [updates.en.md](updates.en.md)
 
 ---
