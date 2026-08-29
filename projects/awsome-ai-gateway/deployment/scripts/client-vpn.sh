@@ -131,6 +131,10 @@ cmd_config() {
   local EP; EP=$(endpoint_id); [ -n "$EP" ] || die "엔드포인트 없음 — 먼저 up"
   local OUT="$D/$ENV-client.ovpn"
   aws ec2 export-client-vpn-client-configuration --client-vpn-endpoint-id "$EP" --output text > "$OUT"
+  # split-tunnel 경로를 클라이언트가 스스로 심도록 route 지시어를 넣는다 — 일부 클라이언트(macOS AWS VPN Client 등)가
+  # 서버 push 경로를 라우팅 테이블에 반영하지 않아 VPC 로 가는 패킷이 기본 게이트웨이로 새는 경우가 있다.
+  read -r NET MASK < <(python3 -c "import ipaddress,sys;n=ipaddress.ip_network(sys.argv[1]);print(n.network_address,n.netmask)" "$VPC_CIDR")
+  printf 'route %s %s\n' "$NET" "$MASK" >> "$OUT"
   { echo "<cert>"; cat "$D/client.crt"; echo "</cert>"; echo "<key>"; cat "$D/client.key"; echo "</key>"; } >> "$OUT"
   chmod 600 "$OUT"
   ok "클라이언트 설정: $OUT"
