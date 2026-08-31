@@ -192,6 +192,8 @@ gatewayProxy:
 
 adminApi:
   replicaCount: 3
+  image:
+    tag: "1.0.48-websearch"   # dev 템플릿과 동일. 비우면 Chart.appVersion 폴백 → appVersion 드리프트 시 존재하지 않는 태그
   serviceAccount:
     annotations:
       # CHANGE_ME (terraform output): IRSA role ARN. terraform output -raw admin_api_role_arn
@@ -264,6 +266,8 @@ adminUi:
     maxReplicas: 6
 
 scheduler:
+  image:
+    tag: "1.0.48-websearch"   # admin-api 이미지 재사용 — adminApi.image.tag 와 같게
   resources:
     requests:
       cpu: "250m"
@@ -274,6 +278,8 @@ scheduler:
 
 notificationWorker:
   replicaCount: 2
+  image:
+    tag: "1.0.43-rebrand"     # = 현재 Chart.appVersion 고정(dev 도 이 값으로 폴백 중)
   serviceAccount:
     annotations: {}
   resources:
@@ -294,8 +300,14 @@ notificationWorker:
       fromAddress: "no-reply@llm-gateway.local"
       fromName: "LLM Gateway"
 
+migration:
+  image:
+    tag: "1.0.49-xacct"       # alembic head=0022 를 아는 이미지. 비우면 1.0.43 이 0021 을 몰라 pre-upgrade 훅 실패
+
 costRecorderWorker:
   replicaCount: 3
+  image:
+    tag: "1.0.47-websearch"   # web_search_count 배관 정합본
   resources:
     requests:
       cpu: "250m"

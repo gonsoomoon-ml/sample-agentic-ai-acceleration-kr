@@ -118,7 +118,9 @@ require_env() {
      you passed to install-eks.sh). Secrets in this account:
 $(aws secretsmanager list-secrets --query "SecretList[?starts_with(Name,'/llm-gateway')].Name" --output text 2>/dev/null | tr '\t' '\n' | sed 's/^/       /')"
 
-  discover
+  # FRESH_INSTALL=1: values 만 편집하는 첫 설치 전 단계(예: 10-switch-https.sh --fresh) —
+  # 아직 Ingress 가 없으므로 클러스터 discovery 를 건너뛴다.
+  [ "${FRESH_INSTALL:-0}" = 1 ] || discover
 }
 
 # ── Discovery ───────────────────────────────────────────────────────────────

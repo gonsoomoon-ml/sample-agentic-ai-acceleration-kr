@@ -51,7 +51,15 @@ output "application_db_endpoint" {
 }
 
 output "elasticache_endpoint" {
-  value = module.elasticache.primary_endpoint_address
+  # cluster mode(prod)에선 primary_endpoint_address 가 비어 configuration endpoint 로 대체.
+  # install-eks.sh 가 이 값을 redis.external.host 로 주입한다. dev(non-cluster)는 결과 불변.
+  value = coalesce(
+    module.elasticache.configuration_endpoint_address,
+    module.elasticache.primary_endpoint_address
+  )
+}
+output "elasticache_configuration_endpoint" {
+  value = module.elasticache.configuration_endpoint_address
 }
 output "elasticache_auth_token_secret_arn" {
   value     = module.elasticache.auth_token_secret_arn

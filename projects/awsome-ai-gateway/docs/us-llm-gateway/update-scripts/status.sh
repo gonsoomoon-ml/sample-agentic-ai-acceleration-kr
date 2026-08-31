@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # status.sh — which updates this gateway has applied
 #
-# WHAT: probe the live system and report US-02 … US-06 as
+# WHAT: probe the live system and report US-02 … US-07 as
 #       applied, partially applied, or not applied. Prints the next command
 #       for each.
 # WHY:  what an update produces lives OUTSIDE git — a routing_profiles row, a
@@ -287,9 +287,48 @@ probe_us06() {
     fi
     raw "host=$GW_HOST cert=$GW_CERT_ARN listeners=$ports"
   else
-    row skip "US-06" "ALB HTTPS (커스텀 도메인) — 미적용 (선택 · 운영이면 권장)"
+    row skip "US-06" "ALB HTTPS (커스텀 도메인) — 미적용 (선택 · POC 는 도메인 있을 때)"
     detail "도메인이 있으면 ops/8-H-alb-https.md · 없으면 Cowork https 는 CloudFront(US-02 03)"
   fi
+}
+
+# ── US-07 — admin ALBs internal (optional, customer final posture) ──────────
+# The evidence is the live ALB behind each admin Ingress, not the values file:
+# `scheme: internal` in values (ops/8-I-admin-internal.md) only takes effect
+# once the ALB controller has rebuilt the load balancer, so an edited-but-not-
+# reconciled annotation would still leave an internet-facing ALB. Optional —
+# it needs a VPN path into the VPC — so "not applied" is informational (--),
+# never a failure. Production built with US-08 includes it from the start.
+probe_us07() {
+  local ing dns scheme n_int=0 n_unk=0 ev=""
+  for ing in "$ING_ADMIN_UI" "$ING_ADMIN_API"; do
+    dns=$(kubectl get ingress "$ing" -n "$NS" \
+          -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+    scheme=""
+    [ -n "$dns" ] && scheme=$(aws elbv2 describe-load-balancers \
+          --query "LoadBalancers[?DNSName=='$dns'].Scheme | [0]" --output text 2>/dev/null)
+    case "$scheme" in
+      internal)        n_int=$((n_int+1)) ;;
+      internet-facing) ;;
+      *)               n_unk=$((n_unk+1)); scheme="?" ;;
+    esac
+    ev+="$ing -> ${dns:-<no ALB>} ($scheme)"$'\n'
+  done
+  if [ "$n_unk" -gt 0 ]; then
+    row warn "US-07" "admin ALB internal — 판정 불가"
+    detail "admin Ingress 의 ALB 를 읽지 못했습니다 (kubectl get ingress -n $NS · aws elbv2 describe-load-balancers)"
+  elif [ "$n_int" -eq 2 ]; then
+    row ok "US-07" "admin ALB 2개 internal (고객사 최종형)"
+    detail "admin-ui·admin-api ALB scheme=internal — VPN/VPC 안에서만 접근"
+  elif [ "$n_int" -eq 1 ]; then
+    row warn "US-07" "admin ALB internal — 일부 적용 (1/2)"
+    detail "한쪽만 internal — values 의 adminUi·adminApi annotations 를 같이 (ops/8-I-admin-internal.md)"
+    TODO+=("(수동) docs/us-llm-gateway/ops/8-I-admin-internal.md — 나머지 admin Ingress 도 internal 로")
+  else
+    row skip "US-07" "admin ALB internal — 미적용 (선택 · S2S VPN 전제 · 운영(US-08)은 포함)"
+    detail "VPN 개통 후 ops/8-I-admin-internal.md · VPN 없이 internal 로 두면 VK 발급이 막힙니다"
+  fi
+  raw "${ev%$'\n'}"
 }
 
 # ── 08 — Notification worker email / SES IRSA ─────────────────────────────────
@@ -347,8 +386,8 @@ probe_08_ses() {
 echo
 printf '%s AWSome AI Gateway 해외 배포판 — 업데이트 적용 상태%s\n' "$c_bold" "$c_reset"
 printf '%s\n' "$(printf '─%.0s' $(seq 1 68))"
-printf '  계정 %s / %s · release %s · ns %s\n\n' \
-  "$AWS_ACCOUNT_ID" "$AWS_REGION" "$HELM_RELEASE" "$NS"
+printf '  계정 %s / %s · env %s · release %s · ns %s\n\n' \
+  "$AWS_ACCOUNT_ID" "$AWS_REGION" "$DEPLOY_ENV" "$HELM_RELEASE" "$NS"
 
 row ok "US-01" "최초 설치 (기준선)"
 detail "이 스크립트가 도는 것 자체가 설치가 끝났다는 뜻입니다"
@@ -357,6 +396,7 @@ probe_us03
 probe_us04
 probe_us05
 probe_us06
+probe_us07
 probe_08_ses
 
 echo

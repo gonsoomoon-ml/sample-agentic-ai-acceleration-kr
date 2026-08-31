@@ -18,6 +18,7 @@
 #   bash 10-switch-https.sh ... --drop-cloudfront   # also remove the CloudFront prefix-list
 #                                                   # from the gateway Ingress (CloudFront retired)
 #   bash 10-switch-https.sh --revert [--apply]      # back to 방식 A (http:80, no host)
+#   bash 10-switch-https.sh --fresh [...] [--apply]  # 첫 설치 전(Ingress 없음) — values 만 편집, 클러스터 조회 생략
 #
 # Hostnames: gateway-<env>.<domain> · admin-<env>.<domain> · admin-api-<env>.<domain>
 #            (env = DEPLOY_ENV from config.env; override with --gateway-host etc.)
@@ -39,6 +40,7 @@ while [ $# -gt 0 ]; do
     --admin-api-host)  API_H="$2"; shift 2 ;;
     --drop-cloudfront) DROP_CF=1; shift ;;
     --revert)          REVERT=1; shift ;;
+    --fresh)           FRESH_INSTALL=1; shift ;;   # 첫 설치 전(Ingress 없음): values 만 편집, discovery 생략
     --apply)           APPLY=1; shift ;;
     -h|--help)         sed -n '2,25p' "$0"; exit 0 ;;
     *) die "Unknown argument: $1" ;;

@@ -2,7 +2,7 @@
 
 > ← [operations.md](../operations.md) §8 목차로 · 이 절 = **§8-L**
 
-> 📒 **`US-08` · 등급 선택(운영이면 강력 권장)** — [README.md 「최신 업데이트」](../README.md#2-최신-업데이트).
+> 📒 **`US-10` · 등급 선택(운영이면 강력 권장)** — [README.md 「최신 업데이트」](../README.md#2-최신-업데이트).
 
 > **신규 설치도 대상이다.** `US-01` 기준선은 admin-ui 로그인이 `DEV_LOGIN_ENABLED=true` 인 dev-login(role 을 화면에서 직접 골라 서명 없는 쿠키를 발급하는 MVP 우회)뿐이다. 이 절을 적용해야 실제 Cognito 계정(이메일/비밀번호)으로 로그인하고, 로그인한 계정의 Cognito 그룹(`ClaudeAdmin`/`Claude_<team>`)에 따라 role·소속 팀이 자동으로 매겨진다.
 
