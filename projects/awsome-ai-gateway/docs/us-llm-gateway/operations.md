@@ -14,7 +14,7 @@
 ---
 
 | ID | 절 | 언제 | 문서 |
-|---|---|---|---|---|
+|---|---|---|---|
 | §8-U | 업데이트 (코드 변경 반영) | 코드·차트·terraform 이 바뀔 때마다 | [ops/8-U-update.md](ops/8-U-update.md) |
 | §8-M | 모델 추가와 교체 | 모델 추가·교체 | [ops/8-M-models.md](ops/8-M-models.md) |
 | §8-Y | 직원 온보딩 — Cognito 사용자 추가 | 직원 추가 시 | [ops/8-Y-onboarding.md](ops/8-Y-onboarding.md) |
