@@ -4,7 +4,7 @@
 export const CLIENT_LABELS: Record<string, string> = {
   'claude-code': 'Claude Code',
   cowork: 'Cowork',
-  codex: 'Codex',
+  // codex: 'Codex',
   other: '기타',
 };
 

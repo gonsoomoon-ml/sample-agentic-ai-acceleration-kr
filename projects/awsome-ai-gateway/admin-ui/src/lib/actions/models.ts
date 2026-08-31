@@ -32,7 +32,7 @@ export async function createModelAction(formData: unknown): Promise<ActionResult
     // provider → api_format 매핑(백엔드 model.api_format enum 과 정합).
     //   BEDROCK              → BEDROCK_NATIVE
     //   BEDROCK_MANTLE       → ANTHROPIC_MESSAGES (Cowork Mantle Opus, /anthropic/v1/messages)
-    //   BEDROCK_MANTLE_OPENAI→ OPENAI_RESPONSES   (Codex Mantle GPT-5.5, /openai/v1/responses)
+    //   BEDROCK_MANTLE_OPENAI→ OPENAI_RESPONSES   (Mantle GPT-5.5, /openai/v1/responses)
     //   OPENMODEL/그 외       → OPENAI_COMPATIBLE  (/v1/chat/completions)
     const apiFormatByProvider: Record<string, string> = {
       BEDROCK: 'BEDROCK_NATIVE',

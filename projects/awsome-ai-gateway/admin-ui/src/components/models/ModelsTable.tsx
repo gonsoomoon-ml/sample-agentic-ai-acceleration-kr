@@ -22,7 +22,7 @@ function ProviderBadge({ provider }: { provider: string }) {
     bedrock: 'sky',
     'on-prem': 'pink',
     bedrock_mantle: 'amber',       // Cowork → Mantle Opus (Tokyo)
-    bedrock_mantle_openai: 'teal', // Codex → Mantle GPT-5.5 (Ohio)
+    bedrock_mantle_openai: 'teal', // Mantle GPT-5.5 (Ohio)
   };
   return <Badge tone={toneMap[provider.toLowerCase()] ?? 'neutral'}>{provider}</Badge>;
 }

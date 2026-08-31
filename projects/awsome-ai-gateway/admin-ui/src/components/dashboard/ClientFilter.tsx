@@ -6,19 +6,19 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 interface ClientFilterProps {
-  current: string; // 'all' | 'claude-code' | 'cowork' | 'codex' | 'other'
+  current: string; // 'all' | 'claude-code' | 'cowork' | 'other'
 }
 
 const OPTIONS: Array<{ value: string; labelKey: string | null }> = [
   { value: 'all', labelKey: 'clientAll' },
   { value: 'claude-code', labelKey: null }, // keep as-is (brand name)
   { value: 'cowork', labelKey: null },
-  { value: 'codex', labelKey: null },
+  // { value: 'codex', labelKey: null },
   { value: 'other', labelKey: 'clientOther' },
 ];
 
 /**
- * 앱(client) 필터 — ?client=all|claude-code|cowork|codex|other URL 쿼리로 구동.
+ * 앱(client) 필터 — ?client=all|claude-code|cowork|other URL 쿼리로 구동.
  * period 등 기존 쿼리는 보존한 채 client 만 교체한다.
  */
 export function ClientFilter({ current }: ClientFilterProps) {
@@ -57,7 +57,7 @@ export function ClientFilter({ current }: ClientFilterProps) {
           aria-pressed={current === o.value}
           className={btn(current === o.value)}
         >
-          {o.labelKey ? t(o.labelKey) : o.value === 'claude-code' ? 'Claude Code' : o.value === 'cowork' ? 'Cowork' : 'Codex'}
+          {o.labelKey ? t(o.labelKey) : o.value === 'claude-code' ? 'Claude Code' : 'Cowork'}
         </button>
       ))}
     </div>

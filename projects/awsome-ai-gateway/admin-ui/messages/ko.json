@@ -406,10 +406,10 @@
     },
     "webSearch": {
       "title": "앱별 웹서치 허용",
-      "description": "앱별 서버사이드 웹서치 허용. ON 이면 해당 앱(Claude Code / Cowork / Codex) 사용자가 질문할 때 게이트웨이가 자동으로 웹 검색을 수행해 최신 정보로 답합니다(클라 설정 불필요).",
+      "description": "앱별 서버사이드 웹서치 허용. ON 이면 해당 앱(Claude Code / Cowork) 사용자가 질문할 때 게이트웨이가 자동으로 웹 검색을 수행해 최신 정보로 답합니다(클라 설정 불필요).",
       "on": "웹서치 ON",
       "off": "웹서치 OFF",
-      "empty": "라우팅 프로필이 없습니다. (마이그레이션 0021 로 claude-code/cowork/codex 시드 필요)",
+      "empty": "라우팅 프로필이 없습니다. (마이그레이션 0021 로 claude-code/cowork 시드 필요)",
       "saveFailed": "저장 실패: {error}"
     }
   },

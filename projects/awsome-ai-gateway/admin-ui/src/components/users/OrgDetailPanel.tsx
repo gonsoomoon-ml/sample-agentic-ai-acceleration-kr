@@ -92,13 +92,13 @@ export function OrgDetailPanel({ node }: OrgDetailPanelProps) {
 
 // 앱(client) 집합 — client_identifier 토큰과 동일. 새 앱 추가 시 여기만 늘리면
 // 토글·예산 입력·dirty 비교가 모두 자동으로 확장된다(이전 both/single 이분법 폐기).
-const ALL_CLIENTS = ['claude-code', 'cowork', 'codex'] as const;
+const ALL_CLIENTS = ['claude-code', 'cowork' /* , 'codex' */] as const;
 type ClientId = (typeof ALL_CLIENTS)[number];
 
 const CLIENT_OPTIONS: Array<{ value: ClientId; label: string }> = [
   { value: 'claude-code', label: 'Claude Code' },
   { value: 'cowork', label: 'Cowork' },
-  { value: 'codex', label: 'Codex' },
+  // { value: 'codex', label: 'Codex' },
 ];
 
 // API allowed_clients([] = 전체 허용) → UI 체크 상태. [] 면 전부 체크로 표시.
@@ -133,8 +133,8 @@ function UserPanel({ node }: { node: OrgTreeNode }) {
 
   const [loadedSelected, setLoadedSelected] = useState<ClientId[]>([...ALL_CLIENTS]);
   const [selected, setSelected] = useState<ClientId[]>([...ALL_CLIENTS]);
-  // 허용 클라이언트 정책이 정상 로드됐는지 추적(Codex R2 #6). 로드 실패 시 stale
-  // 전체허용([])으로 저장돼 codex 가 의도치 않게 허용되는 사고를 막기 위해 저장을 건너뛴다.
+  // 허용 클라이언트 정책이 정상 로드됐는지 추적. 로드 실패 시 stale
+  // 전체허용([])으로 저장돼 의도치 않게 허용되는 사고를 막기 위해 저장을 건너뛴다.
   const [clientsLoaded, setClientsLoaded] = useState(false);
 
   // per-app 예산 입력값 — client→문자열 map (빈 문자열 = 미설정). loaded* 는 prefill
@@ -152,7 +152,7 @@ function UserPanel({ node }: { node: OrgTreeNode }) {
   const [models, setModels] = useState<ModelListItem[]>([]);
   const [loadedModelAliases, setLoadedModelAliases] = useState<string[]>([]);
   const [selectedModelAliases, setSelectedModelAliases] = useState<string[]>([]);
-  // ★ 모델 정책이 정상 로드됐는지 추적(Codex MF1). 로드 실패 시 stale 빈 목록을
+  // ★ 모델 정책이 정상 로드됐는지 추적. 로드 실패 시 stale 빈 목록을
   //   저장하면 기존 override 가 의도치 않게 DELETE(팀 폴백)되어 제한이 풀린다 —
   //   국가핵심기술 제한이므로 로드 실패 시에는 모델 정책 저장 자체를 건너뛴다.
   const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -220,8 +220,8 @@ function UserPanel({ node }: { node: OrgTreeNode }) {
 
   const handleApply = () => {
     startSaveTransition(async () => {
-      // ★ Codex R2 #6: 허용 클라이언트 정책이 정상 로드되지 않았으면 stale 전체허용([])을
-      //   저장해 codex 가 의도치 않게 허용되는 사고를 막기 위해 저장 자체를 중단한다.
+      // ★ 허용 클라이언트 정책이 정상 로드되지 않았으면 stale 전체허용([])을
+      //   저장해 의도치 않게 허용되는 사고를 막기 위해 저장 자체를 중단한다.
       if (!clientsLoaded) {
         toast({
           type: 'error',
@@ -302,7 +302,7 @@ function UserPanel({ node }: { node: OrgTreeNode }) {
       }
 
       // 6) 사용자별 허용 모델 저장 — 빈 배열이면 action 이 DELETE(override 해제)로 처리.
-      // ★ Codex MF1: 모델 정책이 정상 로드되지 않았으면(modelsLoaded=false) stale 빈 목록을
+      // ★ 모델 정책이 정상 로드되지 않았으면(modelsLoaded=false) stale 빈 목록을
       //   저장해 기존 override 를 의도치 않게 해제하는 사고를 막기 위해 저장을 건너뛴다.
       if (modelsLoaded) {
         const mr = await setUserAllowedModelsAction(node.id, selectedModelAliases);
@@ -341,10 +341,10 @@ function UserPanel({ node }: { node: OrgTreeNode }) {
     (c) => (budgets[c] ?? '').trim() !== (loadedBudgets[c] ?? '').trim()
   );
   // 접근 권한은 canonical key 로 비교 ([]·전체선택 동일 취급, 순서 무관).
-  // clientsLoaded=false 면 stale 상태가 dirty 로 보이지 않게 막는다(Codex R2 #6).
+  // clientsLoaded=false 면 stale 상태가 dirty 로 보이지 않게 막는다.
   const accessDirty = clientsLoaded && clientsKey(selected) !== clientsKey(loadedSelected);
   // 모델 선택은 순서 무관 비교 (toggle 시 순서가 바뀌므로).
-  // modelsLoaded=false 면 비교 자체를 막아 stale 상태가 dirty 로 보이지 않게 한다(Codex MF1).
+  // modelsLoaded=false 면 비교 자체를 막아 stale 상태가 dirty 로 보이지 않게 한다.
   const modelsDirty =
     modelsLoaded &&
     (selectedModelAliases.length !== loadedModelAliases.length ||

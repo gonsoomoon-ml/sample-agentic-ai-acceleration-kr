@@ -205,10 +205,10 @@ export function CreateModelDialog({ isOpen, onClose, editModel }: CreateModelDia
               <option value="OPENMODEL">OPENMODEL</option>
               {/* Mantle providers need endpoint_url and api_format, so they are normally seeded
                   by a migration. The options are still exposed here so the provider dropdown
-                  matches the stored value when editing existing cowork-opus / codex-gpt models
+                  matches the stored value when editing existing cowork-opus models
                   (unit price, etc.). */}
               <option value="BEDROCK_MANTLE">BEDROCK_MANTLE (Cowork · Opus)</option>
-              <option value="BEDROCK_MANTLE_OPENAI">BEDROCK_MANTLE_OPENAI (Codex · GPT)</option>
+              {/* <option value="BEDROCK_MANTLE_OPENAI">BEDROCK_MANTLE_OPENAI (Codex · GPT)</option> */}
             </select>
             {fieldErrors.provider && <FormError error={fieldErrors.provider} />}
           </div>

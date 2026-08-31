@@ -30,7 +30,7 @@ export interface ModelShareResponse {
 }
 
 export interface ClientShareItem {
-  client: string;        // 'claude-code' | 'cowork' | 'codex' | 'other'
+  client: string;        // 'claude-code' | 'cowork' | 'other'
   cost_usd: number;
   share_pct: number;
   call_count: number;

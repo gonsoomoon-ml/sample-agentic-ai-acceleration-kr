@@ -406,10 +406,10 @@
     },
     "webSearch": {
       "title": "App-specific Web Search",
-      "description": "Allow server-side web search per app. When ON, the gateway automatically performs web searches for users of that app (Claude Code / Cowork / Codex) so they get up-to-date answers without client configuration.",
+      "description": "Allow server-side web search per app. When ON, the gateway automatically performs web searches for users of that app (Claude Code / Cowork) so they get up-to-date answers without client configuration.",
       "on": "Web Search ON",
       "off": "Web Search OFF",
-      "empty": "No routing profiles found. (Migration 0021 is required to seed claude-code/cowork/codex.)",
+      "empty": "No routing profiles found. (Migration 0021 is required to seed claude-code/cowork.)",
       "saveFailed": "Save failed: {error}"
     }
   },

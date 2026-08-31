@@ -40,12 +40,12 @@ const DEFAULT_THRESHOLDS = [80, 90, 100];
 
 // per-app(client) 예산 게이팅 — /users 화면(OrgDetailPanel UserPanel)과 동일 로직.
 // 빈 allowed_clients = 전체 허용. 새 앱은 ALL_CLIENTS 에만 추가하면 자동 확장.
-const ALL_CLIENTS = ['claude-code', 'cowork', 'codex'] as const;
+const ALL_CLIENTS = ['claude-code', 'cowork' /* , 'codex' */] as const;
 type ClientId = (typeof ALL_CLIENTS)[number];
 const CLIENT_LABELS: Record<ClientId, string> = {
   'claude-code': 'Claude Code',
   cowork: 'Cowork',
-  codex: 'Codex',
+  // codex: 'Codex',
 };
 
 // API allowed_clients([] = 전체 허용) → 허용 client 목록. [] 면 전부 허용으로 펼친다.
@@ -72,8 +72,8 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
   const [allowedClients, setAllowedClients] = useState<ClientId[]>([...ALL_CLIENTS]);
   const [budgets, setBudgets] = useState<Record<string, string>>(emptyBudgets);
   const [loadedBudgets, setLoadedBudgets] = useState<Record<string, string>>(emptyBudgets);
-  // 허용 클라이언트 정책 로드 성공 여부(Codex R2 #6). 실패 시 stale 전체허용 기준으로
-  // per-app 예산을 쓰면 codex 등에 잘못 기록될 수 있어 per-app 저장을 건너뛴다.
+  // 허용 클라이언트 정책 로드 성공 여부. 실패 시 stale 전체허용 기준으로
+  // per-app 예산을 잘못된 앱에 기록할 수 있어 per-app 저장을 건너뛴다.
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [isAppLoadPending, startAppLoadTransition] = useTransition();
 
@@ -185,8 +185,8 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
 
       // 총 예산 저장 성공. USER scope 에서는 이어서 앱별(per-app) 예산도 저장한다.
       // /users 화면과 동일한 actions·endpoints 를 사용하므로 두 화면이 자동으로 동기화된다.
-      // ★ Codex R2 #6: 허용 클라이언트가 정상 로드된 경우에만 per-app 예산을 건드린다.
-      //   stale 전체허용 기준으로 쓰면 codex 등 잘못된 앱에 예산이 기록될 수 있다.
+      // ★ 허용 클라이언트가 정상 로드된 경우에만 per-app 예산을 건드린다.
+      //   stale 전체허용 기준으로 쓰면 잘못된 앱에 예산이 기록될 수 있다.
       let appError: string | null = null;
       if (isUserScope && clientsLoaded) {
         // allowed_clients 로 게이팅: 사용자가 허용된 앱만 set/clear. 허용되지 않은 앱은 손대지 않는다.

@@ -8,7 +8,7 @@ import { setClientWebSearchAction, type RoutingProfileItem } from '@/lib/actions
 import { labelFor } from '@/lib/utils/modelLabel';
 
 // 앱(client) 순서 고정 — client_identifier 토큰과 동일.
-const CLIENT_ORDER = ['claude-code', 'cowork', 'codex'] as const;
+const CLIENT_ORDER = ['claude-code', 'cowork' /* , 'codex' */] as const;
 
 interface Props {
   initial: RoutingProfileItem[];
