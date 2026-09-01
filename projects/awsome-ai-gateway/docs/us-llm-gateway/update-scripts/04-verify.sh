@@ -161,8 +161,9 @@ hdr "D. Notification worker"
 note "Checks only: not every install uses real email (mock is the default)"
 
 SA_NAME="notification-worker"
+DEPLOY_NAME="${HELM_RELEASE}-notification-worker"
 IRSA=$(kubectl get sa "$SA_NAME" -n "$NS" -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' 2>/dev/null)
-SENDER=$(kubectl get deploy "$SA_NAME" -n "$NS" -o jsonpath='{.spec.template.spec.containers[?(@.name=="notification-worker")].env[?(@.name=="EMAIL_SENDER_TYPE")].value}' 2>/dev/null)
+SENDER=$(kubectl get deploy "$DEPLOY_NAME" -n "$NS" -o jsonpath='{.spec.template.spec.containers[?(@.name=="notification-worker")].env[?(@.name=="EMAIL_SENDER_TYPE")].value}' 2>/dev/null)
 
 if [ -n "$IRSA" ]; then
   ok "IRSA annotation present: ${IRSA##*/}"
