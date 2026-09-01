@@ -34,7 +34,7 @@ MODEL="${MODEL:-$MODEL_ALIAS}"   # --model overrides config.env
 hdr "A. Database state"
 
 DB_OUT=$(run_sql "$(cat <<'Q'
-\echo '--- routing_profiles: does the Cowork row mirror claude-code? ---'
+\echo '--- routing_profiles: Cowork + Claude Code should both be in-account invoke ---'
 SELECT client, backend, region,
        COALESCE(default_model,'(null)')    AS default_model,
        COALESCE(account_role_arn,'(null)') AS account_role_arn,
@@ -60,6 +60,14 @@ hdr "A. Findings"
 grep -qE "^ $COWORK_CLIENT .*$COWORK_BACKEND" <<<"$DB_OUT" \
   && ok "$COWORK_CLIENT routing corrected (backend=$COWORK_BACKEND)" \
   || bad "$COWORK_CLIENT routing still on mantle — run 01-fix-cowork-routing.sh --apply"
+
+grep -qE "^ $CLAUDE_CODE_CLIENT .*$CLAUDE_CODE_BACKEND" <<<"$DB_OUT" \
+  && ok "$CLAUDE_CODE_CLIENT routing uses backend=$CLAUDE_CODE_BACKEND" \
+  || bad "$CLAUDE_CODE_CLIENT routing not $CLAUDE_CODE_BACKEND — run 01a-fix-claude-code-routing.sh --apply"
+
+if grep -qE "^ $CLAUDE_CODE_CLIENT .*arn:aws:iam::[0-9]+:role" <<<"$DB_OUT"; then
+  bad "$CLAUDE_CODE_CLIENT routing still carries a cross-account ARN — run 01a-fix-claude-code-routing.sh --apply"
+fi
 
 grep -q "$MODEL" <<<"$DB_OUT" \
   && ok "$MODEL alias is ACTIVE" \

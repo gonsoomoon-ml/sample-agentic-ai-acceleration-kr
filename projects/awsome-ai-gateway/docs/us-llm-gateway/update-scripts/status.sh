@@ -71,24 +71,26 @@ TODO=()
 # as three sub-items rather than one boolean: CloudFront only matters to a
 # deployment that actually serves Cowork.
 probe_us02() {
-  local out routing alias_n cf n_bad=0
+  local out routing_cowork routing_claude alias_n cf n_bad=0
 
   # Markers rather than column parsing: the pod log carries other lines, and
   # unaligned output with an explicit separator survives any psql formatting.
   out=$(run_sql "\\pset tuples_only on
 \\pset format unaligned
-SELECT 'ROUTING=' || backend FROM model.routing_profiles WHERE client='$COWORK_CLIENT';
+SELECT 'COWORK_ROUTING=' || backend FROM model.routing_profiles WHERE client='$COWORK_CLIENT';
+SELECT 'CLAUDE_ROUTING=' || backend FROM model.routing_profiles WHERE client='$CLAUDE_CODE_CLIENT';
 SELECT 'ALIAS='   || count(*) FROM model.model_aliases
  WHERE alias='$MODEL_ALIAS' AND status='ACTIVE';" 2>&1)
 
-  routing=$(grep -o 'ROUTING=[a-z]*' <<<"$out" | head -1 | cut -d= -f2)
+  routing_cowork=$(grep -o 'COWORK_ROUTING=[a-z]*' <<<"$out" | head -1 | cut -d= -f2)
+  routing_claude=$(grep -o 'CLAUDE_ROUTING=[a-z]*' <<<"$out" | head -1 | cut -d= -f2)
   alias_n=$(grep -o 'ALIAS=[0-9]*'   <<<"$out" | head -1 | cut -d= -f2)
 
   # Neither marker means the query never ran (pod scheduling, credentials,
-  # network). Reporting that as "three things missing" would send the operator
+  # network). Reporting that as "four things missing" would send the operator
   # off to repair rows that are probably fine, so say what actually happened.
-  if [ -z "$routing" ] && [ -z "$alias_n" ]; then
-    row warn "US-02" "Cowork 연결 + Opus 5 등록 — 판정 불가"
+  if [ -z "$routing_cowork" ] && [ -z "$routing_claude" ] && [ -z "$alias_n" ]; then
+    row warn "US-02" "Cowork/Claude Code routing + Opus 5 등록 — 판정 불가"
     detail "DB 조회 실패 — 원인은 00-preflight-check.sh 가 자세히 보여줍니다"
     raw "$out"
     return
@@ -100,17 +102,31 @@ SELECT 'ALIAS='   || count(*) FROM model.model_aliases
         --query "DistributionList.Items[?Origins.Items[0].DomainName=='$GW_ALB_DNS'].Id" \
         --output text 2>/dev/null)
 
-  local l_routing l_alias l_cf
-  if [ -z "$routing" ]; then
-    # The query ran but returned no cowork row — Cowork cannot work either way,
-    # and 01 is what creates/corrects it.
-    l_routing="routing 행 없음"; n_bad=$((n_bad+1))
+  local l_cowork_routing l_claude_routing l_alias l_cf
+
+  # Cowork routing
+  if [ -z "$routing_cowork" ]; then
+    l_cowork_routing="cowork routing 행 없음"; n_bad=$((n_bad+1))
     TODO+=("bash 01-fix-cowork-routing.sh --apply")
-  elif [ "$routing" = "mantle" ]; then
-    l_routing="routing=mantle (미적용)"; n_bad=$((n_bad+1))
+  elif [ "$routing_cowork" = "mantle" ]; then
+    l_cowork_routing="cowork routing=mantle (미적용)"; n_bad=$((n_bad+1))
     TODO+=("bash 01-fix-cowork-routing.sh --apply")
   else
-    l_routing="routing=$routing"
+    l_cowork_routing="cowork routing=$routing_cowork"
+  fi
+
+  # Claude Code routing
+  if [ -z "$routing_claude" ]; then
+    l_claude_routing="claude-code routing 행 없음"; n_bad=$((n_bad+1))
+    TODO+=("bash 01a-fix-claude-code-routing.sh --apply")
+  elif [ "$routing_claude" = "mantle" ]; then
+    l_claude_routing="claude-code routing=mantle (미적용)"; n_bad=$((n_bad+1))
+    TODO+=("bash 01a-fix-claude-code-routing.sh --apply")
+  else
+    # backend=invoke is expected, but we also need to warn if it still carries a
+    # cross-account role ARN from the 0022 migration. probe_us02 only reads the
+    # backend here; 04-verify.sh prints the full profile for detail.
+    l_claude_routing="claude-code routing=$routing_claude"
   fi
 
   if [ "${alias_n:-0}" -ge 1 ]; then
@@ -130,12 +146,12 @@ SELECT 'ALIAS='   || count(*) FROM model.model_aliases
     TODO+=("bash 03-create-cloudfront.sh        # Cowork 를 사용하는 경우에만 필요")
   fi
 
-  if   [ "$n_bad" -eq 0 ]; then row ok   "US-02" "Cowork 연결 + Opus 5 등록"
-  elif [ "$n_bad" -eq 3 ]; then row bad  "US-02" "Cowork 연결 + Opus 5 등록 — 미적용"
-  else                          row warn "US-02" "Cowork 연결 + Opus 5 등록 — 일부 적용"
+  if   [ "$n_bad" -eq 0 ]; then row ok   "US-02" "Cowork/Claude Code routing + Opus 5 등록"
+  elif [ "$n_bad" -eq 4 ]; then row bad  "US-02" "Cowork/Claude Code routing + Opus 5 등록 — 미적용"
+  else                          row warn "US-02" "Cowork/Claude Code routing + Opus 5 등록 — 일부 적용"
   fi
-  detail "$l_routing · $l_alias · $l_cf"
-  [ "$n_bad" -gt 0 ] && detail "Cowork 를 안 쓰는 배포라면 건너뛰어도 됩니다"
+  detail "$l_cowork_routing · $l_claude_routing · $l_alias · $l_cf"
+  [ "$n_bad" -gt 0 ] && detail "Cowork/Claude Code 를 안 쓰는 배포라면 건너뛰어도 됩니다"
   raw "$out"
 }
 
