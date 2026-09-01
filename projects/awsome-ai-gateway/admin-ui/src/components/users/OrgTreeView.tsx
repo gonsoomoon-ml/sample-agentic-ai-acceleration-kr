@@ -15,13 +15,26 @@ interface OrgTreeViewProps {
 
 const EXPANDED_NODES_STORAGE_KEY = 'users:orgtree:expandedNodes';
 
+/** 초기 펼침: 조직(ORGANIZATION)과 그 직계 부서(DEPARTMENT)만 펼친다.
+ *  팀(TEAM)과 사용자(USER)는 사용자가 클릭해서 펼치도록 한다. */
+function getDefaultExpandedNodes(root: OrgTreeNode): Set<string> {
+  const expanded = new Set<string>();
+  expanded.add(root.id);
+  for (const child of root.children ?? []) {
+    if (child.type === 'DEPARTMENT') {
+      expanded.add(child.id);
+    }
+  }
+  return expanded;
+}
+
 export function OrgTreeView({ root }: OrgTreeViewProps) {
   const t = useTranslations('users');
   const [selectedNode, setSelectedNode] = useState<OrgTreeNode | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const hasMountedRef = useRef(false);
 
-  // sessionStorage에서 펼침 상태 복원 (mount 1회)
+  // sessionStorage에서 펼침 상태 복원. 저장된 값이 없으면 기본값(조직+직계부서) 사용.
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(EXPANDED_NODES_STORAGE_KEY);
@@ -29,12 +42,18 @@ export function OrgTreeView({ root }: OrgTreeViewProps) {
         const ids = JSON.parse(raw) as unknown;
         if (Array.isArray(ids) && ids.every((x) => typeof x === 'string')) {
           setExpandedNodes(new Set(ids as string[]));
+          return;
         }
       }
+      if (root) {
+        setExpandedNodes(getDefaultExpandedNodes(root));
+      }
     } catch {
-      // 손상/비활성 storage 무시
+      if (root) {
+        setExpandedNodes(getDefaultExpandedNodes(root));
+      }
     }
-  }, []);
+  }, [root]);
 
   // 펼침 상태 변경 시 persist (초기 빈 Set으로 덮어쓰지 않도록 첫 호출 skip)
   useEffect(() => {

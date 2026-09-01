@@ -69,7 +69,7 @@ export function BudgetSummaryTable({ items, isAdmin }: BudgetSummaryTableProps) 
   const [selectedItem, setSelectedItem] = useState<DialogTarget | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [showInactive, setShowInactive] = useState(false);
+  const [showInactive, setShowInactive] = useState(true);
 
   const alertLabels: Record<string, string> = {
     [AlertLevel.NORMAL]: t('alertLevels.NORMAL'),
