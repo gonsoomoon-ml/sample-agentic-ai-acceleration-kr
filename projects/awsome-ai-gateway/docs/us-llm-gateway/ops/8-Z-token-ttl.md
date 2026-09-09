@@ -40,6 +40,17 @@ cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
 
 📋 `values restored OK`. `git remote -v` 의 origin 은 `gonsoomoon-ml/…` 이어야 한다.
 
+`reset --hard` 는 EC2 가 lock 파일에 덧붙여 둔 provider 해시(`h1:`)도 되돌리므로, 이어서 `terraform init` 을 한 번 돌린다. 멱등이라 여러 번 돌려도 되고 인프라를 건드리지 않는다(provider 재검증 + lock 에 `h1:` 재기록).
+
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
+terraform init
+terraform output -json >/dev/null && echo OK
+cd ~/awsome-ai-gateway
+```
+
+📋 `Terraform has been successfully initialized!` · `OK`. 건너뛰면 4단계가 `terraform output 실패. terraform apply 를 먼저…` 로 멈춘다(apply 가 아니라 init 이 답).
+
 **1. 현재 상태**
 
 ```bash
@@ -73,7 +84,7 @@ grep -n vkTtlHours $V
 ./deployment/scripts/install-eks.sh dev
 ```
 
-📋 끝에 `deployed`. 실패하면 `--atomic` 이 REVISION N 으로 자동 복귀. "계속 진행 (y)/(N)" 이 뜨면 Secrets Manager 시크릿 문제 → N 으로 중단.
+📋 끝에 `deployed`. 실패하면 `--atomic` 이 REVISION N 으로 자동 복귀. "계속 진행 (y)/(N)" 이 뜨면 Secrets Manager 시크릿 문제 → N 으로 중단. `terraform output 실패 …` 로 멈추면 0단계의 `terraform init` 블록을 돌리고 다시 실행.
 
 **5. 검증**
 
