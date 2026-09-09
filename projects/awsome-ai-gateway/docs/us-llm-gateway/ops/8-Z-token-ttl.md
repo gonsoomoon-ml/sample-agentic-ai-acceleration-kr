@@ -49,6 +49,18 @@ admin-api env OIDC_VK_TTL_HOURS=24  ->  새 VK expires_at = now+24h (Redis TTL �
 
 ▶ **실행** · 배포 EC2 — 위에서부터 그대로. 📋 = 기대 출력.
 
+**0. 저장소 최신화 (필요 시)** — 이 변경은 values 한 줄이라 필수는 아니지만, 배포 EC2 의 문서·스크립트를 최신 fork 와 맞추려면 먼저 한다. 리베이스 브랜치라 `git pull` 이 아니라 **values 백업 → `reset --hard` → values 복원** 순서다(`values-*.yaml` 은 이 EC2 유일본). 출처: [README 「3. 적용하기」 ①](../README.md#3-적용하기-배포-ec2-에서) · 함정·상세: [8-U 1단계](8-U-update.md).
+
+```bash
+cd ~/awsome-ai-gateway && git remote -v
+V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cp $V ~/values.bak && git fetch origin
+git reset --hard origin/us/deploy-fixes && cp ~/values.bak $V
+cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
+```
+
+📋 `values restored OK`. `git remote -v` 의 origin 은 `gonsoomoon-ml/…` 이어야 한다.
+
 **1. 현재 상태**
 
 ```bash
@@ -101,6 +113,37 @@ jq '(.expires_at-now)/3600' ~/.gateway-cli/vk-cache.json
 ```
 
 📋 23.9 근처. 기존 사용자는 손 안 대도 된다 — helper 가 만료 5분 전 재발급하므로 1시간 안에 전원 24h.
+
+**Cowork 인 경우** — Claude Code 와 달리 앱이 helper 출력을 **30분**(`inferenceCredentialHelperTtlSec=1800`) 동안 자체 보관한다. 서버 배포 뒤 helper 캐시를 지우고 helper 를 직접 한 번 실행해 새 VK 를 받은 다음 **앱을 재시작**(Mac `Cmd+Q` · Windows 종료 후 실행)한다. 재시작하지 않아도 30분 안에 새 VK 로 넘어간다.
+
+| 설치 방식 | helper | VK 캐시 |
+|---|---|---|
+| Mac ([가이드](../cowork/cowork-client-install-macos.md)) | `/usr/local/bin/llm-gateway-helper.sh` | `~/.gateway-cli/vk-cache.json` (Claude Code 와 공유) |
+| Windows 설치기 ([가이드](../cowork/manual/cowork-client-install-windows-auto.md)) | `C:\GatewayCLI-Cowork\api-key-helper.exe` | `%LOCALAPPDATA%\gateway-cli-cowork\vk-cache.json` |
+
+Mac:
+
+```bash
+rm ~/.gateway-cli/vk-cache.json
+/usr/local/bin/llm-gateway-helper.sh
+jq '(.expires_at-now)/3600' ~/.gateway-cli/vk-cache.json
+```
+
+📋 `vk-…` 한 줄 · 23.9 근처.
+
+Windows (PowerShell):
+
+```powershell
+$p = "$env:LOCALAPPDATA\gateway-cli-cowork\vk-cache.json"
+Remove-Item $p
+& "C:\GatewayCLI-Cowork\api-key-helper.exe"
+$c = Get-Content $p | ConvertFrom-Json
+($c.expires_at - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/3600
+```
+
+📋 `vk-…` 한 줄 · 23.9 근처. 설치기판은 `gateway-cli-cowork verify` 의 `[✓] vk-cache valid` 로도 확인.
+
+📋 기존 Cowork 사용자도 손 안 대도 된다 — helper 5분 전 재발급 + 앱 보관 30분이라 최대 1.5시간 안에 전원 24h.
 
 **6. 롤백 (필요 시)**
 
