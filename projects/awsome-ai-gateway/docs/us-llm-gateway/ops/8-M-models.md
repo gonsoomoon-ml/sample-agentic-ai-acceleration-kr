@@ -79,19 +79,49 @@ bash 02-add-opus5-model.sh --apply
 bash 04-verify.sh
 ```
 
-**되돌리기** — `INACTIVE` 로 바꾼다. `model_aliases` 를 참조하는 FK 가 여럿이고 `ON DELETE` 가 없어 **삭제는 실패한다.**
+**모델 내리기** — 삭제는 안 된다. `model_aliases` 를 참조하는 FK 가 여럿이고 `ON DELETE` 가 없어
+실패한다. `INACTIVE` 로 바꾼다.
+
+별칭을 직접 지정하는 API 쪽이 안전하다(관리 화면에는 이 버튼이 없다). 토큰은 「등록 뒤」의
+**관리자 토큰** 문단에서 준비한다.
+
+▶ **실행** · 배포 EC2
+
+```bash
+curl -sX PATCH "$ADMIN_API/admin/models/claude-opus-4-8/status" \
+  -H "Authorization: Bearer $ADMIN_JWT" -H 'Content-Type: application/json' \
+  -d '{"status":"INACTIVE"}'
+```
+
+`99-rollback.sh --model` 도 같은 일을 하지만 대상이 **`config.env` 의 `MODEL_ALIAS`** 다. 방금
+등록한 모델을 취소할 때만 그대로 쓰고, 다른 모델을 내릴 때는 그 값을 바꿨다가 되돌려야 한다.
 
 ```bash
 bash 99-rollback.sh --model
 ```
 
-⚠️ `99-rollback.sh --model` 은 `config.env` 의 `MODEL_ALIAS` 를 대상으로 삼는다. 방금 새 모델을
-등록한 상태에서 **옛 모델을 내리려고 그대로 돌리면 방금 넣은 모델이 내려간다.** 내릴 별칭으로
-바꾼 뒤 실행한다.
+다시 살리려면 같은 API 에 `{"status":"ACTIVE"}` 를 보낸다. 어느 쪽이든 클라이언트에 반영되는
+것은 `model:list` 캐시 5분 뒤다.
 
 ---
 
 ## 등록 뒤
+
+**관리자 토큰** — 이 절의 `curl` 들이 쓴다. 주소는 배포마다 다르다.
+
+```bash
+ADMIN_API=https://admin-api-dev.awsome-ai-gw.click
+```
+
+- dev 로그인이 아직 켜져 있으면(`DEV_LOGIN_ENABLED=true`) 토큰을 직접 만든다. **dev 전용**이고,
+  US-12 로 끄고 나면 동작하지 않는다.
+
+  ```bash
+  P=$(printf '{"email":"admin@dev.local","role":"ADMIN"}' | base64 -w0 | tr '+/' '-_' | tr -d '=')
+  ADMIN_JWT="dev.$P.sig"
+  ```
+
+- 꺼져 있으면 관리 화면에 Cognito 로 로그인한 뒤 브라우저의 `admin_jwt` 쿠키 값을 쓴다.
 
 **클라이언트에서 보이게 하기** — 서버에 등록해도 여기까지 해야 사용자가 고를 수 있다.
 
