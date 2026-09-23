@@ -11,9 +11,9 @@
             │
             ▼
 ┌─ USER PC   (admin)   -- once per PC ───────────────────────────┐
-│ 4) run gateway-cli-setup-<ver>.exe       [installer file]      │
+│ 4) run gateway-cli-setup-<ver>.exe        [installer .exe]     │
 │    -> C:\Program Files\GatewayCLI + PATH                       │
-│ 5) run gateway-cli setup --model <alias>  [CLI command]        │
+│ 5) run gateway-cli setup --model <alias>  [CLI subcommand]     │
 │    -> C:\Program Files\ClaudeCode\managed-settings.json        │
 └───────────┬────────────────────────────────────────────────────┘
             │ 설정이 깔린 PC 를 사용자에게
@@ -33,6 +33,17 @@
 | 빌드(1~3) | 빌드 담당 관리자 | 배포 좌표가 바뀔 때마다 |
 | 배포·설정 적용(4~5) | 배포 관리자 | PC 당 1회 (관리자 권한) |
 | Claude Code 설치·로그인·사용(6~8) | 최종 사용자 | 사용자당 1회 |
+
+**이름이 비슷한 둘 — 헷갈리지 않게**
+
+| 이름 | 무엇 | 언제 |
+|---|---|---|
+| `gateway-cli-setup-<ver>.exe` | Inno Setup 이 만든 **설치 파일**. 프로그램을 PC 에 깝니다 | PC 당 1회 |
+| `gateway-cli setup` | 설치된 CLI 의 **하위 명령**. Claude Code 설정을 씁니다 | 설치 뒤, 모델·좌표가 바뀔 때마다 |
+
+파일 이름은 하이픈으로 이어지고(`gateway-cli-setup-…exe`), 명령은 띄어 씁니다
+(`gateway-cli` + `setup`). 설치 파일은 `setup` 명령을 자동 실행하지 않습니다 — 선택값을 받고
+되돌리기 단위를 나누기 위해 분리돼 있습니다.
 
 게이트웨이(서버)는 바뀌지 않습니다 — 직원 PC 쪽 절차만 바뀝니다. 지금까지 Windows 는 Python·git
 을 깔고 저장소를 받아 `pip install` 한 뒤 스크립트를 돌렸습니다(`US-01` §6-3). 이 문서는 그
@@ -101,7 +112,7 @@ powershell -ExecutionPolicy Bypass -File <설치기 경로>\packaging\build.ps1
 | 우리(테스트·소규모) | 파일을 그 PC 의 관리자에게 전달 → 관리자가 §3 진행 | 지금 이것으로 |
 | 고객(다수 PC) | 고객 IT 배포 도구로 무인 설치(관리자 컨텍스트) → 이어서 §3 | 고객 IT 결정 |
 
-**설치기 실행** — 먼저 받은 파일이 있는 폴더로 갑니다. 보통은 다운로드 폴더입니다.
+**설치 파일 실행** — 먼저 받은 파일이 있는 폴더로 갑니다. 보통은 다운로드 폴더입니다.
 
 ▶ **실행** · 사용자 PC — 🔴 관리자 PowerShell
 
