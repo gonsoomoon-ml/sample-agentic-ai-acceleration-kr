@@ -79,29 +79,32 @@ bash 02-add-opus5-model.sh --apply
 bash 04-verify.sh
 ```
 
-**모델 내리기** — 삭제는 안 된다. `model_aliases` 를 참조하는 FK 가 여럿이고 `ON DELETE` 가 없어
-실패한다. `INACTIVE` 로 바꾼다.
+**안 쓰는 모델 내리기** — 새 모델을 넣었으면 그 자리를 대신하는 옛 모델은 선택 목록에서 치운다.
+예를 들어 Opus 5.5 를 등록했으면 **Opus 4.8 은 더 둘 이유가 없다** — 같은 급인데 더 비싸고
+(입력 $5 vs $4 / 1M), 최근 사용도 없다. 내리기 전에 그 모델을 최근에 쓴 사람이 있는지 관리
+화면의 사용량에서 한 번 본다.
 
-별칭을 직접 지정하는 API 쪽이 안전하다(관리 화면에는 이 버튼이 없다). 토큰은 「등록 뒤」의
-**관리자 토큰** 문단에서 준비한다.
+방법은 `INACTIVE` 로 바꾸는 것 하나다. **삭제는 안 된다** — `model_aliases` 를 참조하는 FK 가
+여럿이고 `ON DELETE` 가 없어 실패한다. `INACTIVE` 로 바꿔도 과거 사용량·비용 기록은 그대로
+남는다. 토큰은 「등록 뒤」의 **관리자 토큰** 문단에서 준비한다.
 
-▶ **실행** · 배포 EC2
+▶ **실행** · 배포 EC2 — ① 지금 상태를 본다
+
+```bash
+curl -s "$ADMIN_API/admin/models" -H "Authorization: Bearer $ADMIN_JWT" | grep -o 'claude-opus-4-8[^}]*'
+```
+
+▶ **실행** · 배포 EC2 — ② 내린다
 
 ```bash
 curl -sX PATCH "$ADMIN_API/admin/models/claude-opus-4-8/status" \
   -H "Authorization: Bearer $ADMIN_JWT" -H 'Content-Type: application/json' \
-  -d '{"status":"INACTIVE"}'
+  -d '{"active":false}'
 ```
 
-`99-rollback.sh --model` 도 같은 일을 하지만 대상이 **`config.env` 의 `MODEL_ALIAS`** 다. 방금
-등록한 모델을 취소할 때만 그대로 쓰고, 다른 모델을 내릴 때는 그 값을 바꿨다가 되돌려야 한다.
-
-```bash
-bash 99-rollback.sh --model
-```
-
-다시 살리려면 같은 API 에 `{"status":"ACTIVE"}` 를 보낸다. 어느 쪽이든 클라이언트에 반영되는
-것은 `model:list` 캐시 5분 뒤다.
+응답의 `status` 가 `INACTIVE` 면 끝이다. 되살리려면 같은 호출에 `{"active":true}` 를 보낸다.
+클라이언트 목록에 반영되는 것은 `model:list` 캐시 5분 뒤다. Cowork 는 PC 마다 모델 목록에서도
+빼야 선택기에서 사라진다(「등록 뒤」의 클라이언트 문단과 같은 명령).
 
 ---
 
