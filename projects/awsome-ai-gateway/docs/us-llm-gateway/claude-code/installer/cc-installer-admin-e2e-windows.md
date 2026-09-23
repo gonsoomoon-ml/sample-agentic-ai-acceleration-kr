@@ -74,9 +74,19 @@ git clone --depth 1 -b feat/cc-installer-import https://github.com/gonsoomoon-ml
 cd sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
 ```
 
+소스에는 벤더 문서 4종이 함께 있습니다 —
+`entrypoints/gateway-cli-v2/docs/` 의 `CONFIG_ITEMS_AND_DEFAULTS.md`(설정 키 전체),
+`FILE_AND_ENV_OPERATIONS.md`(어느 파일·환경변수를 건드리는가), `PROXY_PRECEDENCE.md`,
+`OTEL_PRECEDENCE.md`. 키 하나의 우선순위가 궁금할 때 그쪽을 봅니다.
+
 직원 PC 로 배포되는 것은 산출물 exe 하나뿐입니다.
 
-사내 좌표는 `packaging\site-config.json` 에 넣습니다. 이 파일은 커밋하지 않습니다.
+사내 좌표는 `packaging\site-config.json` 에 넣습니다. 이 파일은 커밋하지 않습니다. 넣지 않고
+빌드하면 범용 빌드가 되어, 설치한 PC 에서 `setup` 이 `--gateway-url`·`--admin-api-url`·
+`--oidc-issuer-url`·`--oidc-client-id` 네 개를 직접 달라고 요구합니다.
+
+사내 프록시 검사 값 3개(`-ExpectedProxyUrl`·`-NoProxyValue`·`-ForbiddenNoProxyToken`)는 이
+JSON 으로 못 넣습니다. `build.ps1` 파라미터나 `GATEWAY_CLI_DEFAULT_*` 환경변수로만 들어갑니다.
 
 📋 **참고** — `packaging\site-config.json`
 
@@ -185,6 +195,15 @@ Claude Code 의 관리형 설정 파일을 써서 요청이 게이트웨이로 �
 전용입니다. 설치 파일에 사내 좌표가 들어 있으므로 주소를 손으로 넣을 일은 없고, 고르는 값은
 보통 `--model` 하나입니다. 로스터까지 고정하려면 `--available-models` 를 함께 줍니다.
 
+모델 목록까지 고정하려면 로스터를 함께 줍니다. 이 배포의 별칭은 아래 네 개입니다.
+
+▶ **실행 (선택)** · 사용자 PC — 🔴 관리자 PowerShell
+
+```powershell
+$m = "claude-sonnet-5,claude-opus-5,claude-opus-4-8,claude-haiku-4-5-20251001"
+gateway-cli setup --model claude-sonnet-5 --available-models $m
+```
+
 **다음** — 사용자가 본인 세션에서 Claude Code 설치 → `login` → 사용(§4).
 
 ## 4. 사용자 단계 (사용자당 1회)
@@ -236,6 +255,7 @@ claude
 | CLI 설치 | `gateway-cli` 가 `C:\Program Files\GatewayCLI\` 에서 실행됩니다 |
 | 관리형 설정 | `managed-settings.json` 의 `apiKeyHelper` 가 절대경로이고 `ANTHROPIC_BASE_URL` 이 배포 좌표와 일치합니다 |
 | 점검 명령 | `gateway-cli verify` 가 전 항목을 통과합니다 |
+| 버전 | `gateway-cli version` 이 설치 파일 계열(0.2.0 이상)을 가리킵니다 |
 
 ▶ **실행** · 🔴 관리자 PowerShell
 
@@ -246,8 +266,13 @@ type "C:\Program Files\ClaudeCode\managed-settings.json"
 ▶ **실행** · 🔵 일반 PowerShell
 
 ```powershell
+gateway-cli version
 gateway-cli verify
+gateway-cli env
 ```
+
+`verify` 는 설정과 연결을 점검하고, `env` 는 지금 실제로 적용된 값을 그대로 보여 줍니다 —
+설정 파일이 여러 tier 로 겹칠 때 어느 값이 이겼는지 이 출력으로 확인합니다.
 
 **사용자 단계 후 — 사용자 본인 세션**: `claude` 의 `/status` 에서 `Anthropic base URL` 이
 게이트웨이 주소로, `Auth token` 이 `apiKeyHelper` 로 보이고 첫 질의에 응답이 오면 종단
@@ -263,6 +288,11 @@ gateway-cli verify
 | 게이트웨이 설정만 끄기 | `gateway-cli disable` | 🔴 관리자 |
 | 설정·환경변수·토큰까지 원복 | `gateway-cli clear` (`--dry-run`·`--keep-tokens`·`--keep-os-env`) | 🔵 사용자 |
 | 프로그램 제거 | `gateway-cli uninstall --clear-first` 또는 *설정 → 앱* 에서 제거 | 🔴 관리자 |
+
+⚠️ 이 설치 파일에는 Codex 연동 서브커맨드(`gateway-cli codex …`)도 들어 있습니다. 이 문서의
+범위는 아니지만, 그 기능을 쓴 PC 는 프로그램을 제거하기 **전에** `gateway-cli codex revert` 를
+먼저 실행해야 합니다. 제거 프로그램은 Codex 소유 파일(`~/.codex/config.toml`)을 건드리지 않고,
+실행 파일이 사라지면 되돌릴 명령도 같이 사라집니다.
 
 `setup` 은 파일을 고치기 전에 `%LOCALAPPDATA%\gateway-cli\backups\` 에 타임스탬프 스냅샷을
 남깁니다. 되돌릴 때는 원하는 `.bak` 를 원래 위치로 복사합니다.
