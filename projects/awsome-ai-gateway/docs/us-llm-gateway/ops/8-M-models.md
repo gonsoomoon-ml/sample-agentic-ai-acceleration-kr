@@ -33,20 +33,25 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 
 이 파일은 `.gitignore` 대상이라 **저장소를 갱신해도 지워지지 않는다.** 한 번 만들어 두면 그대로 남는다.
 
-무엇을 채울지는 경우에 따라 다르다.
+**고칠 것은 보통 `AWS_ACCOUNT_ID` 한 줄뿐이다.** 모델 기본값이 Opus 5.5 로 맞춰져 있다 —
+별칭 `claude-opus-5-5` · 모델 ID `us.anthropic.claude-opus-5-5` · 단가 5종(`pricing.tsv` 와 같은 값).
 
-
-| 상황                        | `vi config.env` 로 고칠 값                                                                                   |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **update-scripts 를 처음 쓴다** | `AWS_ACCOUNT_ID` **한 줄**. 나머지는 설치 기본값이라 그대로 둔다                                            |
-| **Opus 5.5 를 등록한다**    | 별칭·모델 ID·단가 5종 **전부** — 값은 `config.env.example` 아래쪽 주석 블록에 있다(그대로 붙여넣는다). 같은 값이 `pricing.tsv` 에도 들어 있다 |
-| **Opus 5 를 등록한다**        | 보통 **필요 없다** — 마이그레이션 `0027` 이 별칭을 이미 넣는다. 프로파일 ID 가 `global.` 이라 `us.` 지리 프로파일로 바꿀 때만 이 절차를 쓴다(`02` 가 REMAP 으로 UPDATE 한다). 단가는 US-11 이 맞춘다 |
-| **다른 모델을 등록한다**       | `MODEL_ALIAS`(클라이언트가 요청할 이름) · `MODEL_PROVIDER_ID`(Bedrock 모델 ID, `INFERENCE_PROFILE` 전용이면 `us.` 접두사 필수 ↓ⓒ) · `MODEL_DISPLAY_NAME`·`MODEL_DESCRIPTION`(admin-ui 표시용) · 단가 5종 + `MODEL_PRICE_ASOF`(↓ⓑ) |
-
+▶ **실행** · 배포 EC2
 
 ```bash
 vi config.env
 ```
+
+```bash
+grep -E '^(AWS_ACCOUNT_ID|MODEL_)' config.env
+```
+
+예외는 둘뿐이다.
+
+- **다른 모델을 등록한다면** — `MODEL_ALIAS` · `MODEL_PROVIDER_ID`(INFERENCE_PROFILE 전용이면
+  `us.` 접두사 필수 ↓ⓒ) · `MODEL_DISPLAY_NAME`·`MODEL_DESCRIPTION` · 단가 5종 + `MODEL_PRICE_ASOF`(↓ⓑ)
+- **Opus 5 를 `us.` 프로파일로 바꾼다면** — 마이그레이션 `0027` 이 넣은 별칭은 `global.` 이다.
+  값은 `config.env.example` 주석 블록에 있고 `02` 가 REMAP 으로 UPDATE 한다.
 
 **2) 사전 점검** — 읽기 전용. `team_allowed_models has 0 rows` 를 확인한다(행이 있으면 아래 ⓐ).
 
