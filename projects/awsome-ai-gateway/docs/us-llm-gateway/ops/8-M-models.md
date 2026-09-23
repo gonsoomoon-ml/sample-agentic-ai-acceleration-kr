@@ -91,6 +91,30 @@ bash 99-rollback.sh --model
 
 ## 등록 뒤
 
+**클라이언트에서 보이게 하기** — 서버에 등록해도 여기까지 해야 사용자가 고를 수 있다.
+
+- **Claude Code** — 게이트웨이가 내려주는 모델 목록을 따른다. `model:list` 캐시 5분이 지나면
+  보인다. 설치할 때 `--available-models` 로 **모델 목록을 PC 에 고정**한 곳만 `gateway-cli setup`
+  을 다시 돌려야 한다.
+- **Cowork** — PC 마다 모델 목록(`inferenceModels`)을 다시 써야 한다. 레지스트리를 직접 고치지
+  말고 설치기 CLI 를 쓴다. `--model` 이 기본 모델이고, 그 값은 목록 안에 있어야 한다.
+
+▶ **실행** · 사용자 PC — 🔴 관리자 PowerShell (정책이 HKLM 이면 관리자 권한이 필요하다)
+
+```powershell
+$m = "claude-sonnet-5,claude-opus-5-5,claude-haiku-4-5-20251001"
+gateway-cli-cowork setup --model claude-sonnet-5 --available-models $m
+```
+
+▶ **실행** · 사용자 PC — 🔵 일반 PowerShell (앱을 띄워야 하므로 사용자 세션에서)
+
+```powershell
+gateway-cli-cowork relaunch
+```
+
+확인은 `gateway-cli-cowork verify` 와 Cowork 의 모델 선택기다. GPO 로 관리하는 조직은 같은
+`inferenceModels` 값(JSON 배열 문자열)을 정책으로 배포하고 앱을 재시작한다.
+
 **폴백 체인** — 장애(5xx)나 예산 초과 때 다른 모델로 내려가게 하려면 `budget.downgrade_policies`
 에 행을 넣는다. gateway-proxy 는 기동 시 **활성 행 전부**(스코프 무관)를 읽어 `from → to` 전역
 체인을 만든다. 같은 `from` 이 여러 개면 먼저 읽힌 행이 이긴다.
@@ -142,7 +166,4 @@ aws bedrock list-inference-profiles --region us-west-2 \
 
 **ⓔ IAM 은 Claude 계열이면 대개 손댈 필요가 없다.** `terraform.tfvars` 의 `bedrock_model_arns` 가 `inference-profile: us.anthropic.*` 와 `foundation-model: anthropic.claude-*` 를 와일드카드로 잡는다. **비-Claude 모델을 넣을 때만** ARN 을 추가하고 `terraform apply` 한다.
 
-**ⓕ 클라이언트에서 보이게 하기**
-
-- **Cowork** — `inferenceModels` 에 이름을 넣어야 모델 선택기에 나타난다([client-install.md](../client-install.md)). 넣지 않으면 등록해도 안 보인다.
-- **Claude Code** — 게이트웨이가 내려주는 모델 목록을 따른다. 5분 캐시가 만료된 뒤 반영된다.
+**ⓕ 클라이언트에서 보이게 하기** → 위 「등록 뒤」 절을 따른다.
