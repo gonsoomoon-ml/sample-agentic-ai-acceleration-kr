@@ -110,21 +110,51 @@ curl -sX PATCH "$ADMIN_API/admin/models/claude-opus-4-8/status" \
 
 ## 등록 뒤
 
-**관리자 토큰** — 이 절의 `curl` 들이 쓴다. 주소는 배포마다 다르다.
+**관리자 토큰** — 이 절의 `curl` 들이 쓴다. 주소는 배포마다 달라 문서에 적어 두지 않고 클러스터
+에서 뽑는다. 각 단계는 `echo` 로 값을 보고 넘어간다.
+
+▶ **실행** · 배포 EC2 — ① admin-api 주소를 Ingress 에서 읽는다
 
 ```bash
-ADMIN_API=https://admin-api-dev.awsome-ai-gw.click
+H=$(kubectl -n llm-gateway get ingress llm-gateway-admin-api -o jsonpath='{.spec.rules[0].host}'); echo "$H"
 ```
 
-- dev 로그인이 아직 켜져 있으면(`DEV_LOGIN_ENABLED=true`) 토큰을 직접 만든다. **dev 전용**이고,
-  US-12 로 끄고 나면 동작하지 않는다.
+뒤 명령들이 쓰는 `$ADMIN_API` 로 조립한다.
 
-  ```bash
-  P=$(printf '{"email":"admin@dev.local","role":"ADMIN"}' | base64 -w0 | tr '+/' '-_' | tr -d '=')
-  ADMIN_JWT="dev.$P.sig"
-  ```
+```bash
+ADMIN_API="https://$H"; echo "$ADMIN_API"
+```
 
-- 꺼져 있으면 관리 화면에 Cognito 로 로그인한 뒤 브라우저의 `admin_jwt` 쿠키 값을 쓴다.
+▶ **실행** · 배포 EC2 — ② 로그인 방식을 확인한다(개발용 로그인이 켜져 있나)
+
+```bash
+kubectl -n llm-gateway get deploy llm-gateway-admin-api -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="DEV_LOGIN_ENABLED")].value}{"\n"}'
+```
+
+▶ **실행** · 배포 EC2 — ③ `true` 면 토큰을 만든다 — 관리자 신원을 JSON 으로 적어 base64url 로
+인코딩한다. 서명이 없는 개발용 형식이라 dev 에서만 통하고, US-12 로 끄면 동작하지 않는다.
+
+```bash
+P=$(printf '{"email":"admin@dev.local","role":"ADMIN"}' | base64 -w0 | tr '+/' '-_' | tr -d '='); echo "$P"
+```
+
+`dev.<본문>.sig` 가 admin-api 가 받는 개발용 토큰 형식이다.
+
+```bash
+ADMIN_JWT="dev.$P.sig"; echo "${ADMIN_JWT:0:24}..."
+```
+
+②가 `false` 거나 비어 있으면 위 두 줄 대신, 관리 화면에 Cognito 로 로그인한 뒤 브라우저
+개발자도구에서 `admin_jwt` 쿠키 값을 복사해 `ADMIN_JWT` 에 넣는다.
+
+▶ **실행** · 배포 EC2 — ④ 토큰이 통하는지 본다 — 모델 목록을 한 번 불러 응답 코드만 확인한다
+
+```bash
+curl -s -o /dev/null -w 'HTTP %{http_code}\n' "$ADMIN_API/admin/models" -H "Authorization: Bearer $ADMIN_JWT"
+```
+
+`HTTP 200` 이면 이 절의 나머지 `curl` 이 전부 동작한다. `401` 이면 토큰 문제, 응답이 없으면
+admin-api 접근 문제(허용 목록·VPN)다.
 
 **클라이언트에서 보이게 하기** — 서버에 등록해도 여기까지 해야 사용자가 고를 수 있다.
 
