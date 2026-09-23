@@ -35,8 +35,9 @@
 | Claude Code 설치·로그인·사용(6~8) | 최종 사용자 | 사용자당 1회 |
 
 게이트웨이(서버)는 바뀌지 않습니다 — 직원 PC 쪽 절차만 바뀝니다. 지금까지 Windows 는 Python·git
-을 깔고 저장소를 받아 `pip install` 한 뒤 스크립트를 돌렸습니다. Cowork 설치기(US-09)와 같은
-방식을 Claude Code 에 적용한 것입니다.
+을 깔고 저장소를 받아 `pip install` 한 뒤 스크립트를 돌렸습니다(`US-01` §6-3). 이 문서는 그
+절차를 대체하는 방법이며, 둘 중 하나만 하면 됩니다. Cowork 설치기(US-09)와 같은 방식을
+Claude Code 에 적용한 것입니다.
 
 ## 0. 빌드 전 결정 3가지
 
@@ -51,8 +52,18 @@
 빌드 PC 요건 — Windows x64(PyInstaller 는 크로스 컴파일 불가) · Python 3.11 이상 ·
 Inno Setup 6(`ISCC.exe`) · 설치기 소스.
 
-설치기 소스는 벤더 배포본 0.2.0 입니다. 고객 식별 정보가 들어 있어 이 공개 저장소에는 넣지 않고
-빌드 PC 에만 둡니다. 배포되는 것은 산출물 exe 하나뿐입니다.
+설치기 소스는 벤더 배포본 0.2.0 이고, fork 의 **`feat/cc-installer-import`** 브랜치에 있습니다.
+주석과 테스트 입력의 고객 식별 문구 4곳만 placeholder 로 바꾼 사본이라 기능 코드는 벤더 원본과
+같습니다. 이 브랜치는 `us/deploy-fixes` 에 머지하지 않습니다.
+
+▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
+
+```powershell
+git clone --depth 1 -b feat/cc-installer-import https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr.git
+cd sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
+```
+
+직원 PC 로 배포되는 것은 산출물 exe 하나뿐입니다.
 
 사내 좌표는 `packaging\site-config.json` 에 넣습니다. 이 파일은 커밋하지 않습니다.
 
