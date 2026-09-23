@@ -86,15 +86,33 @@ bash 04-verify.sh
 
 방법은 `INACTIVE` 로 바꾸는 것 하나다. **삭제는 안 된다** — `model_aliases` 를 참조하는 FK 가
 여럿이고 `ON DELETE` 가 없어 실패한다. `INACTIVE` 로 바꿔도 과거 사용량·비용 기록은 그대로
-남는다. 토큰은 「등록 뒤」의 **관리자 토큰** 문단에서 준비한다.
+남는다.
 
-▶ **실행** · 배포 EC2 — ① 지금 상태를 본다
+▶ **실행** · 배포 EC2 — ① 주소와 토큰을 준비한다 — 주소는 Ingress 에서 읽고, 토큰은 개발용
+형식(`dev.<본문>.sig`)으로 만든다. 마지막 줄이 `HTTP 200` 이면 준비 끝이다.
+
+```bash
+H=$(kubectl -n llm-gateway get ingress llm-gateway-admin-api -o jsonpath='{.spec.rules[0].host}'); ADMIN_API="https://$H"; echo "$ADMIN_API"
+```
+
+```bash
+P=$(printf '{"email":"admin@dev.local","role":"ADMIN"}' | base64 -w0 | tr '+/' '-_' | tr -d '='); ADMIN_JWT="dev.$P.sig"
+```
+
+```bash
+curl -s -o /dev/null -w 'HTTP %{http_code}\n' "$ADMIN_API/admin/models" -H "Authorization: Bearer $ADMIN_JWT"
+```
+
+`401` 이 나오면 개발용 로그인이 꺼진 배포다(US-12 적용 후). 관리 화면에 Cognito 로 로그인한 뒤
+브라우저 개발자도구에서 `admin_jwt` 쿠키 값을 `ADMIN_JWT` 에 넣는다.
+
+▶ **실행** · 배포 EC2 — ② 지금 상태를 본다
 
 ```bash
 curl -s "$ADMIN_API/admin/models" -H "Authorization: Bearer $ADMIN_JWT" | grep -o 'claude-opus-4-8[^}]*'
 ```
 
-▶ **실행** · 배포 EC2 — ② 내린다
+▶ **실행** · 배포 EC2 — ③ 내린다
 
 ```bash
 curl -sX PATCH "$ADMIN_API/admin/models/claude-opus-4-8/status" \
