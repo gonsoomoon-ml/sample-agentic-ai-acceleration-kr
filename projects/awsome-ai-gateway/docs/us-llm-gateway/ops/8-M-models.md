@@ -39,8 +39,8 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 | 상황                        | `vi config.env` 로 고칠 값                                                                                   |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | **update-scripts 를 처음 쓴다** | `AWS_ACCOUNT_ID` **한 줄**. 나머지는 설치 기본값이라 그대로 둔다                                            |
-| **Opus 5 를 등록한다**        | **없음** — alias·모델 ID·단가 5종이 `config.env.example` 에 이미 들어 있다                                    |
-| **Opus 5.5 를 등록한다**    | 별칭·모델 ID·단가 5종 **전부** — `config.env.example` 의 값은 Opus 5 용이다(US-13 의 값은 [updates.md](../updates.md) 에 있다) |
+| **Opus 5.5 를 등록한다**    | 별칭·모델 ID·단가 5종 **전부** — 값은 `config.env.example` 아래쪽 주석 블록에 있다(그대로 붙여넣는다). 같은 값이 `pricing.tsv` 에도 들어 있다 |
+| **Opus 5 를 등록한다**        | 보통 **필요 없다** — 마이그레이션 `0027` 이 별칭을 이미 넣는다. 프로파일 ID 가 `global.` 이라 `us.` 지리 프로파일로 바꿀 때만 이 절차를 쓴다(`02` 가 REMAP 으로 UPDATE 한다). 단가는 US-11 이 맞춘다 |
 | **다른 모델을 등록한다**       | `MODEL_ALIAS`(클라이언트가 요청할 이름) · `MODEL_PROVIDER_ID`(Bedrock 모델 ID, `INFERENCE_PROFILE` 전용이면 `us.` 접두사 필수 ↓ⓒ) · `MODEL_DISPLAY_NAME`·`MODEL_DESCRIPTION`(admin-ui 표시용) · 단가 5종 + `MODEL_PRICE_ASOF`(↓ⓑ) |
 
 

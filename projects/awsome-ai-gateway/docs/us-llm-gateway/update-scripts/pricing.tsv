@@ -6,11 +6,15 @@
 # Haiku 4.5 $1.10/$5.50 per 1M. Global profiles (global.*) are 1/1.1 of these.
 # Sonnet 5: the launch-time "$3/$15 from Sept 1" increase was cancelled (Anthropic
 # pricing docs: "$2/$10 … is now the standard price"). Standard tier = $2.20/$11.00.
+# Opus 5.5: list price $4/$20 per 1M (Anthropic pricing docs) x1.1 for the geographic
+# endpoint = $4.40/$22.00. Cache read is the exception — Opus 5.5 charges 0.05x the
+# input price (every other model here is 0.1x), so it is $0.22/1M, not $0.44.
 # Both 08 (apply) and 14 (check) treat this table as the truth. If AWS bills you
 # differently (other region/tier, global.* models), edit the rows here first.
 #
 # Columns (tab-separated): alias  input  output  cache_5m  cache_1h  cache_read  asof  source
 alias	input	output	cache_5m	cache_1h	cache_read	asof	source
+claude-opus-5-5	0.004400	0.022000	0.005500	0.008800	0.000220	2026-09-23	anthropic-list-price+geo-1.1 (verify in cost explorer)
 claude-opus-5	0.005500	0.027500	0.006875	0.011000	0.000550	2026-09-15	aws-price-list-usw2-standard+cost-explorer
 claude-sonnet-5	0.002200	0.011000	0.002750	0.004400	0.000220	2026-09-15	aws-price-list-usw2-standard+cost-explorer
 claude-haiku-4-5-20251001	0.001100	0.005500	0.001375	0.002200	0.000110	2026-09-15	aws-price-list-usw2-standard+cost-explorer
