@@ -128,7 +128,7 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && bash 00-preflight-c
 ```
 
 `alias` 값을 `coworkModels` 에 쉼표로 나열한다. 출력은 알파벳순이지만 **첫 항목이 앱의
-기본 모델**이 되므로 원하는 순서로 적는다 (예: `claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001`).
+기본 모델**이 되므로 원하는 순서로 적는다 (예: `claude-sonnet-5,claude-opus-5-5,claude-haiku-4-5-20251001`). 새로 빌드할 때는 Opus 5.5 를 넣는다 — 서버에 등록돼 있어도 이 목록에 없으면 앱에서 안 보인다.
 admin-ui **모델** 화면의 `ACTIVE` 목록과 같은 값이다.
 
 ### (2) 파일 작성 — 빌드 PC 에서

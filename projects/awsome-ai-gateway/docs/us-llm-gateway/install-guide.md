@@ -755,7 +755,7 @@ UPDATE model.model_aliases
  WHERE alias IN ('claude-opus-4-8','claude-haiku-4-5-20251001');
 --  ⚠️ Haiku 는 runtime ID 라 날짜접미사+버전(-20251001-v1:0) 이 붙는다. Opus/Sonnet 은 안 붙음.
 
--- (B) Sonnet 5 · Opus 5 alias — 기본 시드가 global.* 로 넣어 두므로 US Geo 로 덮어쓴다(없으면 신규 등록) — native + US Geo
+-- (B) Sonnet 5 · Opus 5 · Opus 5.5 alias — 기본 시드가 global.* 로 넣어 두므로 US Geo 로 덮어쓴다(없으면 신규 등록) — native + US Geo
 INSERT INTO model.model_aliases
     (alias, provider, provider_model_id, endpoint_url, api_format, status, description, created_by)
 VALUES
@@ -774,6 +774,16 @@ VALUES
 ON CONFLICT (alias) DO UPDATE
    SET provider='BEDROCK', provider_model_id='us.anthropic.claude-opus-5',
        endpoint_url=NULL, api_format='BEDROCK_NATIVE', status='ACTIVE';
+INSERT INTO model.model_aliases
+    (alias, provider, provider_model_id, endpoint_url, api_format, status, description, created_by)
+VALUES
+    ('claude-opus-5-5', 'BEDROCK', 'us.anthropic.claude-opus-5-5', NULL, 'BEDROCK_NATIVE', 'ACTIVE',
+     'Claude Code -> bedrock-runtime US Geo Opus 5.5 (source us-west-2)',
+     '00000000-0000-4000-a000-000000000010')
+ON CONFLICT (alias) DO UPDATE
+   SET provider='BEDROCK', provider_model_id='us.anthropic.claude-opus-5-5',
+       endpoint_url=NULL, api_format='BEDROCK_NATIVE', status='ACTIVE';
+--  ⚠️ Opus 5.5 는 기본 시드에 없다(마이그레이션이 넣지 않는다) — 이 INSERT 가 등록이다.
 
 -- (C) 단가 — Opus 5 · Sonnet 5 · Haiku 4.5, Standard 티어 (2026-09-15 확인). Opus 4.8 은 시드 단가 유지(pricing.tsv 에 없음).
 --     us. 지리 프로파일은 AWS 가 Global 보다 10% 높게
