@@ -79,100 +79,9 @@ bash 02-add-opus5-model.sh --apply
 bash 04-verify.sh
 ```
 
-**안 쓰는 모델 내리기** — 새 모델을 넣었으면 그 자리를 대신하는 옛 모델은 선택 목록에서 치운다.
-예를 들어 Opus 5.5 를 등록했으면 **Opus 4.8 은 더 둘 이유가 없다** — 같은 급인데 더 비싸고
-(입력 $5 vs $4 / 1M), 최근 사용도 없다. 내리기 전에 그 모델을 최근에 쓴 사람이 있는지 관리
-화면의 사용량에서 한 번 본다.
-
-방법은 `INACTIVE` 로 바꾸는 것 하나다. **삭제는 안 된다** — `model_aliases` 를 참조하는 FK 가
-여럿이고 `ON DELETE` 가 없어 실패한다. `INACTIVE` 로 바꿔도 과거 사용량·비용 기록은 그대로
-남는다.
-
-▶ **실행** · 배포 EC2 — ① 주소와 토큰을 준비한다 — 주소는 Ingress 에서 읽고, 토큰은 개발용
-형식(`dev.<본문>.sig`)으로 만든다. 마지막 줄이 `HTTP 200` 이면 준비 끝이다.
-
-```bash
-H=$(kubectl -n llm-gateway get ingress llm-gateway-admin-api -o jsonpath='{.spec.rules[0].host}'); ADMIN_API="https://$H"; echo "$ADMIN_API"
-```
-
-```bash
-P=$(printf '{"email":"admin@dev.local","role":"ADMIN"}' | base64 -w0 | tr '+/' '-_' | tr -d '='); ADMIN_JWT="dev.$P.sig"
-```
-
-```bash
-curl -s -o /dev/null -w 'HTTP %{http_code}\n' "$ADMIN_API/admin/models" -H "Authorization: Bearer $ADMIN_JWT"
-```
-
-`401` 이 나오면 개발용 로그인이 꺼진 배포다(US-12 적용 후). 관리 화면에 Cognito 로 로그인한 뒤
-브라우저 개발자도구에서 `admin_jwt` 쿠키 값을 `ADMIN_JWT` 에 넣는다.
-
-▶ **실행** · 배포 EC2 — ② 지금 상태를 본다
-
-```bash
-curl -s "$ADMIN_API/admin/models" -H "Authorization: Bearer $ADMIN_JWT" | grep -o 'claude-opus-4-8[^}]*'
-```
-
-▶ **실행** · 배포 EC2 — ③ 내린다
-
-```bash
-curl -sX PATCH "$ADMIN_API/admin/models/claude-opus-4-8/status" \
-  -H "Authorization: Bearer $ADMIN_JWT" -H 'Content-Type: application/json' \
-  -d '{"active":false}'
-```
-
-응답의 `status` 가 `INACTIVE` 면 끝이다. 되살리려면 같은 호출에 `{"active":true}` 를 보낸다.
-클라이언트 목록에 반영되는 것은 `model:list` 캐시 5분 뒤다. Cowork 는 PC 마다 모델 목록에서도
-빼야 선택기에서 사라진다(「등록 뒤」의 클라이언트 문단과 같은 명령).
-
 ---
 
 ## 등록 뒤
-
-**관리자 토큰** — 이 절의 `curl` 들이 쓴다. 주소는 배포마다 달라 문서에 적어 두지 않고 클러스터
-에서 뽑는다. 각 단계는 `echo` 로 값을 보고 넘어간다.
-
-▶ **실행** · 배포 EC2 — ① admin-api 주소를 Ingress 에서 읽는다
-
-```bash
-H=$(kubectl -n llm-gateway get ingress llm-gateway-admin-api -o jsonpath='{.spec.rules[0].host}'); echo "$H"
-```
-
-뒤 명령들이 쓰는 `$ADMIN_API` 로 조립한다.
-
-```bash
-ADMIN_API="https://$H"; echo "$ADMIN_API"
-```
-
-▶ **실행** · 배포 EC2 — ② 로그인 방식을 확인한다(개발용 로그인이 켜져 있나)
-
-```bash
-kubectl -n llm-gateway get deploy llm-gateway-admin-api -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="DEV_LOGIN_ENABLED")].value}{"\n"}'
-```
-
-▶ **실행** · 배포 EC2 — ③ `true` 면 토큰을 만든다 — 관리자 신원을 JSON 으로 적어 base64url 로
-인코딩한다. 서명이 없는 개발용 형식이라 dev 에서만 통하고, US-12 로 끄면 동작하지 않는다.
-
-```bash
-P=$(printf '{"email":"admin@dev.local","role":"ADMIN"}' | base64 -w0 | tr '+/' '-_' | tr -d '='); echo "$P"
-```
-
-`dev.<본문>.sig` 가 admin-api 가 받는 개발용 토큰 형식이다.
-
-```bash
-ADMIN_JWT="dev.$P.sig"; echo "${ADMIN_JWT:0:24}..."
-```
-
-②가 `false` 거나 비어 있으면 위 두 줄 대신, 관리 화면에 Cognito 로 로그인한 뒤 브라우저
-개발자도구에서 `admin_jwt` 쿠키 값을 복사해 `ADMIN_JWT` 에 넣는다.
-
-▶ **실행** · 배포 EC2 — ④ 토큰이 통하는지 본다 — 모델 목록을 한 번 불러 응답 코드만 확인한다
-
-```bash
-curl -s -o /dev/null -w 'HTTP %{http_code}\n' "$ADMIN_API/admin/models" -H "Authorization: Bearer $ADMIN_JWT"
-```
-
-`HTTP 200` 이면 이 절의 나머지 `curl` 이 전부 동작한다. `401` 이면 토큰 문제, 응답이 없으면
-admin-api 접근 문제(허용 목록·VPN)다.
 
 **클라이언트에서 보이게 하기** — 서버에 등록해도 여기까지 해야 사용자가 고를 수 있다.
 
@@ -198,30 +107,39 @@ gateway-cli-cowork relaunch
 확인은 `gateway-cli-cowork verify` 와 Cowork 의 모델 선택기다. GPO 로 관리하는 조직은 같은
 `inferenceModels` 값(JSON 배열 문자열)을 정책으로 배포하고 앱을 재시작한다.
 
-**폴백 체인** — 장애(5xx)나 예산 초과 때 다른 모델로 내려가게 하려면 `budget.downgrade_policies`
-에 행을 넣는다. gateway-proxy 는 기동 시 **활성 행 전부**(스코프 무관)를 읽어 `from → to` 전역
-체인을 만든다. 같은 `from` 이 여러 개면 먼저 읽힌 행이 이긴다.
+**폴백 체인** — 장애(5xx)나 예산 초과 때 다른 모델로 내려가게 하려면 관리 화면 **예산 →
+자동 다운그레이드** 에서 규칙을 추가한다(예: `claude-opus-5-5` → `claude-sonnet-5`). 기존 규칙은
+지우지 않는다 — 화면이 목록 전체를 저장한다.
 
-▶ **배포 EC2** — 관리자 JWT 로 호출한다. `<scope>` 는 `TEAM`·`USER` 등, `<scope_id>` 는 그 UUID.
+규칙을 저장한 뒤 **gateway-proxy 를 재시작**해야 적재된다. 기동 시 활성 행 전부(스코프 무관)를
+읽어 전역 `from → to` 체인을 만들기 때문이다. 확인은 기동 로그의 `fallback_chain_loaded entries=N`.
 
-```bash
-curl -sX PUT "$ADMIN_API/admin/budgets/<scope>/<scope_id>/downgrade" \
-  -H "Authorization: Bearer $ADMIN_JWT" -H 'Content-Type: application/json' \
-  -d '{"enabled":true,"rules":[{"from_model_alias":"claude-opus-5-5","to_model_alias":"claude-sonnet-5","threshold_pct":100}]}'
-```
-
-행을 넣은 뒤 **gateway-proxy 를 재시작**해야 체인이 적재된다. 확인은 기동 로그의
-`fallback_chain_loaded entries=N` 한 줄이다.
+▶ **실행** · 배포 EC2
 
 ```bash
 kubectl -n llm-gateway rollout restart deploy/llm-gateway-gateway-proxy
 ```
 
-⚠️ web search 가 켜진 앱(`routing_profiles.web_search_enabled`)은 이 fork 에서 폴백 루프를
-우회하는 결함이 있어, 그 조건에서는 체인이 걸리지 않는다. 검증은 웹서치를 끈 앱으로 한다.
+⚠️ web search 가 켜진 앱(`routing_profiles.web_search_enabled`)은 이 fork 에서 폴백 루프를 우회하는
+결함이 있어, 그 조건에서는 체인이 걸리지 않는다. 검증은 웹서치를 끈 앱으로 한다.
 
 **단가 검산** — 하루 뒤 Cost Explorer 에서 실제 청구 단가와 대조한다. 어긋나면 `config.env` 를
 고쳐 `08-set-model-pricing.sh` 로 갱신한다.
+
+---
+
+## 안 쓰는 모델 내리기
+
+새 모델을 넣었으면 그 자리를 대신하는 옛 모델은 선택 목록에서 치운다. 예를 들어 Opus 5.5 를
+등록했으면 **Opus 4.8 은 더 둘 이유가 없다** — 같은 급인데 더 비싸고(입력 $5 vs $4 / 1M), 최근
+사용도 없다. 내리기 전에 그 모델을 최근에 쓴 사람이 있는지 관리 화면의 사용량에서 한 번 본다.
+
+관리 화면 **모델** 에서 그 별칭의 **비활성화** 를 누른다. **삭제는 안 된다** — `model_aliases` 를
+참조하는 FK 가 여럿이고 `ON DELETE` 가 없어 실패한다. 비활성으로 바꿔도 과거 사용량·비용
+기록은 그대로 남고, 되돌리려면 같은 자리에서 **활성화** 를 누른다.
+
+반영은 `model:list` 캐시 5분 뒤다. Cowork 는 PC 마다 모델 목록에서도 빼야 선택기에서 사라진다
+(위 「등록 뒤」의 클라이언트 문단과 같은 명령).
 
 ---
 
