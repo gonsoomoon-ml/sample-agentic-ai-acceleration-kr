@@ -70,6 +70,7 @@ class TestBuildGatewaySettingsOIDC:
         assert s["env"] == {
             "ANTHROPIC_BASE_URL": "https://gw.example.com",
             "GATEWAY_CLI_GATEWAY_URL": "https://admin.example.com",
+            "ENABLE_TOOL_SEARCH": "true",
         }
         assert s["apiKeyHelper"] == "/usr/local/bin/api-key-helper"
 
@@ -184,3 +185,17 @@ class TestResolveOIDC:
         with patch("gateway_cli_oidc.oidc_client.load_tokens", return_value=_Tok()):
             _issuer, client, src = _resolve_oidc(None, None)
         assert (client, src) == ("cached-client", "login cache")
+
+
+class TestToolSearch:
+    """ENABLE_TOOL_SEARCH — 게이트웨이(비-1P)에서 Claude Code 가 스스로 끄는 것을 되켠다."""
+
+    def test_default_is_true(self) -> None:
+        assert _base()["env"]["ENABLE_TOOL_SEARCH"] == "true"
+
+    def test_auto_is_written_through(self) -> None:
+        assert _base(tool_search="auto")["env"]["ENABLE_TOOL_SEARCH"] == "auto"
+
+    def test_false_is_written_explicitly(self) -> None:
+        """끄는 선택도 기록한다 — 값이 없으면 Claude Code 기본(비-1P=OFF)과 구분이 안 된다."""
+        assert _base(tool_search="false")["env"]["ENABLE_TOOL_SEARCH"] == "false"

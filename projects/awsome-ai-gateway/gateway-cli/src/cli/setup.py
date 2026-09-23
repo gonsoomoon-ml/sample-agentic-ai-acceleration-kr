@@ -97,6 +97,16 @@ def _resolve_oidc(
     default=None,
     help="OIDC audience. Only needed if admin-api has OIDC_AUDIENCE verification enabled.",
 )
+@click.option(
+    "--tool-search",
+    "tool_search",
+    type=click.Choice(["true", "auto", "false"]),
+    default="true",
+    show_default=True,
+    help="ENABLE_TOOL_SEARCH in managed settings. Claude Code disables Tool Search on a "
+    "non-first-party ANTHROPIC_BASE_URL, so MCP tool definitions ride on every request; "
+    "'true' restores deferred loading, 'auto' defers only past the size threshold.",
+)
 @click.pass_context
 def setup(
     ctx: click.Context,
@@ -107,6 +117,7 @@ def setup(
     issuer_url: Optional[str],
     client_id: Optional[str],
     audience: Optional[str],
+    tool_search: str,
 ) -> None:
     """Enable LLM Gateway for Claude Code.
 
@@ -177,6 +188,7 @@ def setup(
             oidc_issuer_url=oidc_issuer or None,
             oidc_client_id=oidc_client or None,
             oidc_audience=audience or os.environ.get("OIDC_AUDIENCE") or None,
+            tool_search=tool_search,
         )
         click.secho(f"  Gateway enabled: {path}", fg="green")
         click.echo("")

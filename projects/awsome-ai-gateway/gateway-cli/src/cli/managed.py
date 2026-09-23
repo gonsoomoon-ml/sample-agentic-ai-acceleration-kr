@@ -86,6 +86,7 @@ def build_gateway_settings(
     oidc_issuer_url: str | None = None,
     oidc_client_id: str | None = None,
     oidc_audience: str | None = None,
+    tool_search: str = "true",
 ) -> dict:
     """Assemble the managed-settings document (pure — no filesystem, no sudo).
 
@@ -109,6 +110,11 @@ def build_gateway_settings(
     env: dict[str, str] = {
         "ANTHROPIC_BASE_URL": gateway_url,
         "GATEWAY_CLI_GATEWAY_URL": admin_api_url,
+        # Claude Code turns Tool Search OFF by itself when ANTHROPIC_BASE_URL is not a
+        # first-party host — which is always our case. Left off, every request carries
+        # all MCP tool definitions (measured 100 tools: ~180K input vs ~30K with it on).
+        # Values: "true" (always defer), "auto" (defer past the size threshold), "false".
+        "ENABLE_TOOL_SEARCH": tool_search,
     }
 
     # OIDC (IDP) — api-key-helper 가 OIDC 모드로 동작하기 위한 필수 2개.
@@ -151,6 +157,7 @@ def write_gateway_settings(
     oidc_issuer_url: str | None = None,
     oidc_client_id: str | None = None,
     oidc_audience: str | None = None,
+    tool_search: str = "true",
 ) -> Path:
     """Write gateway managed settings file.
 
@@ -166,6 +173,7 @@ def write_gateway_settings(
         oidc_issuer_url=oidc_issuer_url,
         oidc_client_id=oidc_client_id,
         oidc_audience=oidc_audience,
+        tool_search=tool_search,
     )
 
     content = json.dumps(settings, indent=2, ensure_ascii=False) + "\n"
