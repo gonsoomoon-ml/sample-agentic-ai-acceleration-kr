@@ -36,14 +36,16 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 **고칠 것은 보통 `AWS_ACCOUNT_ID` 한 줄뿐이다.** 모델 기본값이 Opus 5.5 로 맞춰져 있다 —
 별칭 `claude-opus-5-5` · 모델 ID `us.anthropic.claude-opus-5-5` · 단가 5종(`pricing.tsv` 와 같은 값).
 
-▶ **실행** · 배포 EC2
-
-```bash
-vi config.env
-```
+▶ **실행** · 배포 EC2 — 먼저 지금 값을 본다
 
 ```bash
 grep -E '^(AWS_ACCOUNT_ID|MODEL_)' config.env
+```
+
+`AWS_ACCOUNT_ID` 가 비어 있거나 모델 값이 위와 다를 때만 고친다. 맞으면 그대로 다음 단계로 간다.
+
+```bash
+vi config.env
 ```
 
 예외는 둘뿐이다.
