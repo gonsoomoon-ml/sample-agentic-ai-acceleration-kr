@@ -81,6 +81,11 @@ gateway-cli onboard
 | 2 | Write Claude Code user settings | `gateway-cli setup --model <alias>` |
 | 3 | End-to-end health check | `gateway-cli verify` |
 
+Those three steps onboard **Claude Code**. To onboard **Codex CLI** instead (or as well),
+add `gateway-cli codex setup` after step 1 — see [Codex CLI](#codex-cli) below. Step 1's
+login is shared: both clients use the same Virtual Key, hence the same identity and the
+same budget.
+
 ### Step 1 — login
 
 Opens the browser to the Cognito Hosted UI (PKCE Authorization Code flow) and, on
@@ -137,6 +142,46 @@ Also prints where each gateway-related env var (`OIDC_ISSUER_URL`, `OIDC_CLIENT_
 ```bash
 gateway-cli verify
 ```
+
+## Codex CLI
+
+Codex speaks the OpenAI **Responses** wire (`POST /v1/responses`) and reads its key from
+an environment variable **once at startup** — it has no `apiKeyHelper`-style refresh hook.
+So it gets its own verbs rather than being folded into `setup`:
+
+| Command | What it does |
+|---|---|
+| `gateway-cli codex setup` | Splices `model`, `model_provider` and `[model_providers.gateway]` into Codex's own `config.toml` (`$CODEX_HOME`, else `~/.codex`). Backs the file up first, preserves everything else in it, and is idempotent. |
+| `gateway-cli codex run [-- …]` | Reuses the cached VK (re-mints it when under 30 min remain), puts it in the env var the config file declares, and `exec`s `codex`. Arguments after the command pass straight through. |
+| `gateway-cli codex status` | Read-only: config path, model, `base_url`, `wire_api`, `env_key`, VK TTL. Mints nothing, so it is safe offline. |
+| `gateway-cli codex revert` | Removes only our block from `config.toml`. `clear` deliberately does not touch that file — it belongs to Codex, not to this installer. |
+
+```bash
+gateway-cli login                       # shared with Claude Code; skip if already done
+gateway-cli codex setup                 # --model codex-gpt-5.6-{sol|terra|luna}
+gateway-cli codex run -- exec "fix the failing test"
+```
+
+Two things worth knowing before you use it:
+
+- **`model` must be a gateway alias** (`codex-gpt-5.6-sol` / `-terra` / `-luna`), and a
+  wrong value fails in one of two quiet ways, never loudly. A name the alias table does
+  not have (a public `gpt-5.x`) does not resolve, so the gateway logs
+  `responses_requested_model_unresolved_using_default` and serves the codex routing
+  profile's default — it looks like it worked, billed as Terra. An upstream
+  `openai.*` id *does* resolve, via the `provider_model_id` fallback, to whichever alias
+  carries it (`limit(1)` when several do) — so it bills that model's rate, and Sol's is
+  about 2x Terra's: 2.0x on input, cache-write and cache-read, 1.67x (5/3) on output —
+  the same ratio whether you read the price table per 1K or per 1M tokens. `codex setup`
+  therefore rejects the `openai.*` / `anthropic.*` shapes outright, and warns (does not
+  block) on an alias this build does not recognise, since an operator can add a new alias
+  as a DB row without rebuilding this CLI.
+- **The VK cannot rotate mid-session.** `codex run` guarantees each launch *starts* with a
+  key that has plenty of life left; a session outliving the key (default TTL 1h) ends in a
+  401 and must be restarted.
+
+The end-user guide, including the manual `config.toml` route for hosts without this build,
+is `docs/guides/codex.md` in the repository root.
 
 ## Teardown — clear / uninstall
 

@@ -8,9 +8,15 @@ behaviours differ from a native Linux environment:
 
   - The browser must be opened on the Windows side via wslview / cmd.exe.
   - The user's Downloads folder lives at a Windows path (/mnt/c/Users/…).
-  - Onboarding cards may have been placed in the Windows Downloads folder.
 
 All WSL-specific logic is isolated here so callers stay platform-agnostic.
+
+NOTE: ``wsl_windows_home`` (and its helper ``_wslpath``) currently has no caller.
+It existed to find an admin-supplied onboarding card in the Windows Downloads
+folder; that discovery step was removed in 98fc740 when endpoints and OIDC ids
+moved into the build (cli/site_defaults.py). Kept because it is the only
+verified-on-rootfs-import resolution of the Windows home from WSL, and any future
+WSL-side file lookup needs exactly this.
 """
 
 from __future__ import annotations
@@ -44,7 +50,7 @@ def _wslpath(win_path: str) -> Path | None:
     try:
         result = subprocess.run(
             ["wslpath", "-u", win_path.strip()],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, text=True, timeout=3, errors="replace",
         )
         if result.returncode == 0:
             p = Path(result.stdout.strip())
@@ -78,7 +84,7 @@ def wsl_windows_home() -> Path | None:
     try:
         result = subprocess.run(
             ["cmd.exe", "/c", "echo", "%USERPROFILE%"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, text=True, timeout=3, errors="replace",
         )
         win_path = result.stdout.strip()
         if result.returncode == 0 and win_path and "%" not in win_path:

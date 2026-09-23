@@ -30,7 +30,26 @@ from platformdirs import user_data_dir as _user_data_dir
 
 log = structlog.get_logger(component="oidc-client")
 
-_APP_DATA_DIR = Path(_user_data_dir("gateway-cli", appauthor=False))
+
+def _data_dir() -> Path:
+    """gateway-cli's data dir — must agree with :func:`cli.paths.data_dir`.
+
+    ``gateway-cli login`` WRITES the two cache files through ``cli.paths``, and this
+    module READS them back — for both ``api-key-helper`` (Claude Code's key source) and
+    ``gateway-cli codex run``. So the two path resolutions have to answer identically.
+    They did not: ``cli.paths`` honours ``GATEWAY_CLI_DATA_DIR`` (and the manifest
+    advertises the caches as ``<data_dir>/…``), while this side went straight to the
+    platform default. A user who relocated the data dir therefore got a ``login`` that
+    reported success and a helper that could never find the token it had just written —
+    a permanent "run gateway-cli login" loop, in Claude Code as well as Codex.
+
+    Resolved per call, not at import: this process may set the variable itself (tests,
+    and ``setup`` persisting env) after this module is imported.
+    """
+    override = os.environ.get("GATEWAY_CLI_DATA_DIR")
+    if override:
+        return Path(override)
+    return Path(_user_data_dir("gateway-cli", appauthor=False))
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +274,7 @@ def _token_cache_path() -> Path:
     override = os.environ.get("GATEWAY_CLI_OIDC_CACHE")
     if override:
         return Path(override)
-    return _APP_DATA_DIR / "oidc-tokens.json"
+    return _data_dir() / "oidc-tokens.json"
 
 
 def load_tokens() -> Tokens | None:
@@ -324,7 +343,7 @@ def _vk_cache_path() -> Path:
     override = os.environ.get("GATEWAY_CLI_VK_CACHE")
     if override:
         return Path(override)
-    return _APP_DATA_DIR / "vk-cache.json"
+    return _data_dir() / "vk-cache.json"
 
 
 def load_vk_cache() -> CachedVK | None:

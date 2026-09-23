@@ -25,7 +25,7 @@ Python 등 사전 요구사항은 없습니다.
 ```powershell
 # 대화형: .exe 더블클릭
 # 무인 설치 (SCCM / Intune / GPO):
-gateway-cli-setup-0.1.0.exe /VERYSILENT /NORESTART
+gateway-cli-setup-0.2.0.exe /VERYSILENT /NORESTART
 ```
 
 - 관리자는 `C:\Program Files\GatewayCLI`에, 비관리자는 사용자별 설치를 선택할 수 있습니다.
@@ -54,10 +54,31 @@ gateway-cli verify        # 상태 / 설정 점검
 gateway-cli env           # 실제 적용된 환경 표시
 ```
 
+### 2b. Codex CLI 설정 (선택)
+
+로그인·가상키·개인 예산을 Claude Code와 **그대로 공유**합니다. `codex`가 PATH에 있어야 하고
+(`npm install -g @openai/codex`), **`gateway-cli` 0.2.0 이상**이어야 합니다
+(`gateway-cli version` 으로 확인). `codex` 서브커맨드는 `gateway-cli-v2`(이 설치 파일 계열)에만
+들어 있고, 구 uv/소스 설치용 `gateway-cli` 패키지에는 버전과 무관하게 없습니다.
+
+```powershell
+gateway-cli codex setup                     # ~/.codex/config.toml 작성 (먼저 백업)
+gateway-cli codex run                       # VK 주입 후 codex 실행
+gateway-cli codex status                    # 읽기 전용: 모델 / provider / VK 남은 시간
+gateway-cli codex revert                    # config.toml에서 우리 블록만 제거
+```
+
+모델 alias, 예산 동작, Windows 특이사항까지 전체 안내는
+[docs/guides/codex.md](../../docs/guides/codex.md)에 있습니다.
+
 ### 3. 제거 / 업그레이드
 
 - **제거:** *앱 및 기능* → "LLM Gateway CLI". PATH도 자동 정리됩니다. Claude Code 설정까지
   먼저 되돌리려면 `gateway-cli clear`(비관리자, 사용자 범위) 후 `gateway-cli disable`(관리자).
+  Codex를 썼다면 **제거 전에 `gateway-cli codex revert`** 를 먼저 실행하세요 — 제거 프로그램은
+  `~/.codex/config.toml`을 건드리지 않고(Codex 소유 파일), 실행 파일이 사라지면 되돌릴 명령도
+  같이 사라집니다. 그때까지 `clear`는 Codex 백업 스냅샷을 지우지 않고 남겨두며,
+  `gateway-cli verify --post-teardown`이 `codex-config` 항목으로 알려줍니다.
 - **업그레이드:** 새 `setup.exe`를 덮어 실행 — `AppId`가 동일해 같은 제품으로 취급됩니다.
 
 ---

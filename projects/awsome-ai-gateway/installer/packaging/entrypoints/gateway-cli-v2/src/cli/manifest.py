@@ -835,13 +835,13 @@ LOCATIONS: tuple[Location, ...] = (
         "oidc_cache",
         {"all": "<data_dir>/oidc-tokens.json"},
         env_override="GATEWAY_CLI_OIDC_CACHE",
-        doc="OIDC access/refresh/id tokens (chmod 0600; disposable).",
+        doc="OIDC access/refresh/id tokens (chmod 0600 on POSIX; disposable).",
     ),
     Location(
         "vk_cache",
         {"all": "<data_dir>/vk-cache.json"},
         env_override="GATEWAY_CLI_VK_CACHE",
-        doc="Virtual Key cache from /v1/auth/exchange (chmod 0600; disposable).",
+        doc="Virtual Key cache from /v1/auth/exchange (chmod 0600 on POSIX; disposable).",
     ),
 )
 

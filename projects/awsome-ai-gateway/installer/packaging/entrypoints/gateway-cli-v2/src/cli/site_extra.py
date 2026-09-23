@@ -63,7 +63,9 @@ def _load_raw() -> dict:
             if not path.is_file():
                 continue
             text = path.read_text(encoding="utf-8")
-        except OSError as e:
+        except (OSError, UnicodeDecodeError) as e:
+            # UnicodeDecodeError (not an OSError) fires on a non-UTF-8 site-extra
+            # file; skip it rather than crashing the settings write.
             log.warning("site_extra_unreadable", path=str(path), error=str(e))
             continue
         if not text.strip():

@@ -25,6 +25,7 @@ def check_sso_session() -> bool:
             capture_output=True,
             text=True,
             timeout=15,
+            errors="replace",
         )
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -43,6 +44,7 @@ def get_sso_session_expiry() -> datetime | None:
             capture_output=True,
             text=True,
             timeout=10,
+            errors="replace",
         )
         if result.returncode != 0:
             return None

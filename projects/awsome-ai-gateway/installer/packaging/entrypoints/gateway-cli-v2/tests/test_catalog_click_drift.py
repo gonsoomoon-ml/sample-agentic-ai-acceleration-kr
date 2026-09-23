@@ -48,6 +48,8 @@ _OPERATIONAL_OPTIONS: frozenset[str] = frozenset(
         "--no-persist-env",   # setup: negative half of --persist-env
         "--persist",          # env: same OS-env persist toggle
         "--explain",          # config: print resolved fields + sources (view mode)
+        "--base-url",         # codex: Codex provider base_url — Codex's file, not ours
+        "--config-path",      # codex: which config.toml to write (target selection)
         "--keep-tokens",      # clear: skip the token/VK step (scope toggle)
         "--keep-os-env",      # clear: skip the OS-env revert step (scope toggle)
         "--dry-run",          # clear/uninstall: print the plan, change nothing
@@ -65,9 +67,15 @@ def _click_option_flags() -> set[str]:
     (the option declaration, e.g. ``"--persist-env/--no-persist-env"`` or
     ``"--verbose"``) so help-text mentions of a flag are not miscounted as
     definitions.
+
+    Every module that declares options must be listed here, or the reverse check
+    silently stops covering it — which is exactly the hole this guard exists to
+    close. ``codex.py`` sets values in *Codex's* config.toml rather than Claude
+    Code's settings, so all of its options are operational; its ``--model`` shares
+    a name with the catalogued Claude Code flag by coincidence, not by meaning.
     """
     flags: set[str] = set()
-    for name in ("main.py", "env.py"):
+    for name in ("main.py", "env.py", "codex.py"):
         text = (_CLI_DIR / name).read_text(encoding="utf-8")
         for decl in re.findall(r'@click\.option\(\s*"([^"]+)"', text):
             flags.update(re.findall(r"--[a-zA-Z0-9][a-zA-Z0-9-]*", decl))

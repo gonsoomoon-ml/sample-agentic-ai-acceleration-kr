@@ -4,7 +4,10 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "gateway-cli-v2"
-version = "0.1.0"
+# 0.2.0 adds the `codex` subcommand group. build.ps1 reads THIS value and threads it to
+# both PyInstaller (GATEWAY_CLI_VERSION) and Inno (/DAppVersion), so the installer file
+# name, `gateway-cli version`, and Apps & Features all agree from this one line.
+version = "0.2.0"
 description = "LLM Gateway CLI v2 - Onboarding-card-driven setup wizard for end users"
 authors = []
 readme = "README.md"

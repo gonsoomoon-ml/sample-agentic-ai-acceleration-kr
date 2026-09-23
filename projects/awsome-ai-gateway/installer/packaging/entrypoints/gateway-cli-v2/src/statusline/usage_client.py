@@ -36,6 +36,32 @@ class UsageInfo:
     period: str = ""
     fetched_at: datetime | None = None
     models: list[ModelUsage] = field(default_factory=list)
+    # Operator's alert/THROTTLE ladder (budget.alert_thresholds). None = the gateway
+    # did not tell us — an older build, or its budget-config cache was empty. Never
+    # an empty list: see _parse_thresholds().
+    alert_thresholds: list[int] | None = None
+
+
+def _parse_thresholds(raw: object) -> list[int] | None:
+    """budget.alert_thresholds → sorted ladder, or None when unknown.
+
+    A missing key and ``null`` both mean "unknown" and must stay distinguishable
+    from a real ladder, because determine_severity() falls back to 80/100 only for
+    "unknown". An empty list collapses to None for the same reason: `[]` would pass
+    a "field present" check while making every band comparison vacuous, silencing
+    the indicator. Junk elements are dropped instead of raising — a malformed
+    threshold must not turn a working statusline into the offline line.
+    """
+    if not isinstance(raw, list):
+        return None
+    keep = sorted(
+        {
+            int(t)
+            for t in raw
+            if isinstance(t, (int, float)) and not isinstance(t, bool) and 1 <= t <= 100
+        }
+    )
+    return keep or None
 
 
 def fetch_usage(config: StatuslineConfig, virtual_key: str) -> UsageInfo:
@@ -58,6 +84,7 @@ def fetch_usage(config: StatuslineConfig, virtual_key: str) -> UsageInfo:
     limit = Decimal(str(budget.get("max_usd", "0")))
     remaining = Decimal(str(budget.get("remaining_usd", "0")))
     percentage = float(budget.get("pct", 0.0))
+    alert_thresholds = _parse_thresholds(budget.get("alert_thresholds"))
 
     models = []
     for m in data.get("model_breakdown", []):
@@ -79,4 +106,5 @@ def fetch_usage(config: StatuslineConfig, virtual_key: str) -> UsageInfo:
         period=data.get("period", ""),
         fetched_at=datetime.now(timezone.utc),
         models=models,
+        alert_thresholds=alert_thresholds,
     )

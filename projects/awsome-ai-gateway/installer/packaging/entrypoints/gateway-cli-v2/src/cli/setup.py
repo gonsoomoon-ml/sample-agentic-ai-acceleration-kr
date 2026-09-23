@@ -302,7 +302,9 @@ def _read_settings(path: Path) -> dict:
         if not text.strip():
             return {}
         return json.loads(text)
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+        # UnicodeDecodeError (a ValueError, not an OSError) fires when an existing
+        # settings.json under the Windows/WSL user profile is not UTF-8 encoded.
         raise SetupStepError(f"cannot read settings file '{path}': {e}") from e
 
 

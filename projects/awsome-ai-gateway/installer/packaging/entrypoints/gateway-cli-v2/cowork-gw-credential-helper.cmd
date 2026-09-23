@@ -9,7 +9,7 @@ REM 사전 조건:
 REM   1. gateway-cli login 완료 (~/.gateway-cli/oidc-tokens.json 존재)
 REM   2. 아래 환경변수가 설정되어 있어야 합니다 (설치 시 자동 설정됨)
 REM
-REM 설치: api-key-helper.exe 는 PATH 또는 실제 설치 디렉터리에서 자동 탐색됩니다.
+REM 설치: 이 파일을 C:\gateway-cli\ 에 복사
 REM ============================================================================
 
 REM --- 환경변수 설정 (고객 환경에 맞게 수정) ---
@@ -17,29 +17,25 @@ if not defined OIDC_ISSUER_URL set "OIDC_ISSUER_URL=OIDC_ISSUER_URL_HERE"
 if not defined OIDC_CLIENT_ID set "OIDC_CLIENT_ID=OIDC_CLIENT_ID_HERE"
 if not defined ADMIN_API_URL set "ADMIN_API_URL=http://ADMIN_API_ALB_HERE"
 
-REM --- api-key-helper 경로 찾기 (PATH 우선, 그다음 실제 설치 디렉터리) ---
+REM --- api-key-helper 경로 찾기 ---
 set "HELPER="
 
-REM 1) PATH 에서 찾기 (installer 가 설치 시 PATH 에 등록함)
+REM gateway-cli 설치 경로 (Windows installer 기본)
+if exist "C:\gateway-cli\api-key-helper.exe" (
+    set "HELPER=C:\gateway-cli\api-key-helper.exe"
+    goto :found
+)
+
+REM Program Files 경로
+if exist "%ProgramFiles%\gateway-cli\api-key-helper.exe" (
+    set "HELPER=%ProgramFiles%\gateway-cli\api-key-helper.exe"
+    goto :found
+)
+
+REM PATH에서 찾기
 where api-key-helper.exe >nul 2>&1
 if %errorlevel% equ 0 (
     for /f "delims=" %%i in ('where api-key-helper.exe') do set "HELPER=%%i"
-    goto :found
-)
-
-REM 2) Claude Code 설치 경로 (installer.iss: {autopf}\GatewayCLI)
-if exist "%ProgramFiles%\GatewayCLI\api-key-helper.exe" (
-    set "HELPER=%ProgramFiles%\GatewayCLI\api-key-helper.exe"
-    goto :found
-)
-if exist "%ProgramFiles(x86)%\GatewayCLI\api-key-helper.exe" (
-    set "HELPER=%ProgramFiles(x86)%\GatewayCLI\api-key-helper.exe"
-    goto :found
-)
-
-REM 3) Cowork 설치 경로 (installer.iss: C:\Gateway-CLI-Cowork)
-if exist "C:\Gateway-CLI-Cowork\api-key-helper.exe" (
-    set "HELPER=C:\Gateway-CLI-Cowork\api-key-helper.exe"
     goto :found
 )
 
@@ -59,5 +55,5 @@ for /f "tokens=*" %%v in ('"%HELPER%" --auth-mode oidc 2^>nul ^| findstr /b "vk-
 
 REM VK 획득 실패
 echo credential-helper: Virtual Key 획득 실패 1>&2
-echo 'gateway-cli login' 실행 후 다시 시도하세요. 신규 발급은 게이트웨이 네트워크 접근이 필요합니다. 1>&2
+echo 'gateway-cli login' 실행 후 다시 시도하세요. 신규 발급은 사내 VPN이 필요합니다. 1>&2
 exit /b 1

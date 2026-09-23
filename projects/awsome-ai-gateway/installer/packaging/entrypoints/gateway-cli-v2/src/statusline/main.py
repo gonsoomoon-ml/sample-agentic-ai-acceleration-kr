@@ -87,6 +87,7 @@ def _acquire_virtual_key() -> str | None:
             capture_output=True,
             text=True,
             timeout=15,
+            errors="replace",
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
@@ -123,7 +124,12 @@ def _run_polling(config, virtual_key: str, log) -> int:
             state.is_online = True
             state.last_success_at = datetime.now(timezone.utc)
             state.error_count = 0
-            state.severity = determine_severity(usage.percentage, True)
+            # Pass the operator's ladder through — determine_severity falls back to
+            # 80/100 only when it is None, so a hardcoded call here would re-create
+            # the "green until 80% while the gateway throttles at 70%" mismatch.
+            state.severity = determine_severity(
+                usage.percentage, True, usage.alert_thresholds
+            )
         except Exception as exc:
             state.error_count += 1
             state.is_online = False
@@ -198,7 +204,7 @@ def main(interval: int | None, gateway_url: str | None, verbose: bool) -> None:
         usage = fetch_usage(config, virtual_key)
         state.current = usage
         state.is_online = True
-        state.severity = determine_severity(usage.percentage, True)
+        state.severity = determine_severity(usage.percentage, True, usage.alert_thresholds)
     except Exception:
         state.is_online = False
         state.severity = Severity.OFFLINE

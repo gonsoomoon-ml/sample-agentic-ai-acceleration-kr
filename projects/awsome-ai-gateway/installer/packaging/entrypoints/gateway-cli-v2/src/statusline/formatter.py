@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -18,28 +19,13 @@ _MODEL_SHORT = {
     "haiku": "Haiku",
 }
 
-# GPT-5.6 tier names, handled separately from _MODEL_SHORT because the same tier is
-# served by two aliases on two Bedrock planes and the display has to tell them apart.
-_GPT_TIERS = ("sol", "terra", "luna")
-
 
 def _short_name(alias: str) -> str:
-    """Extract display name from model alias (e.g. 'claudecode-opus-4.8' → 'Opus').
-
-    GPT-5.6 needs an explicit branch rather than the generic tail split: the aliases
-    contain a dot (``gpt-5.6-terra``) and the ``"." in alias`` fallback below would
-    render them as "6-terra". The Mantle-plane alias (``codex-gpt-5.6-terra``, migration
-    0025) is suffixed "(M)" to distinguish it from the standard-runtime alias
-    (``gpt-5.6-terra``, migration 0032): they are separate ``usage_logs`` rows, priced
-    per plane, and only the runtime one appears in Bedrock invocation logs.
-    """
+    """Extract display name from model alias (e.g. 'claudecode-opus-4.8' → 'Opus')."""
     low = alias.lower()
     for key, name in _MODEL_SHORT.items():
         if key in low:
             return name
-    for tier in _GPT_TIERS:
-        if tier in low:
-            return f"{tier.capitalize()}(M)" if low.startswith("codex-") else tier.capitalize()
     return alias.split(".")[-1] if "." in alias else alias.split("-")[-1]
 
 
@@ -59,12 +45,59 @@ class StatuslineState:
     error_count: int = 0
 
 
-def determine_severity(percentage: float, is_online: bool) -> Severity:
+# Fallback warning band, used only when the gateway does not tell us the operator's
+# ladder (older gateway build, or a budget-config cache miss). CRITICAL is pinned to
+# 100 regardless: 100% is budget exhaustion — the point where a hard_block policy
+# actually denies requests — which is a different fact from the alert ladder.
+_DEFAULT_WARNING_PCT = 80.0
+_CRITICAL_PCT = 100.0
+
+
+def _warning_pct(thresholds: Optional[Sequence[int]]) -> float:
+    """Lowest configured alert threshold, or the 80% fallback.
+
+    min() and not max(): the gateway activates THROTTLE with
+    ``any(pct >= t for t in thresholds)`` (budget_service.check_budget), so the
+    effective trigger point IS the lowest rung, and that is also where the first
+    budget alarm mail goes out.
+
+    An empty list must NOT be read as "a ladder with no rungs" — that is how the
+    indicator goes silent. The gateway already promises to send ``null`` rather
+    than ``[]`` for "unknown", but a truthy check alone would not catch ``[]``, so
+    the emptiness is re-checked here (this client is shipped independently of the
+    gateway and routinely runs against an older or newer one).
+    """
+    if not thresholds:
+        return _DEFAULT_WARNING_PCT
+    usable = [
+        float(t)
+        for t in thresholds
+        if isinstance(t, (int, float)) and not isinstance(t, bool) and 1 <= t <= 100
+    ]
+    if not usable:
+        return _DEFAULT_WARNING_PCT
+    return min(usable)
+
+
+def determine_severity(
+    percentage: float,
+    is_online: bool,
+    thresholds: Optional[Sequence[int]] = None,
+) -> Severity:
+    """Map spend percentage onto a display band.
+
+    ``thresholds`` is ``budget.alert_thresholds`` from /v1/usage/me — the operator's
+    configured alert/THROTTLE ladder. It is keyword-optional so every existing
+    caller keeps working and so a gateway that does not send the field yet degrades
+    to the historical 80/100 bands. Without it the indicator contradicted
+    enforcement: an operator setting [70] made the gateway throttle and alarm at
+    70% while this line stayed green until 80%.
+    """
     if not is_online:
         return Severity.OFFLINE
-    if percentage >= 100:
+    if percentage >= _CRITICAL_PCT:
         return Severity.CRITICAL
-    if percentage >= 80:
+    if percentage >= _warning_pct(thresholds):
         return Severity.WARNING
     return Severity.NORMAL
 
@@ -101,15 +134,6 @@ _MODEL_COLOR = {
     "Opus": _MAGENTA,
     "Sonnet": _CYAN,
     "Haiku": _BLUE,
-    # GPT-5.6 tiers, best→cheapest. Colours are reused from the Claude set on purpose:
-    # no row ever shares both a colour and a name with a Claude row, and new ANSI codes
-    # would cost more legibility in a one-line statusline than they buy.
-    "Sol": _MAGENTA,
-    "Terra": _CYAN,
-    "Luna": _BLUE,
-    "Sol(M)": _MAGENTA,
-    "Terra(M)": _CYAN,
-    "Luna(M)": _BLUE,
 }
 
 
@@ -120,9 +144,19 @@ def format_status(state: StatuslineState) -> str:
 
     info = state.current
     color = _SEVERITY_COLOR.get(state.severity, _WHITE)
-    pct = f"{info.percentage:.0f}"
 
-    header = f"{color}{_BOLD}${info.used:.2f}/${info.limit:.2f}({pct}%){_RESET}"
+    if info.limit > 0:
+        pct = f"{info.percentage:.0f}"
+        header = f"{color}{_BOLD}${info.used:.2f}/${info.limit:.2f}({pct}%){_RESET}"
+    else:
+        # limit==0 means "no limit known", not "a limit of zero". The gateway sends
+        # max_usd=0 both for a user with no personal budget (USER config unset is a
+        # legitimate pass-through state) and when the 300s-TTL budget config cache
+        # has expired and could not be rehydrated. Rendering "$12.35/$0.00(0%)"
+        # in that case reads as "wildly over a zero budget", so show the spend and
+        # mark the limit unknown instead. Spend is always real — it comes from the
+        # no-TTL counter key, a different lineage from the config.
+        header = f"{color}{_BOLD}${info.used:.2f}/--{_RESET}"
 
     suffix_map = {
         Severity.NORMAL: "",

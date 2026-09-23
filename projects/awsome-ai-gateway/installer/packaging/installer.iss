@@ -13,7 +13,7 @@
 ;   gateway-cli-setup-<version>.exe /VERYSILENT /NORESTART
 
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.2.0"
 #endif
 
 #define AppName "LLM Gateway CLI"
@@ -64,9 +64,25 @@ Name: "{group}\Gateway CLI (Command Prompt)"; \
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]
+; runasoriginaluser is required, not cosmetic. A per-machine install runs the setup
+; process elevated, and without this flag the post-install shell inherits that elevated
+; token — i.e. it runs as the ADMIN account, not the person installing.
+;
+; Most of what gateway-cli writes is per-user and would silently land in the admin's
+; profile: %USERPROFILE%\.claude\settings.json, HKCU\Environment, the OIDC/VK cache and
+; backups under %LOCALAPPDATA%, %USERPROFILE%\.codex\config.toml. An onboarding run from
+; an inherited-admin shell would configure that account and leave the real user's Claude
+; Code and Codex untouched — while reporting success.
+;
+; NOT all of it, though: managed-settings.json (and its managed-settings.d drop-in) live
+; under C:\Program Files\ClaudeCode, which is machine-wide and needs elevation. That is
+; why `setup` and `onboard` call ensure_admin_for_setup() FIRST and refuse outright on a
+; non-elevated Windows token. So from this shell the user gets an explicit "re-run as
+; administrator" for that one step, which is the failure we want — loud, before anything
+; is written — instead of a wrong-profile install that looks like it worked.
 Filename: "{cmd}"; Parameters: "/K ""{app}\gateway-cli.exe"" --help"; \
     Description: "Show gateway-cli usage"; \
-    Flags: postinstall skipifsilent unchecked
+    Flags: postinstall skipifsilent unchecked runasoriginaluser
 
 [Code]
 // Append the install dir to PATH on install and remove it on uninstall.

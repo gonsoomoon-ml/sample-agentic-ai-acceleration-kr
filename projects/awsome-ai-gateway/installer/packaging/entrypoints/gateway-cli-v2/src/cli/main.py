@@ -34,6 +34,7 @@ import structlog
 
 from cli import __version__, teardown
 from cli import uninstall as uninstall_module
+from cli.codex import codex_group
 from cli.env import env_cmd
 from cli.login import (
     LoginStepError,
@@ -213,6 +214,11 @@ def config_cmd(explain_flag: bool) -> None:
 
 cli.add_command(env_cmd)
 
+# `codex …` — the OTHER client family. Claude Code is configured through managed
+# settings + apiKeyHelper (above); Codex CLI has neither, so it gets its own group
+# that writes Codex's config.toml and launches it with a VK in the environment.
+cli.add_command(codex_group)
+
 
 @cli.command("login")
 @click.option(
@@ -264,7 +270,8 @@ def login_cmd(
 
     Opens your browser to the Cognito Hosted UI, waits for the callback, exchanges
     the auth code for OIDC tokens, and immediately exchanges the id_token for a
-    Virtual Key. Both are cached in the OS-native data directory (mode 0600).
+    Virtual Key. Both are cached in the OS-native data directory (mode 0600 on
+    POSIX; on Windows they inherit the containing folder's ACL).
 
     OIDC/gateway values are baked into the build (see cli/site_defaults.py); set
     the matching GATEWAY_CLI_* env vars to override them.
@@ -370,6 +377,31 @@ def logout_cmd(ctx: click.Context) -> None:
 #                   self-deletes — it hands off and exits (see cli.uninstall).
 # Because `uninstall` deletes the exe `clear` runs from, run `clear` first
 # (`uninstall --clear-first` does this in one step).
+
+def _codex_revert_hints() -> list[str]:
+    """"file → the command that reverts *that* file", one pair per pending config.
+
+    `codex revert` defaults to ``$CODEX_HOME/config.toml``. When the live block sits in a
+    file a past ``setup --config-path`` wrote, the bare command clears nothing, so `clear`
+    would keep printing the same warning with no hint why — the user cannot see that the
+    tool means a different file. Each line names the file and the command that clears it.
+
+    Separated from the printing so the `--config-path` decision is testable without
+    driving the whole `clear` flow.
+    """
+    from cli.codex import codex_config_path  # noqa: PLC0415 — lazy, as in cli.teardown
+
+    default_path = codex_config_path()
+    lines: list[str] = []
+    for pending in teardown.pending_codex_config_paths():
+        # Compared against codex_config_path(), NOT "is it the first entry": the default
+        # file leads the list only when it is itself pending, so on a custom-target-only
+        # install index 0 IS the custom path and would get the command that skips it.
+        suffix = "" if pending == default_path else f" --config-path {pending}"
+        lines.append(f"{pending}\n           -> gateway-cli codex revert{suffix}")
+    return lines
+
+
 def _do_clear(*, keep_tokens: bool, keep_os_env: bool, dry_run: bool) -> bool:
     """Revert all software-level state, in the safe order. Returns overall ok.
 
@@ -402,6 +434,12 @@ def _do_clear(*, keep_tokens: bool, keep_os_env: bool, dry_run: bool) -> bool:
         else:
             click.echo("  4. clear OIDC tokens + VK cache")
         click.echo("  5. sweep this tool's backup snapshots")
+        if teardown.codex_config_pending():
+            click.echo(
+                "     ...except the Codex snapshot(s): config.toml still routes to the "
+                "gateway, and `clear` never edits it. Run `gateway-cli codex revert` "
+                "first if you want those swept too."
+            )
         return True
 
     managed_ok = True
@@ -464,6 +502,25 @@ def _do_clear(*, keep_tokens: bool, keep_os_env: bool, dry_run: bool) -> bool:
         click.secho(f"  Removed {len(swept)} backup snapshot(s).", fg="green")
     else:
         click.secho("  No backup snapshots to remove.", fg="yellow")
+
+    # Codex's config.toml is Codex's file, so `clear` leaves it alone (see `codex
+    # revert`). Its pre-gateway snapshot is therefore kept too — deleting it here would
+    # strip the only copy of a file still pointing at the gateway. Say so, because the
+    # user has to finish this one by hand, and after `uninstall` the verb is gone.
+    retained = teardown.retained_codex_snapshots()
+    if retained:
+        click.secho(
+            f"  Codex: config still routes to the gateway — kept "
+            f"{len(retained)} Codex snapshot(s) as its only undo.",
+            fg="yellow",
+        )
+        for line in _codex_revert_hints():
+            click.secho(f"         {line}", fg="yellow")
+        click.secho(
+            "         Revert BEFORE `uninstall` (which removes that command), then "
+            "`gateway-cli clear` again to sweep them.",
+            fg="yellow",
+        )
 
     click.echo("")
     if managed_ok:
@@ -849,9 +906,10 @@ def setup_cmd(
     "--post-teardown",
     "post_teardown",
     is_flag=True,
-    help="Instead of the health check, assert every surface `clear` owns is "
-    "gone/reverted (managed settings, settings.json keys, OS env vars, tokens, "
-    "backups). Exits 1 on any residue.",
+    help="Instead of the health check, assert every gateway surface is gone/reverted "
+    "(managed settings, settings.json keys, OS env vars, tokens, backups, and Codex's "
+    "config.toml — that last one is `codex revert`'s job, not `clear`'s). "
+    "Exits 1 on any residue.",
 )
 @click.pass_context
 def verify_cmd(ctx: click.Context, post_teardown: bool) -> None:
@@ -877,12 +935,37 @@ def verify_cmd(ctx: click.Context, post_teardown: bool) -> None:
             click.secho(f"  [{icon}] {name} — {status}", fg=color)
         click.echo("")
         if any_residue:
-            click.secho(
-                "Teardown residue found (see above) — run `gateway-cli clear` "
-                "(elevated shell for managed settings if flagged).",
-                fg="red",
-                bold=True,
-            )
+            # ORDER: `codex revert` first, then `clear`. This printed it the other way
+            # round while _do_clear had it right — and the wrong order costs a round trip,
+            # because `clear` holds the Codex snapshot back while the block is live, so
+            # clearing before reverting means clearing twice. `uninstall` also removes the
+            # `codex revert` command, so "later" can mean "never".
+            click.secho("Teardown residue found (see above).", fg="red", bold=True)
+            codex_residue = checks.get("codex-config") == "residue"
+            if codex_residue:
+                # `clear` deliberately never edits Codex's file, so naming `clear` alone
+                # here sent the user in a loop. The hints name the file and, for a
+                # `--config-path` install, the only command that actually reverts it.
+                click.secho(
+                    "  1. codex-config is not `clear`'s to revert — start here:",
+                    fg="red",
+                )
+                for line in _codex_revert_hints():
+                    click.secho(f"       {line}", fg="red")
+            others = [n for n, s in checks.items() if s != "ok" and n != "codex-config"]
+            step = "  2. " if codex_residue else "  "
+            if others:
+                click.secho(
+                    f"{step}Then `gateway-cli clear` (elevated shell for managed settings "
+                    f"if flagged) for: {', '.join(others)}.",
+                    fg="red",
+                )
+            elif codex_residue:
+                click.secho(
+                    f"{step}Then `gateway-cli clear` again to sweep the snapshot it "
+                    "held back.",
+                    fg="red",
+                )
             raise SystemExit(1)
         click.secho("Teardown clean — no gateway-cli state remains.", fg="green", bold=True)
         return

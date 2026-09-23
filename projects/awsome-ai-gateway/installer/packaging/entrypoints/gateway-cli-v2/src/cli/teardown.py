@@ -16,7 +16,10 @@ adapted to this CLI's surfaces:
      POSIX: the ``env --persist`` marker block's export lines are stripped from
      the shell rc files.
   3. backup sweep — this tool's own timestamped snapshots are deleted, via an
-     explicit ownership-prefix allowlist with a directory-escape guard.
+     explicit ownership-prefix allowlist with a directory-escape guard. The Codex
+     snapshot is the one exception: it is held back while Codex's config.toml still
+     carries our block, since `clear` does not revert that file (``codex revert``
+     does) and the snapshot is then the user's only way back.
 
 Design notes
 ------------
@@ -50,15 +53,50 @@ from cli.paths import data_dir, oidc_tokens_path, vk_cache_path
 log = structlog.get_logger(component="teardown")
 
 # Ownership prefixes of every backup file this suite writes (tool_name arguments
-# of backup_config/backup_values across cli.setup, cli.managed and cli.env).
+# of backup_config/backup_values across cli.setup, cli.managed, cli.env and cli.codex).
 # sweep_backups() deletes ONLY files matching these — a backup dir shared with
 # another tool (GATEWAY_CLI_BACKUP_DIR) keeps its other tenants' snapshots.
+#
+# Keep this in step with every cli.utils.backup caller.
 _BACKUP_SWEEP_PATTERNS = (
     "claude-code.*.bak",
     "claude-code-managed.*.bak",
     "claude-code-managed-dropin.*.bak",
     "gateway-cli-hkcu-env.*.json.bak",
 )
+
+# cli.codex's BACKUP_TOOL snapshot, swept CONDITIONALLY — see sweep_backups().
+#
+# It was missing from the tuple above entirely, which made post_teardown_checks() (it
+# reads the same patterns) report "Teardown clean — no gateway-cli state remains" while
+# a snapshot of the user's own Codex config sat on disk, carrying whatever base_url and
+# env_key name they had before. On Windows the Inno uninstaller cannot mop it up
+# afterwards either: uninstall.py removes the install dir, PATH entry and ARP key only,
+# never %LOCALAPPDATA%.
+#
+# Adding it to that tuple unconditionally, though, trades a cosmetic lie for a real
+# loss. `clear` deliberately does not revert config.toml — it is Codex's file, and
+# `codex revert` is the explicit verb for it — so an unconditional sweep deletes the
+# only pre-gateway copy of a file that is STILL pointing at the gateway. Via
+# `uninstall --clear-first` it is worse: the sweep runs, then the binary that owns
+# `codex revert` is deleted, leaving a config aimed at a gateway the user can no longer
+# reach and no snapshot and no tool to undo it. So the snapshot's fate follows the file
+# it snapshots: swept once our block is gone, kept (and reported) while it is there.
+_CODEX_BACKUP_PATTERN = "codex.*.bak"
+
+# cli.codex's `--config-path` markers, swept under the SAME condition as the snapshot.
+#
+# Everything above assumes one Codex config: $CODEX_HOME/config.toml. `codex setup
+# --config-path D:\work\config.toml` breaks that assumption — the block lands elsewhere
+# while the snapshot is still named codex.config.toml.<ts>.bak — so codex_config_pending()
+# asked about the default file, got False, and the sweep took the only pre-setup copy of a
+# file our block was still in. record_custom_config_target() drops one of these markers per
+# custom target so the question can be asked about the file we actually wrote.
+#
+# The suffix is `.origin`, not `.bak`, so _CODEX_BACKUP_PATTERN cannot match it: a marker
+# is not a snapshot, must not be offered as one to restore, and must outlive nothing.
+# It is swept with the snapshot because it is only meaningful while that snapshot exists.
+_CODEX_TARGET_PATTERN = "codex.custom-target.*.origin"
 
 # The marker comment env.py's _persist_posix() writes above its export block.
 _POSIX_MARKER = "# LLM Gateway — added by gateway-cli env --persist"
@@ -319,14 +357,107 @@ def restore_os_env() -> OsEnvRevertResult:
 # 3. backup sweep (strictly LAST — restores above consume the snapshots)
 # ---------------------------------------------------------------------------
 
+def codex_config_pending() -> bool:
+    """True when *any* Codex config we wrote still carries our block.
+
+    "Any", not "the default one": every file a past ``setup`` targeted counts, because a
+    single live block anywhere is enough reason to keep the snapshots. So this asks about
+    ``$CODEX_HOME/config.toml`` **and** every path
+    :func:`cli.codex.recorded_custom_config_targets` remembers from a ``--config-path``
+    run. Checking only the default made ``--config-path`` a silent data-loss path: block
+    still in the user's file, snapshot swept, and via ``uninstall --clear-first`` the
+    ``codex revert`` that could undo it deleted in the same breath.
+
+    Import is local: :mod:`cli.codex` pulls in the login/VK machinery, and teardown is
+    imported by paths that must work when none of that is configured.
+    """
+    from cli.codex import (  # noqa: PLC0415 — lazy, mirrors main.py
+        config_has_gateway_block,
+        recorded_custom_config_targets,
+    )
+
+    try:
+        if config_has_gateway_block():
+            return True
+        for target in recorded_custom_config_targets():
+            if config_has_gateway_block(target):
+                return True
+    except OSError:  # unreadable home, weird CODEX_HOME — assume pending, keep the files
+        return True
+    return False
+
+
+def sweepable_patterns() -> tuple[str, ...]:
+    """The snapshot patterns eligible for deletion *right now*.
+
+    :data:`_CODEX_BACKUP_PATTERN` and :data:`_CODEX_TARGET_PATTERN` join the unconditional
+    ones only once no Codex config carries our block. post_teardown_checks() calls this
+    too, so what `clear` leaves behind on purpose is never reported as residue by the gate
+    that follows it.
+
+    The two Codex patterns move together on purpose: sweeping the markers earlier would
+    make :func:`codex_config_pending` forget the very targets that keep it True, so the
+    snapshots would become sweepable on the next run with the block still live.
+    """
+    if codex_config_pending():
+        return _BACKUP_SWEEP_PATTERNS
+    return (*_BACKUP_SWEEP_PATTERNS, _CODEX_BACKUP_PATTERN, _CODEX_TARGET_PATTERN)
+
+
+def pending_codex_config_paths() -> list[Path]:
+    """Which config files still carry our block — for telling the user what to revert.
+
+    Best-effort and reporting-only: :func:`codex_config_pending` stays the authority on
+    *whether* anything is pending (it answers True for an unreadable file, which has no
+    path to list here beyond the one it failed on). The list matters because
+    ``codex revert`` defaults to ``$CODEX_HOME/config.toml``: if the live block sits in a
+    ``--config-path`` file, the plain command clears nothing, `clear` keeps reporting the
+    same thing, and the user has no way to see why. Naming the file turns that dead end
+    into ``codex revert --config-path <file>``.
+    """
+    from cli.codex import (  # noqa: PLC0415 — lazy, mirrors codex_config_pending
+        codex_config_path,
+        config_has_gateway_block,
+        recorded_custom_config_targets,
+    )
+
+    pending: list[Path] = []
+    for candidate in (codex_config_path(), *recorded_custom_config_targets()):
+        try:
+            if config_has_gateway_block(candidate):
+                pending.append(candidate)
+        except OSError:
+            pending.append(candidate)  # cannot tell → name it; the user can look
+    return pending
+
+
+def retained_codex_snapshots() -> list[Path]:
+    """Codex snapshots :func:`sweep_backups` is deliberately keeping (for reporting).
+
+    Snapshots only. The ``--config-path`` markers are swept on the same condition but are
+    not snapshots — counting them here would inflate "kept N snapshot(s)" with files that
+    hold no recoverable config.
+    """
+    if not codex_config_pending():
+        return []
+    backup_dir = _backup_dir()
+    if not backup_dir.is_dir():
+        return []
+    return sorted(backup_dir.glob(_CODEX_BACKUP_PATTERN))
+
+
 def sweep_backups() -> list[Path]:
     """Delete this tool's own backup snapshots. Allowlist + escape-guarded.
 
-    Only files matching :data:`_BACKUP_SWEEP_PATTERNS` inside the backups dir
-    are removed — the ownership prefixes scope the sweep to files this suite
+    Only files matching :func:`sweepable_patterns` inside the backups dir are
+    removed — the ownership prefixes scope the sweep to files this suite
     wrote even when GATEWAY_CLI_BACKUP_DIR points at a shared directory, and the
     ``relative_to`` check refuses anything a symlink/glob resolves outside the
     dir. Best-effort: a file that refuses to delete is skipped, not raised.
+
+    The Codex snapshot and its ``--config-path`` markers are held back while any Codex
+    config still routes through us (see :data:`_CODEX_BACKUP_PATTERN` and
+    :data:`_CODEX_TARGET_PATTERN`); `codex revert` first, then this sweeps them.
 
     Must run AFTER the restores above — they read these snapshots.
     """
@@ -334,7 +465,7 @@ def sweep_backups() -> list[Path]:
     backup_dir = _backup_dir()
     if not backup_dir.is_dir():
         return removed
-    for pattern in _BACKUP_SWEEP_PATTERNS:
+    for pattern in sweepable_patterns():
         for path in sorted(backup_dir.glob(pattern)):
             try:
                 path.resolve().relative_to(backup_dir.resolve())
@@ -420,10 +551,16 @@ def post_teardown_checks() -> dict[str, str]:
     backup_dir = _backup_dir()
     residue = False
     if backup_dir.is_dir():
-        for pattern in _BACKUP_SWEEP_PATTERNS:
+        for pattern in sweepable_patterns():
             if any(backup_dir.glob(pattern)):
                 residue = True
                 break
     checks["backups"] = "residue" if residue else "ok"
+
+    # Codex's own config.toml. `clear` never edits it by design, so this is the one
+    # check `clear` cannot make pass — `codex revert` does. Reported all the same:
+    # a config still aimed at the gateway (plus the snapshot held back for it) is
+    # exactly the state the old "no gateway-cli state remains" line was papering over.
+    checks["codex-config"] = "residue" if codex_config_pending() else "ok"
 
     return checks

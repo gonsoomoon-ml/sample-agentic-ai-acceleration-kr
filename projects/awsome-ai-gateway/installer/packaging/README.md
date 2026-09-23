@@ -27,7 +27,7 @@ Desktop). No Python or other prerequisite is needed.
 ```powershell
 # Interactive: double-click the .exe
 # Silent / mass deployment (SCCM, Intune, GPO):
-gateway-cli-setup-0.1.0.exe /VERYSILENT /NORESTART
+gateway-cli-setup-0.2.0.exe /VERYSILENT /NORESTART
 ```
 
 - Admins install to `C:\Program Files\GatewayCLI`; non-admins can pick a per-user
@@ -59,11 +59,34 @@ gateway-cli verify        # health / config check
 gateway-cli env           # show the effective environment
 ```
 
+### 2b. Configure Codex CLI (optional)
+
+Same login, same virtual key, same per-user budget — `codex` and `claude` share
+it. Needs `codex` on PATH (`npm install -g @openai/codex`) and **`gateway-cli`
+0.2.0 or newer** (check with `gateway-cli version`): the `codex` subcommand ships
+only in `gateway-cli-v2` (this installer tree), never in the older uv/source
+`gateway-cli` package.
+
+```powershell
+gateway-cli codex setup                     # write ~/.codex/config.toml (backs it up first)
+gateway-cli codex run                       # inject a fresh VK, then launch codex
+gateway-cli codex status                    # read-only: which model / provider / VK ttl
+gateway-cli codex revert                    # remove our block from config.toml
+```
+
+Full walkthrough, model aliases, budget behaviour and the Windows-specific
+caveats: [docs/guides/codex.md](../../docs/guides/codex.md).
+
 ### 3. Remove or upgrade
 
 - **Uninstall:** *Apps & Features* → "LLM Gateway CLI". PATH entries are removed
   automatically. To also revert Claude Code settings first, run
   `gateway-cli clear` (unelevated user scope) and `gateway-cli disable` (elevated).
+  If you used Codex, run **`gateway-cli codex revert` before uninstalling** — the
+  uninstaller does not touch `~/.codex/config.toml` (Codex owns that file), and
+  once the binary is gone so is the command that reverts it. `clear` keeps the
+  Codex backup snapshot until then, and `gateway-cli verify --post-teardown`
+  reports it as `codex-config`.
 - **Upgrade:** run a newer `setup.exe` over the old install — same `AppId`, so
   Windows treats it as the same product.
 
