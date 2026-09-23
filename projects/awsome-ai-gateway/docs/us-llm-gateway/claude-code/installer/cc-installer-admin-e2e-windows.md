@@ -90,6 +90,21 @@ cd sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
 }
 ```
 
+이 배포의 기본 오버레이도 함께 넣습니다. `ENABLE_TOOL_SEARCH=true` 한 줄이라 설치한 PC 는 MCP
+도구 정의를 매 요청에 싣지 않습니다(도구 100개 실측 기준 요청당 입력 ~180K → ~30K). 프록시·권한
+같은 사내 값이 더 있으면 같은 파일에 키를 덧붙입니다.
+
+▶ **실행** · 빌드 PC — 🔵 일반 PowerShell (설치기 폴더에서)
+
+```powershell
+$j = '{ "managed": { "env": { "ENABLE_TOOL_SEARCH": "true" } } }'
+[IO.File]::WriteAllText("$PWD\packaging\site-extra.json", $j)
+```
+
+⚠️ `>` 나 `Set-Content -Encoding UTF8` 로 만들면 안 됩니다 — 설치기는 이 파일을 **BOM 없는
+UTF-8** 로만 읽고, 아니면 경고만 남기고 **조용히 무시**합니다. 위 `WriteAllText` 가 BOM 없이
+씁니다. 파일이 아예 없으면 빌드는 그대로 진행되고 이 오버레이만 빠집니다.
+
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
 
 ```powershell
@@ -261,6 +276,7 @@ gateway-cli verify
 | 로그인 화면에서 오류가 납니다 | 등록되지 않은 콜백 포트 | `--redirect-port 8091` (등록 포트 8090·8091) |
 | 같은 PC 의 Cowork 가 키 발급에 실패합니다 | `setup` 이 남긴 사용자 환경변수를 Cowork helper 가 먼저 읽습니다 | 두 클라이언트가 같은 배포를 보게 하거나 `--no-persist-env` 로 설치 |
 | 설치 직후 `apiKeyHelper failed` 트레이스백이 보입니다 | 설정이 있는 PC 에 Claude Code 설치 → helper 시험 호출 | 로그인 전이면 정상입니다. `login` 후 `claude` 가 응답하면 문제가 아닙니다 |
+| 설치 후 `ENABLE_TOOL_SEARCH` 가 설정에 없습니다 | `site-extra.json` 이 UTF-16 이거나 BOM 이 붙어 조용히 무시됨 | `[IO.File]::WriteAllText` 로 다시 만들고 재빌드 — 확인은 설치 후 `managed-settings.json` 의 키 |
 | `login`·`verify` 가 TLS 오류를 냅니다 | 사내 프록시가 TLS 를 끊음 | 빌드 때 `caBundle` 에 사내 CA PEM 경로를 넣어 재빌드 |
 
 ## 8. 진행 상태 (2026-09-23)
