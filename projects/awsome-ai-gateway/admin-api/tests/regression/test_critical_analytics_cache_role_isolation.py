@@ -86,12 +86,14 @@ def test_cache_is_gated_on_both_admin_role_and_global_scope():
 
 def test_cache_key_does_not_pretend_to_carry_scope():
     """키가 scope 를 담은 척하면 안 된다 — 담지 않는 대신 호출부가 role 을 검사한다."""
-    key = an._analytics_cache_key(period="2026-09", group_by="team")
+    key = an._analytics_cache_key(period="2026-09", group_by="team", client="all")
     assert "global" in key, f"전사 전용임이 키에 드러나야 한다: {key}"
     assert "2026-09" in key and "team" in key, f"파라미터 누락: {key}"
-    # 다른 group_by 는 다른 키
-    assert key != an._analytics_cache_key(period="2026-09", group_by="user")
-    assert key != an._analytics_cache_key(period="2026-08", group_by="team")
+    # 응답을 바꾸는 group_by, period, client 는 각각 다른 키
+    assert key != an._analytics_cache_key(period="2026-09", group_by="user", client="all")
+    assert key != an._analytics_cache_key(period="2026-08", group_by="team", client="all")
+    assert key != an._analytics_cache_key(period="2026-09", group_by="team", client="codex")
+    assert key == an._analytics_cache_key(period="2026-09", group_by="team", client=None)
 
 
 def test_the_leaky_key_shape_is_not_used():
@@ -137,7 +139,7 @@ class _Svc:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def get_analytics(self, session, *, period, group_by, scope, actor):
+    async def get_analytics(self, session, *, period, group_by, scope, client, actor, **_kw):
         self.calls += 1
         return {"who": actor.role.value if hasattr(actor.role, "value") else str(actor.role),
                 "scope": scope, "secret": "ORG_WIDE" if actor.role == UserRole.ADMIN else "TEAM_ONLY"}

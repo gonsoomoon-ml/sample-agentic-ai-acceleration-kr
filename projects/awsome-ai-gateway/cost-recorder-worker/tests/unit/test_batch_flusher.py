@@ -25,6 +25,7 @@ def _make_entry(
     team_id: str = "00000000-0000-0000-0000-000000000002",
     cost: str = "0.01",
     threshold: int | None = None,
+    threshold_scope: str | None = None,
 ) -> CostStreamEntry:
     return CostStreamEntry(
         request_id=request_id,
@@ -46,6 +47,7 @@ def _make_entry(
         period="2026-04",
         date="2026-04-21",
         threshold_triggered=threshold,
+        threshold_scope=threshold_scope,
     )
 
 
@@ -173,3 +175,102 @@ async def test_daily_counter_pipeline_uses_hash_tag():
     # incrbyfloat 첫 호출의 key 확인 — hash tag 포함.
     keys_seen = [call.args[0] for call in pipe.incrbyfloat.call_args_list]
     assert any("{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}" in k for k in keys_seen)
+
+
+def _mock_session_with_cumulative(
+    cumulative: object, scope_captures: list | None = None
+) -> MagicMock:
+    """flush 호출 순서에 맞춘 session.execute side_effect.
+
+    호출 순서: replay SELECT → INSERT usage_logs → UPSERT user → UPSERT team
+    → (threshold 있으면) cumulative SELECT. 마지막만 scalar_one_or_none 설정.
+    """
+    replay_result = MagicMock()
+    replay_result.__iter__ = MagicMock(return_value=iter([]))
+    writes = MagicMock()
+    cumulative_result = MagicMock()
+    cumulative_result.scalar_one_or_none = MagicMock(return_value=cumulative)
+
+    session = AsyncMock()
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[replay_result, writes, writes, writes, cumulative_result]
+    )
+    return MagicMock(return_value=session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_threshold_publishes_cumulative_usage_not_request_cost():
+    """current_usage_usd 는 요청 단건 비용이 아니라 budget_usages 기간 누적."""
+    session_factory = _mock_session_with_cumulative(Decimal("3.11"))
+
+    pipe = MagicMock()
+    pipe.execute = AsyncMock()
+    redis = MagicMock()
+    redis.pipeline = MagicMock(return_value=pipe)
+    redis.publish = AsyncMock()
+
+    entry = _make_entry(request_id="req-100pct", cost="0.178762", threshold=100)
+    flusher = BatchFlusher(session_factory=session_factory, redis=redis)
+    await flusher.flush([entry])
+
+    assert redis.publish.await_count == 1
+    import json
+
+    event = json.loads(redis.publish.await_args_list[0].args[1])
+    assert event["payload"]["current_usage_usd"] == "3.11"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_threshold_cumulative_fallback_to_request_cost():
+    """누적 행이 없으면 요청 비용으로 폴백(이메일은 나간다)."""
+    session_factory = _mock_session_with_cumulative(None)
+
+    pipe = MagicMock()
+    pipe.execute = AsyncMock()
+    redis = MagicMock()
+    redis.pipeline = MagicMock(return_value=pipe)
+    redis.publish = AsyncMock()
+
+    entry = _make_entry(request_id="req-80pct", cost="0.50", threshold=80)
+    flusher = BatchFlusher(session_factory=session_factory, redis=redis)
+    await flusher.flush([entry])
+
+    import json
+
+    event = json.loads(redis.publish.await_args_list[0].args[1])
+    assert event["payload"]["current_usage_usd"] == "0.50"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_threshold_team_scope_looks_up_team_id():
+    """threshold_scope=team 이면 TEAM 스코프+team_id로 누적을 조회."""
+    session_factory = _mock_session_with_cumulative(Decimal("9.99"))
+
+    pipe = MagicMock()
+    pipe.execute = AsyncMock()
+    redis = MagicMock()
+    redis.pipeline = MagicMock(return_value=pipe)
+    redis.publish = AsyncMock()
+
+    entry = _make_entry(
+        request_id="req-team", cost="0.10", threshold=100, threshold_scope="team"
+    )
+    flusher = BatchFlusher(session_factory=session_factory, redis=redis)
+    await flusher.flush([entry])
+
+    session = session_factory.return_value
+    cumulative_call = session.execute.await_args_list[4]
+    params = cumulative_call.args[1]
+    assert params["scope"] == "TEAM"
+    assert params["scope_id"] == entry.team_id
+
+    import json
+
+    event = json.loads(redis.publish.await_args_list[0].args[1])
+    assert event["payload"]["current_usage_usd"] == "9.99"

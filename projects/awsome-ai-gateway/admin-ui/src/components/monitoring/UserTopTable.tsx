@@ -2,7 +2,7 @@
 
 // Copyright 2026 © Amazon.com and Affiliates: This deliverable is considered Developed Content as defined in the AWS Service Terms.
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import type { MonitoringUsersResponse } from '@/lib/actions/monitoring';
 import { Table, THead, TBody, Tr, Th, Td } from '@/components/common/Table';
 
@@ -15,6 +15,7 @@ function errorColor(pct: number) {
 
 export function UserTopTable({ data }: { data: MonitoringUsersResponse }) {
   const t = useTranslations('monitoring');
+  const locale = useLocale();
 
   if (data.users.length === 0) {
     return (
@@ -55,7 +56,7 @@ export function UserTopTable({ data }: { data: MonitoringUsersResponse }) {
               </Td>
               <Td numeric className="text-muted-foreground">
                 {u.last_request_at
-                  ? new Date(u.last_request_at).toLocaleTimeString('ko-KR')
+                  ? new Date(u.last_request_at).toLocaleTimeString(locale)
                   : '-'}
               </Td>
             </Tr>

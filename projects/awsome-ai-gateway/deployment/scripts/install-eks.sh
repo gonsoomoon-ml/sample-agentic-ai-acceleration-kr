@@ -10,6 +10,11 @@
 # 사용법:
 #   ./install-eks.sh <env>
 #     env: dev | prod
+#   선택적 env var:
+#     MIGRATION_ENABLED=false   — DB migration Job 스킵 (기본 true)
+#     DEV_LOGIN_ENABLED=false   — dev-login(role 선택 MVP 우회) 강제 off, 안 주면
+#                                 values-eks-fargate-<env>.yaml 의 global.devLoginEnabled 값 그대로.
+#                                 Cognito 로그인(adminApi.adminUiLogin) 전환 후 false 로.
 #
 # 전제:
 #   - terraform/environments/llm-gateway-<env> 에 terraform apply 가 성공적으로 완료됨
@@ -412,7 +417,10 @@ helm_install() {
     SET_ARGS=(
         --set "global.imageRegistry=${ecr_registry}"
         --set "aws.region=${AWS_REGION}"
-        --set "aws.allowedStsRegions={${STS_REGIONS_CSV}}"
+        # SSRF 방어용 STS 허용 리전(admin-api VK 발급). 클라이언트가 GetCallerIdentity 를
+        # presign 하는 곳 = 배포 리전이므로 aws.region 과 같은 값으로 자동 주입한다.
+        # (values 기본값이 ap-northeast-2 라, 안 주입하면 다른 리전 배포에서 VK 발급 거부.)
+        --set "aws.allowedStsRegions={${AWS_REGION}}"
         --set "database.external.host=${AURORA_HOST}"
         --set "database.external.name=${AURORA_DB_NAME}"
         --set "redis.external.host=${REDIS_HOST}"
@@ -431,6 +439,23 @@ helm_install() {
         )
         # 다시 if 로 닫지 않고 dummy true (아래 fi 와 짝 맞춤 위해)
         true
+    fi
+
+    # admin-ui 커스텀 로그인 폼(Cognito ROPC) — 같은 App Client(cli) 재사용.
+    # auth.adminUiJwt.privateKeySecretName 을 별도로 설정하지 않으면 admin-api 가
+    # ADMIN_UI_JWT_PRIVATE_KEY_PEM 미구성으로 로그인을 계속 비활성 상태로 둔다
+    # (dev-login 만 사용 가능) — 키 발급은 scripts/generate_admin_jwt_keypair.py 참고.
+    if [ -n "${COGNITO_CLIENT_ID}" ]; then
+        SET_ARGS+=(
+            --set "adminApi.adminUiLogin.cognitoAppClientId=${COGNITO_CLIENT_ID}"
+        )
+    fi
+
+    # dev-login on/off — 안 주면 values 파일의 global.devLoginEnabled 그대로 사용.
+    # 명시적으로 줬을 때만 override(빈 문자열이면 --set 자체를 안 해서 파일 값 유지).
+    if [ -n "${DEV_LOGIN_ENABLED:-}" ]; then
+        info "DEV_LOGIN_ENABLED=${DEV_LOGIN_ENABLED} 로 global.devLoginEnabled override"
+        SET_ARGS+=(--set "global.devLoginEnabled=${DEV_LOGIN_ENABLED}")
     fi
 
     # Migration Job 은 pre-install hook 으로 실행됨:

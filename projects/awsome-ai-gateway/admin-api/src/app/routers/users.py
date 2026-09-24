@@ -23,6 +23,7 @@ from app.schemas.users import (
     DepartmentCreateRequest,
     DepartmentResponse,
     OrgTreeNode,
+    ScopedAllowedClientsResponse,
     SetLeaderRequest,
     TeamCreateRequest,
     TeamListResponse,
@@ -87,6 +88,28 @@ async def set_team_leader(
         session,
         team_id=uuid.UUID(team_id),
         user_id=uuid.UUID(body.user_id),
+        actor=admin,
+        ip_address=request.client.host if request.client else "0.0.0.0",
+        request_id=request.headers.get("x-request-id", ""),
+    )
+
+
+@router.delete("/teams/{team_id}/leaders/{user_id}", response_model=TeamResponse)
+async def unset_team_leader(
+    request: Request,
+    team_id: str,
+    user_id: str,
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """팀 리더 지정 해제(한 명) — 그 사람 role 을 DEVELOPER 로 되돌린다(ADMIN 이면
+    다음 Cognito 로그인 때 ADMIN_GROUPS 로 복원됨). 팀에 리더가 여러 명일 수 있으므로
+    user_id 로 특정한다."""
+    svc: UserTeamService = request.app.state.user_team_service
+    return await svc.unset_team_leader(
+        session,
+        team_id=uuid.UUID(team_id),
+        user_id=uuid.UUID(user_id),
         actor=admin,
         ip_address=request.client.host if request.client else "0.0.0.0",
         request_id=request.headers.get("x-request-id", ""),
@@ -238,6 +261,128 @@ async def clear_team_allowed_models(
         ip_address=request.client.host if request.client else "0.0.0.0",
         request_id=request.headers.get("x-request-id", ""),
     )
+
+
+# ── per-TEAM / per-ORG app allow-list (alembic 0038) ──────────────────────────
+# 우선순위 user > team > org > 제한없음 — user_allowed_clients 의 상위 정책.
+# PUT body 는 user 경로와 같은 {clients: []}. [] = 정책 없음(상위 폴백), 전면 거부 아님.
+# 캐시 무효화는 커밋 **후** — DEL→commit 창의 재캐시 방지(user 경로 주석 참조).
+
+
+def _client_scope_svc(request: Request):
+    return request.app.state.allowed_client_scope_service
+
+
+@router.get("/teams/{team_id}/allowed-clients", response_model=ScopedAllowedClientsResponse)
+async def list_team_allowed_clients(
+    request: Request,
+    team_id: str,
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    return await _client_scope_svc(request).list_for_team(
+        session, team_id=uuid.UUID(team_id)
+    )
+
+
+@router.put("/teams/{team_id}/allowed-clients", response_model=ScopedAllowedClientsResponse)
+async def set_team_allowed_clients(
+    request: Request,
+    team_id: str,
+    body: AllowedClientsBody,
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    svc = _client_scope_svc(request)
+    tid = uuid.UUID(team_id)
+    res = await svc.set_for_team(
+        session,
+        team_id=tid,
+        clients=body.clients,
+        actor=admin,
+        ip_address=request.client.host if request.client else "0.0.0.0",
+        request_id=request.headers.get("x-request-id", ""),
+    )
+    await session.commit()
+    await svc.invalidate_for_team(session, tid)
+    return res
+
+
+@router.delete("/teams/{team_id}/allowed-clients", response_model=ScopedAllowedClientsResponse)
+async def clear_team_allowed_clients(
+    request: Request,
+    team_id: str,
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    svc = _client_scope_svc(request)
+    tid = uuid.UUID(team_id)
+    res = await svc.clear_for_team(
+        session,
+        team_id=tid,
+        actor=admin,
+        ip_address=request.client.host if request.client else "0.0.0.0",
+        request_id=request.headers.get("x-request-id", ""),
+    )
+    await session.commit()
+    await svc.invalidate_for_team(session, tid)
+    return res
+
+
+@router.get("/organizations/{org_id}/allowed-clients", response_model=ScopedAllowedClientsResponse)
+async def list_org_allowed_clients(
+    request: Request,
+    org_id: str,
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    return await _client_scope_svc(request).list_for_org(
+        session, org_id=uuid.UUID(org_id)
+    )
+
+
+@router.put("/organizations/{org_id}/allowed-clients", response_model=ScopedAllowedClientsResponse)
+async def set_org_allowed_clients(
+    request: Request,
+    org_id: str,
+    body: AllowedClientsBody,
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    svc = _client_scope_svc(request)
+    oid = uuid.UUID(org_id)
+    res = await svc.set_for_org(
+        session,
+        org_id=oid,
+        clients=body.clients,
+        actor=admin,
+        ip_address=request.client.host if request.client else "0.0.0.0",
+        request_id=request.headers.get("x-request-id", ""),
+    )
+    await session.commit()
+    await svc.invalidate_for_org(session, oid)
+    return res
+
+
+@router.delete("/organizations/{org_id}/allowed-clients", response_model=ScopedAllowedClientsResponse)
+async def clear_org_allowed_clients(
+    request: Request,
+    org_id: str,
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    svc = _client_scope_svc(request)
+    oid = uuid.UUID(org_id)
+    res = await svc.clear_for_org(
+        session,
+        org_id=oid,
+        actor=admin,
+        ip_address=request.client.host if request.client else "0.0.0.0",
+        request_id=request.headers.get("x-request-id", ""),
+    )
+    await session.commit()
+    await svc.invalidate_for_org(session, oid)
+    return res
 
 
 @router.post("/users/sync-cognito")
@@ -520,5 +665,19 @@ async def clear_user_allowed_models(
         ip_address=request.client.host if request.client else "0.0.0.0",
         request_id=request.headers.get("x-request-id", ""),
     )
-    await session.commit()
-    await svc.invalidate_user_vk_cache(user_id)
+
+
+@router.get("/users/{user_id}/effective-policy")
+async def get_user_effective_policy(
+    user_id: uuid.UUID,
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """사용자에게 실제로 적용되는 정책의 합성 뷰 — 읽기 전용.
+
+    4개 축(user→app, user/team→model, model→app)의 판정 매트릭스 + 예산·
+    rate limit·downgrade·web search 설정을 한 번에 반환한다.
+    """
+    from app.services.effective_policy_service import EffectivePolicyService
+
+    return await EffectivePolicyService(session).get_for_user(user_id)

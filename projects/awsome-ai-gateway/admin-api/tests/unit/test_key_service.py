@@ -60,6 +60,8 @@ class TestIssueKey:
         # Mock the real method with its real return shape: (expired_count, new_id).
         # issue_key sets vk.issued_at itself, so the old _populate_dates hook is obsolete.
         repo.expire_and_create = AsyncMock(return_value=(expire_count, uuid.uuid4()))
+        # issue_key dedup path awaits repo.list_active_for_user before generating a new key.
+        repo.list_active_for_user = AsyncMock(return_value=[])
         return repo
 
     async def test_issue_key_generates_vk_prefix(
@@ -276,6 +278,7 @@ class TestIssueKey:
              patch("app.services.key_service.TeamAllowedModelRepository") as MockTam:
             repo = MockRepo.return_value
             repo.expire_and_create = AsyncMock(return_value=(0, uuid.uuid4()))
+            repo.list_active_for_user = AsyncMock(return_value=[])
             MockUserRepo.return_value.get_user = AsyncMock(
                 return_value=_stub_user(user_id, team_id)
             )
@@ -315,6 +318,7 @@ class TestIssueKey:
              patch("app.services.key_service.TeamAllowedModelRepository"):
             repo = MockRepo.return_value
             repo.expire_and_create = AsyncMock(return_value=(0, uuid.uuid4()))
+            repo.list_active_for_user = AsyncMock(return_value=[])
             MockUserRepo.return_value.get_user = AsyncMock(
                 return_value=_stub_user(user_id, team_id=None)
             )
@@ -339,6 +343,7 @@ class TestRevokeKey:
 
         with patch("app.services.key_service.KeyRepository") as MockRepo:
             repo = MockRepo.return_value
+            repo.get_by_id = AsyncMock(return_value=None)
             repo.revoke = AsyncMock(return_value=None)
 
             with pytest.raises(NotFoundError):
@@ -354,10 +359,12 @@ class TestRevokeKey:
         vk = MagicMock(spec=VirtualKey)
         vk.key_value_encrypted = encrypted
         vk.user_id = uuid.uuid4()
+        vk.status = KeyStatus.ACTIVE
 
         with patch("app.services.key_service.KeyRepository") as MockRepo, \
              patch("app.services.key_service.UserRepository") as MockUserRepo:
             repo = MockRepo.return_value
+            repo.get_by_id = AsyncMock(return_value=vk)
             repo.revoke = AsyncMock(return_value=vk)
             MockUserRepo.return_value.get_user = AsyncMock(return_value=_stub_user(vk.user_id))
 

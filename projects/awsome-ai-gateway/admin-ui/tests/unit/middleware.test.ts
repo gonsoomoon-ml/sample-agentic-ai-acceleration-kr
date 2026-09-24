@@ -43,11 +43,13 @@ function requestWith(cookie?: string, pathname = '/'): NextRequest {
   return req;
 }
 
-// ⚠️ 리다이렉트 목적지는 `/api/auth/dev-login` 이 아니라 `/api/auth/login` 이다.
+// ⚠️ 리다이렉트 목적지는 `/api/auth/dev-login` 이 아니라 `/login` 이다.
 //    prod 는 `DEV_LOGIN_ENABLED=false` 라 dev-login GET 이 404 였고, admin_jwt 를 굽는
 //    코드가 레포에 dev-login 뿐이어서 **prod 에는 로그인 경로가 아예 없었다**(미인증
-//    브라우저 → 307 → 바디 없는 404 막다른 길). 이제 middleware 는 환경을 보고
-//    OIDC authorize / dev 폼 / 읽히는 503 으로 갈라주는 단일 진입점 `/api/auth/login`
+//    브라우저 → 307 → 바디 없는 404 막다른 길). 이제 middleware 는 OIDC_* env 가
+//    채워진 hosted-UI 배포에선 `/api/auth/login`(IdP 302 진입점), 그 외엔 8-L 의
+//    `/login` 페이지(Cognito 폼 + DEV_LOGIN_ENABLED 면 dev-login 링크)로 보낸다
+//    (src/middleware.ts 의 redirectToLogin). 이 파일은 OIDC_* 미설정 = `/login` 분기다.
 //    으로 보낸다(src/app/api/auth/login/route.ts).
 /**
  * 같은 오리진 리다이렉트의 계약: Location 은 **요청의 Host + x-forwarded-proto 로 만든
@@ -74,7 +76,7 @@ describe('middleware — session expiry', () => {
     const res = await middleware(requestWith(tokenWithExp(-3600)));
 
     expect(res.status).toBe(307);
-    expectSameOriginRedirect(res, '/api/auth/login');
+    expectSameOriginRedirect(res, '/login');
     // 못 쓰는 자격증명은 응답에서 제거돼야 한다.
     const setCookie = res.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('admin_jwt=');
@@ -118,19 +120,19 @@ describe('middleware — session expiry', () => {
     // 전부 401' 이라는 원래 증상이 재현된다. 10초 남은 토큰은 이미 로그인으로 보내야 한다.
     const res = await middleware(requestWith(tokenWithExp(10)));
     expect(res.status).toBe(307);
-    expectSameOriginRedirect(res, '/api/auth/login');
+    expectSameOriginRedirect(res, '/login');
   });
 
   it('still redirects when no cookie is present (and does not clear anything)', async () => {
     const res = await middleware(requestWith(undefined));
     expect(res.status).toBe(307);
-    expectSameOriginRedirect(res, '/api/auth/login');
+    expectSameOriginRedirect(res, '/login');
   });
 
   it('redirects a malformed token to login and clears the cookie', async () => {
     const res = await middleware(requestWith('not-a-jwt'));
     expect(res.status).toBe(307);
-    expectSameOriginRedirect(res, '/api/auth/login');
+    expectSameOriginRedirect(res, '/login');
     expect(res.headers.get('set-cookie') ?? '').toContain('admin_jwt=');
   });
 
@@ -143,5 +145,65 @@ describe('middleware — session expiry', () => {
   it('403 stays public — an expired cookie must not bounce it into a redirect loop', async () => {
     const res = await middleware(requestWith(tokenWithExp(-3600), '/403'));
     expect(res.status).toBe(200);
+  });
+
+  it('/login stays public — the login page must not redirect to itself', async () => {
+    const res = await middleware(requestWith(undefined, '/login'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('/login WITH a stale cookie clears it and re-requests /login', async () => {
+    // 클라이언트 측 401 핸들러는 쿠키를 지우지 않고 assign('/login') 한다 —
+    // 쿠키가 남아 오면 layout 이 그걸 세션으로 해석해 셸 위에 로그인 폼이 겹친다.
+    // 삭제 후 /login 으로 한 번 더내면 다음 요청은 쿠키 없이 도착한다.
+    const res = await middleware(requestWith(tokenWithExp(-3600), '/login'));
+    expect(res.status).toBe(307);
+    expectSameOriginRedirect(res, '/login');
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain('admin_jwt=');
+    expect(setCookie).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/);
+  });
+
+  it('/login clears even a LIVE-looking cookie — admin-api 401 경유 도착 포함', async () => {
+    // 서명키 교체·admin_jwt_configs 토글처럼 "파싱·만료는 정상인데 admin-api 가
+    // 거절하는" 쿠키로 /login 에 도달할 수 있다. 이 경우도 지워야 한다 —
+    // 안 지우면 '/' ↔ /login 이 무한 루프다.
+    const res = await middleware(requestWith(tokenWithExp(3600), '/login'));
+    expect(res.status).toBe(307);
+    expectSameOriginRedirect(res, '/login');
+    expect(res.headers.get('set-cookie') ?? '').toContain('admin_jwt=');
+  });
+});
+
+describe('middleware — hosted-UI OIDC 배포에서는 /api/auth/login 이다', () => {
+  it('OIDC_CLIENT_ID 가 있으면 SSO 진입점으로 보낸다 (dead /login 폼 금지)', async () => {
+    // adminUi.env 의 OIDC_* 가 채워진 배포는 /api/auth/login GET 이 IdP 로 302 하는
+    // 유일한 진입점이다 — 그런 배포의 /login 은 ROPC 가 꺼져 있어 폼이 동작하지 않는다.
+    const saved = process.env.OIDC_CLIENT_ID;
+    process.env.OIDC_CLIENT_ID = 'admin-ui-client';
+    try {
+      const res = await middleware(requestWith(undefined));
+      expect(res.status).toBe(307);
+      expectSameOriginRedirect(res, '/api/auth/login');
+    } finally {
+      if (saved === undefined) delete process.env.OIDC_CLIENT_ID;
+      else process.env.OIDC_CLIENT_ID = saved;
+    }
+  });
+
+  it('OIDC 배포에서 /login 직접 접근은 / 로 낸다 (ROPC 폼 경로 폐쇄)', async () => {
+    // 비밀번호가 우리 서버를 통과하는 ROPC 폼은 HTTPS IdP 로그인이 가능해진 배포에서
+    // 제거 대상이다. / 로내면 세션이 살아 있으면 대시보드, 아니면 단일 진입점으로 간다.
+    const saved = process.env.OIDC_CLIENT_ID;
+    process.env.OIDC_CLIENT_ID = 'admin-ui-client';
+    try {
+      const res = await middleware(requestWith(undefined, '/login'));
+      expect(res.status).toBe(307);
+      expectSameOriginRedirect(res, '/');
+    } finally {
+      if (saved === undefined) delete process.env.OIDC_CLIENT_ID;
+      else process.env.OIDC_CLIENT_ID = saved;
+    }
   });
 });

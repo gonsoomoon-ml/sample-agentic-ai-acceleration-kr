@@ -25,7 +25,7 @@
  * 로그인 진입점. 쿼리(?next=…)를 붙이지 않는 이유: middleware 의 로그인 리다이렉트도
  * search 를 비워서 보내므로 진입점 계약을 하나로 유지한다.
  */
-export const LOGIN_PATH = '/api/auth/login';
+export const LOGIN_PATH = '/login';
 
 /** 프록시 라우트 401 본문의 기계 판독용 코드. */
 export const UNAUTHORIZED_ERROR_CODE = 'UNAUTHORIZED';

@@ -196,7 +196,25 @@ async def get_team_allocation(
         session,
         team_id=uuid.UUID(team_id),
         period=effective_period,
+        actor=user,
     )
+
+
+@router.get("/my-allocations", response_model=list[TeamBudgetAllocation])
+async def get_my_allocations(
+    request: Request,
+    period: str | None = Query(None, description="YYYY-MM (defaults to current month)"),
+    user: CurrentUser = Depends(require_admin_or_team_leader),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """행위자가 관리하는 팀들의 예산 배정 — TEAM_LEADER 는 리더 지정 팀들만
+    (team_scope 정책), ADMIN 은 전체. 리더 팀이 없으면 빈 리스트."""
+    from app.core.usage_filters import current_kst_period
+    from app.services.budget_service import BudgetService
+
+    svc: BudgetService = request.app.state.budget_service
+    effective_period = period or current_kst_period()
+    return await svc.get_my_allocations(session, actor=user, period=effective_period)
 
 
 @router.put("/team/{team_id}/allocate")
@@ -236,6 +254,7 @@ async def get_budget_summary(
         scope=scope,
         target_id=uuid.UUID(target_id) if target_id else None,
         period=period,
+        actor=user,
     )
 
 

@@ -168,6 +168,9 @@ class ModelResponse(BaseModel):
     #: 구별해 보여줘야 한다 — ``[]`` 를 "제한 없음" 으로 렌더하면 운영자가 자기가 만든
     #: 전면 거부를 보지 못한다.
     allowed_clients: list[str] | None = None
+    #: 스펙 정보 — LiteLLM 카탈로그 싱크로 채워진다. ``None`` = 미상(수동 커스텀 모델).
+    context_window: int | None = None
+    max_output_tokens: int | None = None
     current_pricing: ModelPricingResponse | None = None
     created_at: datetime
     updated_at: datetime
@@ -195,6 +198,11 @@ class PriceSyncDiff(BaseModel):
     proposed_cache_1h_per_1k: Decimal | None = None
     proposed_cache_read_per_1k: Decimal | None = None
     changed: bool = False  # 현재가와 제안가가 다른가
+    #: 카탈로그 스펙(context_window/max_output_tokens)과 DB 값이 다른가.
+    #: 단가 변경이 0이어도 이 플래그가 있으면 적용 대상에 포함되어야 한다 —
+    #: 스펙 기록이 단가 변경에 묶여 있어 "변경 없음" 일 때 스펙이 영구히 비는
+    #: 버그가 있었다.
+    spec_changed: bool = False
 
 
 class PriceSyncPreviewResponse(BaseModel):
@@ -205,10 +213,32 @@ class PriceSyncPreviewResponse(BaseModel):
     changed_count: int
 
 
+class WireNameItem(BaseModel):
+    """usage_logs 에 실제로 관측된 모델 이름 — alias 후보 확인용.
+
+    ``registered`` = model_aliases 에 같은 이름이 있나. 미등록 이름은 곧
+    필요한 alias 후보(클라이언트가 보내는데 아직 매칭 안 되는 이름).
+    """
+
+    name: str
+    request_count: int
+    last_seen_at: datetime | None = None
+    registered: bool
+    #: resolve 실패(404)로 관측된 횟수 — 게이트웨이가 Redis 에 집계.
+    #: 0 이면 usage_logs 에만, >0 이면 미등록 이름으로 요청이 떨어진 것.
+    rejected_count: int = 0
+
+
+class WireNameListResponse(BaseModel):
+    days: int
+    items: list[WireNameItem]
+
+
 class PriceSyncApplyRequest(BaseModel):
     """승인 후 적용할 alias 목록(명시 선택 — 자동 전체적용 금지)."""
 
     aliases: list[str] = Field(min_length=1)
+    source: str = "aws"  # "aws" | "litellm"
 
 
 class PriceSyncApplyResponse(BaseModel):

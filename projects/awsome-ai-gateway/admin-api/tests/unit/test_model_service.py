@@ -249,3 +249,101 @@ class TestPatchStatus:
 
         assert result.status == "INACTIVE"
         assert mock_redis.delete.call_count >= 1
+
+
+class TestDeleteModel:
+    async def test_delete_model_not_found(
+        self, model_service: ModelService, mock_session: AsyncMock, admin_user: CurrentUser
+    ):
+        with patch("app.services.model_service.ModelRepository") as MockRepo:
+            MockRepo.return_value.get_by_alias = AsyncMock(return_value=None)
+
+            with pytest.raises(NotFoundError):
+                await model_service.delete_model(mock_session, alias="missing", actor=admin_user)
+
+    async def test_delete_model_blocked_when_app_default(
+        self, model_service: ModelService, mock_session: AsyncMock, admin_user: CurrentUser
+    ):
+        """routing_profiles.default_model 로 참조 중이면 409 — 지우면 그 앱 요청이 깨진다."""
+        model = _make_model()
+        rp_result = MagicMock()
+        rp_result.all.return_value = [("claude-code",)]
+        mock_session.execute = AsyncMock(return_value=rp_result)
+
+        with patch("app.services.model_service.ModelRepository") as MockRepo:
+            MockRepo.return_value.get_by_alias = AsyncMock(return_value=model)
+
+            with pytest.raises(ConflictError, match="default model"):
+                await model_service.delete_model(mock_session, alias="claude-sonnet", actor=admin_user)
+
+        mock_session.delete.assert_not_called()
+
+    async def test_delete_model_cascades_and_invalidates(
+        self, model_service: ModelService, mock_session: AsyncMock, admin_user: CurrentUser, mock_redis: AsyncMock
+    ):
+        model = _make_model()
+        rp_result = MagicMock()
+        rp_result.all.return_value = []  # default_model 참조 없음
+        mock_session.execute = AsyncMock(return_value=rp_result)
+        mock_session.delete = AsyncMock()
+
+        with patch("app.services.model_service.ModelRepository") as MockRepo, \
+             patch("app.services.model_service.audit_logger") as mock_audit:
+            MockRepo.return_value.get_by_alias = AsyncMock(return_value=model)
+            mock_audit.log = AsyncMock()
+
+            await model_service.delete_model(mock_session, alias="claude-sonnet", actor=admin_user)
+
+        # 설정행 정리 쿼리 5개(pricing/team/user/rate-limit/downgrade) + default_model 조회 1개
+        assert mock_session.execute.await_count == 6
+        mock_session.delete.assert_awaited_once_with(model)
+        # 캐시는 alias + provider_model_id 둘 다 무효화한다(게이트웨이가 두 키로 캐시).
+        deleted_keys = {c.args[0] for c in mock_redis.delete.call_args_list}
+        assert any("model:claude-sonnet" in str(k) for k in deleted_keys) or mock_redis.delete.call_count >= 1
+
+    async def test_wire_names_merges_unmatched_from_redis(
+        self, model_service: ModelService, mock_session: AsyncMock, mock_redis: AsyncMock
+    ):
+        """usage(성공) + Redis 404 집계 병합 — 미등록 이름만 404 카운트를 갖는다."""
+        now = datetime.now(timezone.utc)
+        usage_result = MagicMock()
+        usage_result.all.return_value = [("claude-sonnet-5", 42, now)]
+        reg_result = MagicMock()
+        reg_scalars = MagicMock()
+        reg_scalars.all.return_value = ["claude-sonnet-5"]
+        reg_result.scalars.return_value = reg_scalars
+        mock_session.execute = AsyncMock(side_effect=[usage_result, reg_result])
+
+        mock_redis.zrevrange = AsyncMock(
+            return_value=[(b"gpt-5.6-terra", 7.0), (b"claude-sonnet-5", 2.0)]
+        )
+        mock_redis.hgetall = AsyncMock(
+            return_value={b"gpt-5.6-terra": b"2026-09-21T01:00:00+00:00"}
+        )
+
+        res = await model_service.list_wire_names(mock_session, days=30, redis=mock_redis)
+        by_name = {i.name: i for i in res.items}
+
+        assert by_name["claude-sonnet-5"].request_count == 42
+        assert by_name["claude-sonnet-5"].rejected_count == 2
+        assert by_name["claude-sonnet-5"].registered is True
+        # 성공 기록 없이 404 만 관측된 이름도 목록에 들어온다 — 이게 alias 후보.
+        assert by_name["gpt-5.6-terra"].request_count == 0
+        assert by_name["gpt-5.6-terra"].rejected_count == 7
+        assert by_name["gpt-5.6-terra"].registered is False
+        assert by_name["gpt-5.6-terra"].last_seen_at is not None
+        # 정렬: 총 관측량(성공+404) 내림차순 — sonnet-5(44) > terra(7)
+        assert res.items[0].name == "claude-sonnet-5"
+
+    async def test_display_name_falls_back_to_alias(
+        self, model_service: ModelService, mock_session: AsyncMock
+    ):
+        """display_name NULL → 응답엔 alias — '비우면 alias 사용' 안내와 일치."""
+        model = _make_model()
+        model.display_name = None
+        resp = model_service._to_response(model, None)
+        assert resp.display_name == model.alias
+
+        model.display_name = "Sonnet 5 (표시명)"
+        resp = model_service._to_response(model, None)
+        assert resp.display_name == "Sonnet 5 (표시명)"

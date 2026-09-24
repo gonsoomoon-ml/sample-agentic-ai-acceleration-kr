@@ -146,9 +146,25 @@ export interface OrgNodeMeta {
   /** 하위 팀 수. DEPARTMENT / ORGANIZATION 만 채워지고 TEAM·USER 는 null. */
   team_count: number | null;
   leader_name: string | null;
+  leader_user_id: string | null;
   email: string | null;
   role: UserRole | null;
   team_name: string | null;
+  // budgets / rate-limits 트리에서 동일한 OrgTree 컴포넌트를 재사용하면서
+  // 우측 패널에 보여줄 데이터를 메타로 붙인다.
+  budget?: {
+    limit: number | null;
+    used: number;
+    remaining: number | null;
+    usage_pct: number | null;
+    alert_level: AlertLevel;
+  };
+  rateLimit?: {
+    config: RateLimitConfig | null;
+    scope: RateLimitScope;
+    inherited_from: string | null;
+    is_active: boolean;
+  };
 }
 
 export interface OrgTreeNode {
@@ -241,6 +257,8 @@ export interface AllocationEntry {
   target_id: string;
   target_name: string;
   target_type: BudgetScope;
+  /** USER 행의 계정 역할(ADMIN|TEAM_LEADER|USER). TEAM 행은 null/부재. */
+  target_role?: string | null;
   allocated_usd: number;
   used_usd: number;
   remaining_usd: number;
@@ -267,3 +285,52 @@ export interface FormFieldError {
   message: string;
 }
 
+
+// ─── Effective Policy (GET /admin/users/{id}/effective-policy) ────────────────
+
+export interface EffectivePolicyCell {
+  client: string;
+  model_alias: string;
+  allowed: boolean;
+  blocked_by: string[]; // "user_app" | "user_model" | "model_app"
+}
+
+export interface EffectiveBudgetEntry {
+  scope: string;
+  client: string | null;
+  max_budget_usd: string;
+  used_usd: string | null;
+  policy: string;
+}
+
+export interface EffectiveRateLimitEntry {
+  scope: string;
+  model_alias: string | null;
+  rpm_limit: number | null;
+  tpm_limit: number | null;
+  cpm_limit_usd: string | null;
+  cph_limit_usd: string | null;
+}
+
+export interface EffectiveDowngradeRule {
+  scope: string;
+  threshold_pct: number;
+  from_model_alias: string;
+  to_model_alias: string;
+}
+
+export interface EffectivePolicy {
+  user_id: string;
+  email: string | null;
+  team_id: string | null;
+  team_name: string | null;
+  allowed_clients: string[] | null;
+  allowed_clients_source: 'user' | 'team' | 'organization' | 'none';
+  allowed_models: string[] | null;
+  allowed_models_source: 'user' | 'team' | 'none';
+  web_search: Record<string, boolean>;
+  cells: EffectivePolicyCell[];
+  budgets: EffectiveBudgetEntry[];
+  rate_limits: EffectiveRateLimitEntry[];
+  downgrade_rules: EffectiveDowngradeRule[];
+}

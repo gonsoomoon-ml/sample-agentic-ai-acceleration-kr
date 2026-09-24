@@ -6,15 +6,17 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ChevronRight, ChevronDown } from 'lucide-react';
-import type { BudgetSummaryItem } from '@/types/entities';
+import type { BudgetSummaryItem, ModelListItem } from '@/types/entities';
 import { AlertLevel, BudgetScope } from '@/types/enums';
-import { Badge, type BadgeTone } from '@/components/common/Badge';
 import { Table, THead, TBody, Tr, Th, Td, TEmpty } from '@/components/common/Table';
 import { SetBudgetDialog } from './SetBudgetDialog';
+import { AutoDowngradeConfig } from './AutoDowngradeConfig';
+import { AlertBadge, TypeBadge, UsageBar } from './budgetVisuals';
 
 interface BudgetSummaryTableProps {
   items: BudgetSummaryItem[];
   isAdmin: boolean;
+  models: ModelListItem[];
 }
 
 type DialogTarget = {
@@ -22,54 +24,18 @@ type DialogTarget = {
   name: string;
   type: (typeof BudgetScope)[keyof typeof BudgetScope];
   currentLimit: number;
+  currentUsed?: number;
   parentLimit?: number;
 };
 
 const UNASSIGNED_KEY = '__unassigned__';
 
-function AlertBadge({ level, labels }: { level: (typeof AlertLevel)[keyof typeof AlertLevel]; labels: Record<string, string> }) {
-  const tones: Record<string, BadgeTone> = {
-    [AlertLevel.NORMAL]: 'teal',
-    [AlertLevel.WARNING]: 'amber',
-    [AlertLevel.CRITICAL]: 'pink',
-  };
-  return <Badge tone={tones[level] ?? 'neutral'}>{labels[level] ?? level}</Badge>;
-}
-
-function TypeBadge({ type, labels }: { type: (typeof BudgetScope)[keyof typeof BudgetScope]; labels: Record<string, string> }) {
-  return <Badge tone={type === BudgetScope.TEAM ? 'sky' : 'neutral'}>{labels[type] ?? type}</Badge>;
-}
-
-function UsageBar({
-  pct,
-  level,
-}: {
-  pct: number;
-  level: (typeof AlertLevel)[keyof typeof AlertLevel];
-}) {
-  // 임계 기반 시맨틱색(테마 토큰 — 다크/라이트 자동): 정상 teal / 경고 amber / 위험 destructive.
-  const colorMap: Record<string, string> = {
-    [AlertLevel.NORMAL]: 'hsl(var(--chart-1))',
-    [AlertLevel.WARNING]: 'hsl(38 92% 50%)',
-    [AlertLevel.CRITICAL]: 'hsl(var(--destructive))',
-  };
-  const color = colorMap[level] ?? 'hsl(var(--muted-foreground))';
-  return (
-    <div className="w-full h-1.5 rounded-full overflow-hidden bg-[--table-progress-track]">
-      <div
-        className="h-full rounded-full"
-        style={{ width: `${Math.min(pct, 100)}%`, background: color }}
-      />
-    </div>
-  );
-}
-
-export function BudgetSummaryTable({ items, isAdmin }: BudgetSummaryTableProps) {
+export function BudgetSummaryTable({ items, isAdmin, models }: BudgetSummaryTableProps) {
   const t = useTranslations('budgets');
   const [selectedItem, setSelectedItem] = useState<DialogTarget | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [showInactive, setShowInactive] = useState(false);
+  const [showInactive, setShowInactive] = useState(true);
 
   const alertLabels: Record<string, string> = {
     [AlertLevel.NORMAL]: t('alertLevels.NORMAL'),
@@ -105,6 +71,7 @@ export function BudgetSummaryTable({ items, isAdmin }: BudgetSummaryTableProps) 
       name: item.target_name,
       type: item.target_type,
       currentLimit: item.limit ?? 0,
+      currentUsed: item.used,
     });
     setIsDialogOpen(true);
   };
@@ -216,21 +183,14 @@ export function BudgetSummaryTable({ items, isAdmin }: BudgetSummaryTableProps) 
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => hasMembers && toggle(team.target_id)}
-                              disabled={!hasMembers}
-                              aria-expanded={hasMembers ? isOpen : undefined}
+                              onClick={() => toggle(team.target_id)}
+                              aria-expanded={isOpen}
                               aria-label={
-                                hasMembers
-                                  ? isOpen
-                                    ? t('collapse', { name: team.target_name })
-                                    : t('expand', { name: team.target_name })
-                                  : undefined
+                                isOpen
+                                  ? t('collapse', { name: team.target_name })
+                                  : t('expand', { name: team.target_name })
                               }
-                              className={`flex h-5 w-5 items-center justify-center rounded ${
-                                hasMembers
-                                  ? 'hover:bg-muted text-muted-foreground'
-                                  : 'text-transparent cursor-default'
-                              }`}
+                              className="flex h-5 w-5 items-center justify-center rounded hover:bg-muted text-muted-foreground"
                             >
                               {isOpen ? (
                                 <ChevronDown size={14} />
@@ -285,6 +245,20 @@ export function BudgetSummaryTable({ items, isAdmin }: BudgetSummaryTableProps) 
                         )}
                       </Tr>
                       {isOpen && members.map(renderUserRow)}
+                      {isOpen && (
+                        <Tr className="bg-muted/10">
+                          <Td colSpan={colCount}>
+                            <div className="pl-10 py-2">
+                              <AutoDowngradeConfig
+                                scopeType="TEAM"
+                                scopeId={team.target_id}
+                                scopeName={team.target_name}
+                                models={models}
+                              />
+                            </div>
+                          </Td>
+                        </Tr>
+                      )}
                     </Fragment>
                   );
                 })}

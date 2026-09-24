@@ -24,6 +24,8 @@ const updateModelAction = vi.fn();
 vi.mock('@/lib/actions/models', () => ({
   createModelAction: (...a: unknown[]) => createModelAction(...a),
   updateModelAction: (...a: unknown[]) => updateModelAction(...a),
+  // 와이어 이름 힌트 — 목록 자체를 검증하는 테스트는 없으니 빈 목록으로 고정.
+  listWireNamesAction: vi.fn(async () => ({ success: true as const, data: [] })),
 }));
 
 // next-intl 은 메시지 provider 없이는 throw 한다 — 키를 그대로 돌려주는 대역으로 대체.

@@ -66,6 +66,10 @@ class JWTVerifier:
                     algorithms=[key_cfg["algorithm"]],
                     issuer=key_cfg["issuer"],
                     audience=key_cfg["audience"],
+                    # IdP id_token 의 at_hash 는 access_token 과의 binding 검증용이다.
+                    # 쿠키에는 id_token 만 실리므로 비교할 access_token 이 없다 —
+                    # core.oidc_verifier 와 같은 이유로 끈다.
+                    options={"verify_at_hash": False},
                 )
                 return payload
             except JWTError as e:
@@ -169,23 +173,28 @@ async def get_current_user(request: Request) -> CurrentUser:
     #         `uuid.UUID()` 가 **ValueError** 를 던지는데 이 함수는 그걸 잡지 않으므로
     #         401 도 403 도 아닌 **500** 이 나간다 — 인증 실패가 서버 오류로 보인다.
     #
-    #    그래서 role 클레임이 없으면 IdP 토큰으로 보고 DB 신원으로 해석한다. 내부
-    #    admin JWT 경로는 한 글자도 바뀌지 않는다(role 이 있으면 아래로 오지 않는다).
-    if "role" not in payload:
+    #    그래서 IdP 토큰은 DB 신원으로 해석한다. 판정 기준은 **발급자(iss)** 다 —
+    #    IdP 에 custom mapper 로 `role` 클레임을 싣는 설정이면, 그 클레임을 그대로
+    #    신뢰하는 것이 권한 상승 경로가 된다. 내부 admin JWT 경로는 한 글자도 바뀌지
+    #    않는다(issuer 가 IdP 가 아니고 role 이 있으면 아래로 온다).
+    from app.core.config import get_settings
+
+    oidc_issuer = get_settings().OIDC_ISSUER_URL
+    if (oidc_issuer and payload.get("iss") == oidc_issuer) or "role" not in payload:
         return await _resolve_idp_identity(payload)
 
     team_id_raw = payload.get("team_id")
     try:
-        user_id = uuid.UUID(payload["sub"])
+        return CurrentUser(
+            user_id=uuid.UUID(payload["sub"]),
+            email=payload.get("email", ""),
+            role=UserRole(payload["role"]),
+            team_id=uuid.UUID(team_id_raw) if team_id_raw else None,
+        )
     except (ValueError, TypeError, KeyError):
-        # role 은 있는데 sub 가 UUID 가 아니다 → 우리 토큰이 아니다. 500 이 아니라 401.
-        raise HTTPException(status_code=401, detail="Invalid token subject")
-    return CurrentUser(
-        user_id=user_id,
-        email=payload.get("email", ""),
-        role=UserRole(payload["role"]),
-        team_id=uuid.UUID(team_id_raw) if team_id_raw else None,
-    )
+        # sub 가 UUID 가 아니거나 role 이 enum 에 없는 값 → 우리 토큰이 아니다.
+        # 500 이 아니라 401.
+        raise HTTPException(status_code=401, detail="Invalid token claims")
 
 
 async def _resolve_idp_identity(claims: dict) -> CurrentUser:

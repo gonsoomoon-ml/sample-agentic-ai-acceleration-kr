@@ -5,7 +5,7 @@ from __future__ import annotations
 import structlog
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import and_, exists, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, require_admin
@@ -33,6 +33,9 @@ _RESPONSES_PROVIDERS: frozenset[str] = frozenset(
 class AppUserRef(BaseModel):
     user_id: str
     email: str | None = None
+    #: True = user_allowed_clients 에 이 client 행이 명시됨.
+    #: False = 명시 행이 없는 사용자 — fail-open 의미로 "허용"에 포함(effective policy 와 동일).
+    explicit: bool = True
 
 
 class AppModelRef(BaseModel):
@@ -49,6 +52,8 @@ class AppPolicyResponse(BaseModel):
     all_models: list[AppModelRef]
     default_model: str | None
     allowed_users: list[AppUserRef]
+    # 같은 routing_profiles 행의 앱 정책 — 한 화면에서 같이 보고 바꾼다.
+    web_search_enabled: bool = False
 
 
 class DefaultModelPatchRequest(BaseModel):
@@ -202,24 +207,38 @@ async def _build_app_policy(session: AsyncSession, client: str) -> AppPolicyResp
         AppModelRef(alias=row[0], allowed_clients=row[1]) for row in all_result.fetchall()
     ]
 
-    # default_model: model.routing_profiles WHERE client = :client
+    # default_model + web_search_enabled: model.routing_profiles WHERE client = :client
     rp_result = await session.execute(
-        text("SELECT default_model FROM model.routing_profiles WHERE client = :client"),
+        text(
+            "SELECT default_model, web_search_enabled"
+            " FROM model.routing_profiles WHERE client = :client"
+        ),
         {"client": client},
     )
     rp_row = rp_result.fetchone()
     default_model: str | None = rp_row[0] if rp_row else None
+    web_search_enabled = bool(rp_row[1]) if rp_row else False
 
-    # allowed_users: user_allowed_clients JOIN users → {user_id, email}
+    # allowed_users: effective policy 의미(fail-open)에 맞춘다.
+    #   명시 행이 없는 사용자 = 전체 앱 허용 → 이 client 도 허용에 포함해야 한다.
+    #   행이 있는 사용자 = 이 client 행이 있을 때만 허용.
+    explicit_row = exists().where(
+        and_(
+            UserAllowedClient.user_id == User.id,
+            UserAllowedClient.client == client,
+        )
+    )
+    no_restriction = ~exists().where(UserAllowedClient.user_id == User.id)
     uac_stmt = (
-        select(User.id, User.email)
-        .join(UserAllowedClient, UserAllowedClient.user_id == User.id)
-        .where(UserAllowedClient.client == client)
+        select(User.id, User.email, explicit_row.label("explicit"))
+        .where(User.is_active.is_(True))
+        .where(or_(no_restriction, explicit_row))
         .order_by(User.email)
     )
     uac_result = await session.execute(uac_stmt)
     allowed_users = [
-        AppUserRef(user_id=str(uid), email=email) for uid, email in uac_result.all()
+        AppUserRef(user_id=str(uid), email=email, explicit=bool(exp))
+        for uid, email, exp in uac_result.all()
     ]
 
     return AppPolicyResponse(
@@ -228,6 +247,7 @@ async def _build_app_policy(session: AsyncSession, client: str) -> AppPolicyResp
         all_models=all_models,
         default_model=default_model,
         allowed_users=allowed_users,
+        web_search_enabled=web_search_enabled,
     )
 
 
@@ -246,7 +266,8 @@ async def get_app_policy(
     - allowed_models: ACTIVE model aliases accessible to this client
       (NULL allowed_clients means no client restriction = accessible to all).
     - default_model: from model.routing_profiles (may be null).
-    - allowed_users: user_ids that have this client in their allowed_clients list.
+    - allowed_users: users allowed for this client — explicit rows OR users with
+      no restrictions at all (fail-open, matching effective policy semantics).
     """
     if client not in _VALID_CLIENTS:
         raise ValidationError(

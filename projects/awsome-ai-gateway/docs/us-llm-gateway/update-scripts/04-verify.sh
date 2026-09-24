@@ -61,6 +61,14 @@ grep -qE "^ $COWORK_CLIENT .*$COWORK_BACKEND" <<<"$DB_OUT" \
   && ok "$COWORK_CLIENT routing corrected (backend=$COWORK_BACKEND)" \
   || bad "$COWORK_CLIENT routing still on mantle — run 01-fix-cowork-routing.sh --apply"
 
+grep -qE "^ $CLAUDE_CODE_CLIENT .*$CLAUDE_CODE_BACKEND" <<<"$DB_OUT" \
+  && ok "$CLAUDE_CODE_CLIENT routing uses backend=$CLAUDE_CODE_BACKEND" \
+  || bad "$CLAUDE_CODE_CLIENT routing not $CLAUDE_CODE_BACKEND — run 01a-fix-claude-code-routing.sh --apply"
+
+if grep -qE "^ $CLAUDE_CODE_CLIENT .*arn:aws:iam::[0-9]+:role" <<<"$DB_OUT"; then
+  bad "$CLAUDE_CODE_CLIENT routing still carries a cross-account ARN — run 01a-fix-claude-code-routing.sh --apply"
+fi
+
 grep -q "$MODEL" <<<"$DB_OUT" \
   && ok "$MODEL alias is ACTIVE" \
   || bad "$MODEL alias missing — run 02-add-opus5-model.sh"
@@ -147,3 +155,31 @@ run_sql "SELECT COALESCE(client,'(legacy)') AS client, model_alias, status,
                 cost_usd, input_tokens, output_tokens, web_search_count AS ws,
                 completed_at
            FROM usage.usage_logs ORDER BY completed_at DESC LIMIT 5;"
+
+# ── (D) Notification worker ───────────────────────────────────────────────────
+hdr "D. Notification worker"
+note "Checks only: not every install uses real email (mock is the default)"
+
+SA_NAME="notification-worker"
+DEPLOY_NAME="${HELM_RELEASE}-notification-worker"
+IRSA=$(kubectl get sa "$SA_NAME" -n "$NS" -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' 2>/dev/null)
+SENDER=$(kubectl get deploy "$DEPLOY_NAME" -n "$NS" -o jsonpath='{.spec.template.spec.containers[?(@.name=="notification-worker")].env[?(@.name=="EMAIL_SENDER_TYPE")].value}' 2>/dev/null)
+
+if [ -n "$IRSA" ]; then
+  ok "IRSA annotation present: ${IRSA##*/}"
+else
+  warn "IRSA annotation absent — use 08-setup-notification-ses-irsa.sh for SES"
+fi
+
+if [ -n "$SENDER" ]; then
+  detail "EMAIL_SENDER_TYPE=$SENDER"
+  case "$SENDER" in
+    ses) [ -n "$IRSA" ] || bad "EMAIL_SENDER_TYPE=ses but no IRSA — sending will fail" ;;
+    smtp) ok "SMTP sender selected" ;;
+    internal_api) ok "internal_api sender selected" ;;
+    mock) warn "EMAIL_SENDER_TYPE=mock — no real email is sent" ;;
+    *) warn "Unknown EMAIL_SENDER_TYPE: $SENDER" ;;
+  esac
+else
+  warn "Could not read EMAIL_SENDER_TYPE"
+fi

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import structlog
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy.exc import DBAPIError
 
 from app.config import get_settings
 from app.providers.bedrock_adapter import BedrockAdapter
@@ -38,7 +39,7 @@ from app.services.fallback_loop import (
     run_fallback_loop,
 )
 from app.services.fallback_resolver import make_same_provider
-from app.services.router_service import RouterService
+from app.services.router_service import ModelInactiveError, RouterService
 from app.services.streaming import bedrock_anthropic_sse_stream
 from app.services.thinking_normalizer import normalize_thinking, sanitize_output_config
 from app.services.tool_filter import strip_unsupported_tools
@@ -167,6 +168,37 @@ async def _select_backend(*, loader, router_service, redis, db, client, requeste
     return BackendDecision(provider=ProviderType.BEDROCK, profile=profile)
 
 
+async def _resolve_bedrock_with_default(redis, db, requested_alias, profile, client):
+    """Bedrock 경로 resolve — 요청 alias 우선, 실패 시 profile.default_model 폴백.
+
+    invoke-backend 프로필에서는 default_model 이 완전히 죽은 필드였다 — 요청
+    model 이 항상 이기고 미등록 이름은 404. codex(/v1/responses) 경로와 같은
+    의미로 미등록 이름을 default 로 대체한다. 조용한 대체이므로 INFO 로그 필수
+    (과금은 default alias 로 기록되어 추적 가능).
+
+    ModelInactiveError(운영자 kill switch)는 폴백 없이 전파하고, default 자체의
+    resolve 실패도 숨기지 않고 전파한다 — 깨진 default 는 진짜 서버 결함이다.
+    """
+    try:
+        return await _router_service.resolve_bedrock_model(
+            redis, db, requested_alias
+        )
+    except ModelInactiveError:
+        raise
+    except (LookupError, DBAPIError):
+        if profile is None or not profile.default_model:
+            raise
+        logger.info(
+            "messages_requested_model_unresolved_using_default",
+            requested=str(requested_alias)[:128],
+            default_model=profile.default_model,
+            client=client,
+        )
+        return await _router_service.resolve_bedrock_model(
+            redis, db, profile.default_model
+        )
+
+
 @router.post("/v1/messages", response_model=None)
 async def messages(request: Request) -> StreamingResponse | JSONResponse:
     state = request.scope.get("state", {})
@@ -240,8 +272,8 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
                         redis=redis, db=db, client=client, requested_alias=model_alias,
                     )
                 if decision.provider != ProviderType.BEDROCK_MANTLE:
-                    model_config = await _router_service.resolve_bedrock_model(
-                        redis, db, model_alias
+                    model_config = await _resolve_bedrock_with_default(
+                        redis, db, model_alias, decision.profile, client
                     )
         else:
             if routing_loader is not None:
@@ -250,8 +282,8 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
                     redis=redis, db=None, client=client, requested_alias=model_alias,
                 )
             if decision.provider != ProviderType.BEDROCK_MANTLE:
-                model_config = await _router_service.resolve_bedrock_model(
-                    redis, None, model_alias
+                model_config = await _resolve_bedrock_with_default(
+                    redis, None, model_alias, decision.profile, client
                 )
     except LookupError as e:
         return JSONResponse(
@@ -487,14 +519,23 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
                 body_b, _rewrite(model_config.provider_model_id), **sk
             )
 
+        # 클라이언트 체감 TTFT — 루프의 on_usage 는 1-arg(멀티턴 합산이라 per-turn
+        # TTFT 를 안 넘긴다 — web_search_loop.py 의 _stream_on_usage 주석)라 ttft_ms 가
+        # 항상 NULL 로 기록돼 모니터링에 "ttft=-" 로 나왔다. 응답 이터레이터의 첫
+        # 청크 시각을 잡아 클라이언트가 첫 바이트를 받은 시점으로 기록한다.
+        _ws_first_frame: dict[str, float | None] = {"t": None}
+
         async def _ws_record(usage: TokenUsage) -> None:
             if not auth_context:
                 return
             usage.cache_ttl_1h = cache_ttl_1h
             duration_ms = int((time.monotonic() - start_time) * 1000)
+            ft = _ws_first_frame["t"]
+            ttft_ms = int((ft - start_time) * 1000) if ft is not None else duration_ms
             await cost_recorder.finalize(
                 redis, auth_context, model_config, usage, request_id,
                 is_stream, duration_ms,
+                ttft_ms=ttft_ms,
                 rate_limit_state=state.get("rate_limit_state"),
                 downgraded_from=state.get("downgraded_from"),
                 client=client,
@@ -568,7 +609,7 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
         # 사전 게이팅 — 훅을 넘기면 루프가 SSE 전문을 누적한다.
         _ws_logging = await resolve_body_logger(request.app.state, redis, session_factory)
 
-        return await run_web_search_loop(
+        _ws_resp = await run_web_search_loop(
             dialect="anthropic",
             invoke=_ws_invoke,
             invoke_stream=_ws_invoke_stream,
@@ -589,6 +630,22 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
             on_stream_complete=_ws_log_stream if _ws_logging else None,
             on_nonstream_complete=_ws_log_nonstream if _ws_logging else None,
         )
+
+        # 스트리밍이면 첫 yield 시각을 잡아 _ws_record 가 ttft_ms 로 쓰게 한다.
+        # finalize 는 스트림 소비 중(usage 확정 시점)에 호출되므로 그때는 첫 청크
+        # 시각이 이미 잡혀 있다. 비스트리밍(JSONResponse)은 래핑 대상이 없어
+        # _ws_record 의 duration_ms 폴백이 적용된다(다른 라우터의 비스트림과 동일).
+        if isinstance(_ws_resp, StreamingResponse):
+            _ws_body_iter = _ws_resp.body_iterator
+
+            async def _ws_timed_iter():
+                async for chunk in _ws_body_iter:
+                    if _ws_first_frame["t"] is None:
+                        _ws_first_frame["t"] = time.monotonic()
+                    yield chunk
+
+            _ws_resp.body_iterator = _ws_timed_iter()
+        return _ws_resp
 
     # Use a no-op CB when the service is not wired (e.g. tests that don't configure it)
     if cb is None:

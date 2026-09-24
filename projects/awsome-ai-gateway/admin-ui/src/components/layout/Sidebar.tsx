@@ -27,6 +27,7 @@ import { BrandLogo } from '@/components/brand/BrandLogo';
 
 interface SidebarProps {
   role?: UserRole;
+  chatEnabled?: boolean;
 }
 
 interface NavItemDef {
@@ -34,6 +35,7 @@ interface NavItemDef {
   href: string;
   icon: React.ReactNode;
   allowedRoles: UserRole[];
+  feature?: 'chat';
 }
 
 const NAV_ITEMS: NavItemDef[] = [
@@ -110,6 +112,7 @@ const NAV_ITEMS: NavItemDef[] = [
     // 그러면 메뉴는 보이지만 페이지의 모든 호출이 403 이 되는 죽은 화면이 된다.
     // 권한표 쪽을 백엔드에 맞춰 좁히는 것이 맞다.
     allowedRoles: [UserRoleConst.ADMIN],
+    feature: 'chat',
   },
   {
     key: 'cli',
@@ -125,12 +128,16 @@ const NAV_ITEMS: NavItemDef[] = [
   },
 ];
 
-export function Sidebar({ role }: SidebarProps) {
+export function Sidebar({ role, chatEnabled = true }: SidebarProps) {
   const pathname = usePathname();
   const t = useTranslations('nav');
 
   const visibleItems = role
-    ? NAV_ITEMS.filter((item) => item.allowedRoles.includes(role))
+    ? NAV_ITEMS.filter(
+        (item) =>
+          item.allowedRoles.includes(role) &&
+          (!item.feature || (item.feature === 'chat' && chatEnabled)),
+      )
     : NAV_ITEMS.filter((item) => item.href === '/');
 
   const isActive = (href: string): boolean => {

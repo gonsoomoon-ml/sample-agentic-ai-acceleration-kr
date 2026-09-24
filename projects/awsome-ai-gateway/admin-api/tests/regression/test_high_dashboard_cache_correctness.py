@@ -207,15 +207,17 @@ async def test_decimal_payload_survives_serialization():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 4) 캐시의 전제: 이 라우터는 전부 require_admin 이어야 한다
+# 4) 캐시의 전제: require_admin 이거나, 리더면 키에 유효 scope 가 있어야 한다
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def test_all_cached_handlers_are_admin_only():
-    """⚠️ actor 없는 캐시 키가 안전한 **유일한** 근거를 고정한다.
+    """⚠️ 캐시 유출 방지 조건을 고정한다.
 
-    누가 이 라우터에 require_admin_or_team_leader 핸들러를 추가하고 캐시를 붙이면,
-    ADMIN 이 채운 전사 데이터를 TEAM_LEADER 가 받는 유출이 된다. 그 순간 실패한다.
+    require_admin_or_team_leader 핸들러는 응답이 행위자 scope 에 따라 달라지므로
+    (ADMIN=전사, TEAM_LEADER=본인 팀), 캐시 키에 scope 판별자가 없으면 ADMIN 이 채운
+    전사 데이터를 TEAM_LEADER 가 받는다. 리더를 여는 핸들러는 캐시 키에 **유효 scope**
+    (eff_scope / eff_team — 파라미터가 아니라 강제 적용된 값)를 반드시 넣어야 한다.
     """
     tree = ast.parse(SOURCE.read_text(encoding="utf-8"))
     offenders = []
@@ -229,10 +231,12 @@ def test_all_cached_handlers_are_admin_only():
         checked += 1
         if "require_admin" not in src:
             offenders.append(f"{fn.name}: require_admin 의존성 없음")
-        if "require_admin_or_team_leader" in src:
+        if "require_admin_or_team_leader" in src and not (
+            "eff_scope" in src or "eff_team" in src
+        ):
             offenders.append(
-                f"{fn.name}: require_admin_or_team_leader 인데 캐시를 쓴다 — 키에 role 을 "
-                f"넣지 않으면 TEAM_LEADER 가 ADMIN 의 전사 응답을 받는다"
+                f"{fn.name}: require_admin_or_team_leader 인데 캐시 키에 유효 scope "
+                f"(eff_scope/eff_team)가 없다 — TEAM_LEADER 가 ADMIN 의 전사 응답을 받는다"
             )
     assert checked >= 2, f"캐시 사용 핸들러를 {checked}개만 찾았다"
     assert offenders == [], "\n  ".join(offenders)

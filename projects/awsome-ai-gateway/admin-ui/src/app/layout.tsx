@@ -16,7 +16,8 @@ const pretendard = localFont({
   display: 'swap',
   weight: '45 920', // variable axis 범위
 });
-import { parseJWT } from '@/lib/auth';
+import { parseJWT, isSessionExpired } from '@/lib/auth';
+import { resolveLocale } from '@/i18n/locale';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { ToastProvider } from '@/components/common/ToastProvider';
@@ -41,14 +42,22 @@ export default async function RootLayout({
   let session: AdminSession | null = null;
   if (token) {
     try {
-      session = parseJWT(token);
+      const parsed = parseJWT(token);
+      // 만료된 쿠키도 파싱은 성공한다. '/login'·'/403' 은 public 이라 middleware 가
+      // 만료 검사 없이 통과시키므로, 여기서 만료를 세션 무효로 처리하지 않으면
+      // 만료된 쿠키 위에 Sidebar+Header 가 그려진다.
+      if (!isSessionExpired(parsed)) {
+        session = parsed;
+      }
     } catch {
       // Malformed token — middleware will redirect to login
     }
   }
 
   const messages = await getMessages();
-  const locale = cookieStore.get('locale')?.value || 'ko';
+  // request.ts 와 같은 규칙 — 쿠키 원시값을 그대로 쓰면 lang="fr" + ko 메시지 조합이 된다.
+  const locale = resolveLocale(cookieStore.get('locale')?.value);
+  const chatEnabled = process.env.CHAT_ENABLED !== 'false';
 
   return (
     <html
@@ -60,20 +69,27 @@ export default async function RootLayout({
         <ThemeProvider>
           <NextIntlClientProvider messages={messages} locale={locale}>
             <ToastProvider>
-              <div className="flex h-screen bg-background">
-                <Sidebar role={session?.role} />
-                {/* ChatShell: 본문과 퀵챗 패널을 flex 형제로 배치(분할뷰). 채팅
-                    열리면 본문이 자동으로 좁아짐(overlay 아님). enabled=ADMIN 만
-                    채팅 UI 노출 — Provider 는 항상 감싸 페이지 hook 안전성 유지. */}
-                <ChatShell enabled={session?.role === 'ADMIN'}>
-                  <div className="flex flex-col flex-1 overflow-hidden">
-                    <Header session={session} />
-                    <main className="aurora-bg flex-1 overflow-auto p-6">
-                      {children}
-                    </main>
-                  </div>
-                </ChatShell>
-              </div>
+              {session ? (
+                <div className="flex h-screen bg-background">
+                  <Sidebar role={session.role} chatEnabled={chatEnabled} />
+                  {/* ChatShell: 본문과 퀵챗 패널을 flex 형제로 배치(분할뷰). 채팅
+                      열리면 본문이 자동으로 좁아짐(overlay 아님). enabled=ADMIN 만
+                      채팅 UI 노출 — Provider 는 항상 감싸 페이지 hook 안전성 유지. */}
+                  <ChatShell enabled={chatEnabled && session.role === 'ADMIN'}>
+                    <div className="flex flex-col flex-1 overflow-hidden">
+                      <Header session={session} />
+                      <main className="aurora-bg flex-1 overflow-auto p-6">
+                        {children}
+                      </main>
+                    </div>
+                  </ChatShell>
+                </div>
+              ) : (
+                // 세션 없음 — middleware 가 여기 닿는 걸 '/login'(과 '/403') 으로만
+                // 허용한다. 그 페이지들은 자체 전체화면 레이아웃을 그리므로 Sidebar/
+                // Header(로그인 전인데 Dashboard 메뉴만 보이는 어색한 상태)를 씌우지 않는다.
+                children
+              )}
             </ToastProvider>
           </NextIntlClientProvider>
         </ThemeProvider>

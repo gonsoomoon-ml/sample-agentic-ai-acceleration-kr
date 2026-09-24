@@ -159,6 +159,26 @@ export async function activateModelAction(alias: string): Promise<ActionResult<v
   }
 }
 
+// ─── deleteModelAction ────────────────────────────────────────────────────────
+// 라우팅 설정행(pricing·allowed_models·rate limit·downgrade)은 백엔드가 같이 지운다.
+// 앱의 default_model 로 참조 중이면 409 — 서버 에러 메시지가 그대로 토스트에 나온다.
+
+export async function deleteModelAction(alias: string): Promise<ActionResult<void>> {
+  if (!alias) {
+    return { success: false, error: 'Model alias is required' };
+  }
+
+  try {
+    await withRetry(() =>
+      adminAPI.delete(`/admin/models/${encodeURIComponent(alias)}`)
+    );
+    revalidatePath('/models');
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: toErrorMessage(err) };
+  }
+}
+
 // ─── listActiveModelsAction ───────────────────────────────────────────────────
 // 활성 모델 카탈로그 조회 (client 컴포넌트에서 모델 선택 UI 용). status==='ACTIVE' 만 반환.
 
@@ -177,6 +197,29 @@ interface AdminModelItem {
     cache_creation_1h_price_per_1k_tokens?: string;
     cache_read_price_per_1k_tokens?: string;
   } | null;
+  context_window: number | null;
+  max_output_tokens: number | null;
+}
+
+/** usage_logs 에 관측된 와이어 이름 — alias 생성 시 "클라이언트가 뭘내나" 확인용. */
+export interface WireNameItem {
+  name: string;
+  request_count: number;
+  last_seen_at: string | null;
+  registered: boolean;
+  /** resolve 실패(404)로 관측된 횟수 — 미등록 이름 요청의 실제 신호. */
+  rejected_count: number;
+}
+
+export async function listWireNamesAction(days = 30): Promise<ActionResult<WireNameItem[]>> {
+  try {
+    const res = await withRetry(() =>
+      adminAPI.get<{ items: WireNameItem[] }>('/admin/models/wire-names', { days })
+    );
+    return { success: true, data: res.items ?? [] };
+  } catch (err) {
+    return { success: false, error: toErrorMessage(err) };
+  }
 }
 
 export async function listActiveModelsAction(): Promise<ActionResult<ModelListItem[]>> {
@@ -205,8 +248,8 @@ export async function listActiveModelsAction(): Promise<ActionResult<ModelListIt
           cache_read_price_per_1k: p?.cache_read_price_per_1k_tokens
             ? parseFloat(p.cache_read_price_per_1k_tokens)
             : 0,
-          max_tokens: 0,
-          context_window: 0,
+          max_tokens: item.max_output_tokens ?? 0,
+          context_window: item.context_window ?? 0,
           description: item.description,
           display_name: item.display_name,
         };
@@ -237,6 +280,8 @@ export interface PriceSyncDiff {
   proposed_cache_1h_per_1k: string | null;
   proposed_cache_read_per_1k: string | null;
   changed: boolean;
+  /** 단가 동일해도 카탈로그 스펙(context_window/max_output_tokens)이 갱신되면 true. */
+  spec_changed?: boolean;
 }
 
 export interface PriceSyncPreview {
@@ -247,11 +292,15 @@ export interface PriceSyncPreview {
   changed_count: number;
 }
 
-/** AWS Price List 단가 vs 현재가 diff 미리보기(읽기 전용). */
-export async function previewPriceSyncAction(): Promise<ActionResult<PriceSyncPreview>> {
+type PriceSyncSource = 'aws' | 'litellm';
+
+/** 외부 단가 소스(AWS Price List / LiteLLM Catalog) vs 현재가 diff 미리보기(읽기 전용). */
+export async function previewPriceSyncAction(
+  source: PriceSyncSource = 'aws'
+): Promise<ActionResult<PriceSyncPreview>> {
   try {
     const data = await withRetry(() =>
-      adminAPI.get<PriceSyncPreview>('/admin/models/pricing/sync-preview')
+      adminAPI.get<PriceSyncPreview>('/admin/models/pricing/sync-preview', { source })
     );
     return { success: true, data };
   } catch (err) {
@@ -259,9 +308,10 @@ export async function previewPriceSyncAction(): Promise<ActionResult<PriceSyncPr
   }
 }
 
-/** 승인된 alias 만 AWS 단가로 적용(자동 전체적용 아님). */
+/** 승인된 alias 만 외부 단가로 적용(자동 전체적용 아님). */
 export async function applyPriceSyncAction(
-  aliases: string[]
+  aliases: string[],
+  source: PriceSyncSource = 'aws'
 ): Promise<ActionResult<{ applied: string[]; skipped: string[]; errors: string[] }>> {
   if (!aliases.length) {
     return { success: false, error: '적용할 모델을 선택하세요' };
@@ -270,7 +320,7 @@ export async function applyPriceSyncAction(
     const data = await withRetry(() =>
       adminAPI.post<{ applied: string[]; skipped: string[]; errors: string[] }>(
         '/admin/models/pricing/sync-apply',
-        { aliases }
+        { aliases, source }
       )
     );
     revalidatePath('/models');

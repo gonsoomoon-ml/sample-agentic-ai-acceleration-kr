@@ -284,6 +284,91 @@ async def test_check_multi_scope_rpm_all_unlimited(mock_redis):
 
 
 @pytest.mark.asyncio
+async def test_check_multi_scope_rpm_unlimited_records_usage(mock_redis):
+    # 한도 미설정 USER/TEAM 도 live-usage 카운터는 적재 (GLOBAL 제외).
+    pipe = mock_redis.pipeline.return_value
+    descriptors = [
+        ScopeDescriptor(
+            scope=RateLimitScope.USER, scope_id="u1", model_alias="m1", rpm_limit=None
+        ),
+        ScopeDescriptor(
+            scope=RateLimitScope.TEAM, scope_id="t1", model_alias="m1", rpm_limit=None
+        ),
+        ScopeDescriptor(
+            scope=RateLimitScope.GLOBAL, scope_id=None, model_alias="m1", rpm_limit=None
+        ),
+    ]
+
+    svc = RateLimitService()
+    result = await svc.check_multi_scope_rpm(mock_redis, descriptors)
+
+    assert result.allowed is True
+    zadd_keys = [c.args[0] for c in pipe.zadd.call_args_list]
+    assert zadd_keys == [
+        "{USER:u1:m1}:rpm",
+        "{TEAM:t1:m1}:rpm",
+    ]
+    pipe.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_check_multi_scope_rpm_records_only_unlimited_scopes(mock_redis):
+    # 한도 있는 스코프는 Lua 가 ZADD — 파이프라인엔 무한도 스코프만 들어간다.
+    mock_redis.eval = AsyncMock(
+        return_value=json.dumps(
+            {"allowed": True, "remaining": 59, "limit": 60, "retry_after": None, "window_reset": 0}
+        ).encode()
+    )
+    from app.services.lua_loader import LuaScriptLoader
+
+    LuaScriptLoader._scripts["rate_limit_check"] = "-- mock"
+    pipe = mock_redis.pipeline.return_value
+    descriptors = [
+        ScopeDescriptor(
+            scope=RateLimitScope.USER, scope_id="u1", model_alias="m1", rpm_limit=60
+        ),
+        ScopeDescriptor(
+            scope=RateLimitScope.TEAM, scope_id="t1", model_alias="m1", rpm_limit=None
+        ),
+    ]
+
+    svc = RateLimitService()
+    result = await svc.check_multi_scope_rpm(mock_redis, descriptors)
+
+    assert result.allowed is True
+    zadd_keys = [c.args[0] for c in pipe.zadd.call_args_list]
+    assert zadd_keys == ["{TEAM:t1:m1}:rpm"]
+
+
+@pytest.mark.asyncio
+async def test_check_multi_scope_rpm_violation_skips_usage_record(mock_redis):
+    # RPM 거부된 요청은 카운터에 적재하지 않는다 (제한 스코프와 같은 의미).
+    mock_redis.eval = AsyncMock(
+        return_value=json.dumps(
+            {"allowed": False, "remaining": 0, "limit": 60, "retry_after": 5, "window_reset": 0}
+        ).encode()
+    )
+    from app.services.lua_loader import LuaScriptLoader
+
+    LuaScriptLoader._scripts["rate_limit_check"] = "-- mock"
+    pipe = mock_redis.pipeline.return_value
+    descriptors = [
+        ScopeDescriptor(
+            scope=RateLimitScope.USER, scope_id="u1", model_alias="m1", rpm_limit=60
+        ),
+        ScopeDescriptor(
+            scope=RateLimitScope.TEAM, scope_id="t1", model_alias="m1", rpm_limit=None
+        ),
+    ]
+
+    svc = RateLimitService()
+    result = await svc.check_multi_scope_rpm(mock_redis, descriptors)
+
+    assert result.allowed is False
+    pipe.zadd.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_check_multi_scope_rpm_fail_open_on_redis_error(mock_redis):
     # Redis 에러 → fail-open (NFR-2.4)
     mock_redis.eval = AsyncMock(side_effect=Exception("redis down"))

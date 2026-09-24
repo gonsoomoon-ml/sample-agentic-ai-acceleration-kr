@@ -106,6 +106,7 @@ async def lifespan(app: FastAPI):
     from app.services.key_service import KeyService
     from app.services.model_service import ModelService
     from app.services.rate_limit_service import RateLimitService
+    from app.services.allowed_client_scope_service import ScopedAllowedClientService
     from app.services.service_token_service import ServiceTokenService
     from app.services.team_allowed_model_service import TeamAllowedModelService
     from app.services.user_team_service import UserTeamService
@@ -123,6 +124,7 @@ async def lifespan(app: FastAPI):
     app.state.rate_limit_service = RateLimitService(cache_mgr=cache_mgr)
     app.state.user_team_service = UserTeamService(cache_mgr=cache_mgr, key_service=key_service)
     app.state.team_allowed_model_service = TeamAllowedModelService(cache_mgr=cache_mgr)
+    app.state.allowed_client_scope_service = ScopedAllowedClientService(cache_mgr=cache_mgr)
     app.state.analytics_service = AnalyticsService()
     app.state.service_token_service = ServiceTokenService()
 
@@ -168,6 +170,31 @@ async def lifespan(app: FastAPI):
         app.state.oidc_http = None
         app.state.oidc_verifier = None
         logger.info("oidc.disabled", reason="OIDC_ISSUER_URL or OIDC_AUDIENCE empty")
+
+    # ── Admin-UI 로그인 (Cognito ROPC) — OIDC + Cognito app client + 서명키 모두 필요 ──
+    app.state.admin_auth_service = None
+    if (
+        app.state.oidc_service is not None
+        and settings.COGNITO_APP_CLIENT_ID
+        and settings.COGNITO_USER_POOL_ID
+        and settings.ADMIN_UI_JWT_PRIVATE_KEY_PEM.get_secret_value()
+    ):
+        import boto3
+        from app.services.admin_auth_service import AdminAuthService
+
+        admin_cognito_client = boto3.client("cognito-idp", region_name=settings.COGNITO_REGION)
+        app.state.admin_auth_service = AdminAuthService(
+            cognito_client=admin_cognito_client,
+            app_client_id=settings.COGNITO_APP_CLIENT_ID,
+            oidc_service=app.state.oidc_service,
+            redis=redis,
+        )
+        logger.info("admin_auth.enabled", client_id=settings.COGNITO_APP_CLIENT_ID)
+    else:
+        logger.info(
+            "admin_auth.disabled",
+            reason="OIDC/COGNITO_APP_CLIENT_ID/ADMIN_UI_JWT_PRIVATE_KEY_PEM not fully configured",
+        )
 
     # TEAM budget config cold-cache warmup
     # init SQL / alembic 백필로 DB에 삽입된 TEAM 예산이 Redis에 없어
@@ -616,6 +643,9 @@ def create_app() -> FastAPI:
     app.include_router(service_tokens.router)
     from app.routers import auth_oidc
     app.include_router(auth_oidc.router)
+
+    from app.routers import auth_admin
+    app.include_router(auth_admin.router)
 
     from app.routers import chat_agent  # admin-chat-agent BI assistant (Phase 2)
     app.include_router(chat_agent.router)

@@ -205,6 +205,35 @@ class UserAllowedClient(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+# ── TeamAllowedClient / OrgAllowedClient ──
+# user_allowed_clients 의 상위 정책 — 우선순위 user > team > org > 제한없음
+# (alembic 0038, model 의 team_allowed_models 상속 구조와 동일 의미론).
+
+
+class TeamAllowedClient(Base):
+    __tablename__ = "team_allowed_clients"
+    __table_args__ = {"schema": "auth"}
+
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("auth.teams.id", ondelete="CASCADE"), primary_key=True
+    )
+    client: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("auth.users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OrgAllowedClient(Base):
+    __tablename__ = "org_allowed_clients"
+    __table_args__ = {"schema": "auth"}
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("auth.organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    client: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("auth.users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 # ── ServiceToken ──
 
 

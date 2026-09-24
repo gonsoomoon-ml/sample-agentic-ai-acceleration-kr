@@ -7,7 +7,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 
 COPY pyproject.toml uv.lock* ./
-RUN uv sync --frozen --no-dev --extra http 2>/dev/null || uv sync --no-dev --extra http
+RUN uv sync --frozen --no-dev --extra http --extra ses --extra smtp 2>/dev/null || \
+    uv sync --no-dev --extra http --extra ses --extra smtp
 
 # Runtime stage
 FROM public.ecr.aws/docker/library/python:3.11-slim

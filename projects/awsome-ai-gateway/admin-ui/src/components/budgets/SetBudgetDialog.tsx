@@ -7,13 +7,19 @@ import { useState, useTransition, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
 import type { BudgetScope } from '@/types/enums';
-import { setBudgetAction, deleteUserBudgetAction } from '@/lib/actions/budgets';
+import {
+  setBudgetAction,
+  deleteUserBudgetAction,
+  getTeamAllocationAction,
+  allocateTeamBudgetAction,
+} from '@/lib/actions/budgets';
 import {
   getUserAllowedClientsAction,
   getUserClientBudgetsAction,
   setUserClientBudgetAction,
   clearUserClientBudgetAction,
 } from '@/lib/actions/users';
+import { CLIENTS, type GatewayClient } from '@/lib/constants/gateway';
 import { FormError } from '@/components/common/FormError';
 import { SpinnerButton } from '@/components/common/SpinnerButton';
 import { useToast } from '@/components/common/ToastProvider';
@@ -26,6 +32,7 @@ interface SetBudgetDialogProps {
     name: string;
     type: (typeof BudgetScope)[keyof typeof BudgetScope];
     currentLimit: number;
+    currentUsed?: number;
     parentLimit?: number;
   } | null;
 }
@@ -39,9 +46,9 @@ const POLICY_OPTIONS = [
 const DEFAULT_THRESHOLDS = [80, 90, 100];
 
 // per-app(client) 예산 게이팅 — /users 화면(OrgDetailPanel UserPanel)과 동일 로직.
-// 빈 allowed_clients = 전체 허용. 새 앱은 ALL_CLIENTS 에만 추가하면 자동 확장.
-const ALL_CLIENTS = ['claude-code', 'cowork', 'codex'] as const;
-type ClientId = (typeof ALL_CLIENTS)[number];
+// 빈 allowed_clients = 전체 허용. 새 앱은 gateway.ts CLIENTS 에만 추가하면 자동 확장.
+const ALL_CLIENTS = CLIENTS;
+type ClientId = GatewayClient;
 const CLIENT_LABELS: Record<ClientId, string> = {
   'claude-code': 'Claude Code',
   cowork: 'Cowork',
@@ -72,8 +79,8 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
   const [allowedClients, setAllowedClients] = useState<ClientId[]>([...ALL_CLIENTS]);
   const [budgets, setBudgets] = useState<Record<string, string>>(emptyBudgets);
   const [loadedBudgets, setLoadedBudgets] = useState<Record<string, string>>(emptyBudgets);
-  // 허용 클라이언트 정책 로드 성공 여부(Codex R2 #6). 실패 시 stale 전체허용 기준으로
-  // per-app 예산을 쓰면 codex 등에 잘못 기록될 수 있어 per-app 저장을 건너뛴다.
+  // 허용 클라이언트 정책 로드 성공 여부. 실패 시 stale 전체허용 기준으로
+  // per-app 예산을 잘못된 앱에 기록할 수 있어 per-app 저장을 건너뛴다.
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [isAppLoadPending, startAppLoadTransition] = useTransition();
 
@@ -86,7 +93,15 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
   const numericValue = parseFloat(value) || 0;
   const maxValue = target?.parentLimit ?? 999999;
   const isUserScope = target?.type === 'USER';
-  const [useTeamBudget, setUseTeamBudget] = useState(false);
+  const isTeamScope = target?.type === 'TEAM';
+
+  // TEAM scope: share(공유 풀) vs distribute(인당 한도).
+  // distribute 는 /team/{id}/allocate 로 멤버별 USER config 를 upsert 한다.
+  const [teamMode, setTeamMode] = useState<'share' | 'distribute'>('share');
+  const [perMember, setPerMember] = useState('');
+  // 멤버별 기존 인당 한도 — share 전환 시 제거 대상 표시에도 쓴다.
+  const [members, setMembers] = useState<{ id: string; cap: number }[]>([]);
+  const [teamInfoLoaded, setTeamInfoLoaded] = useState(false);
 
   // 다이얼로그가 USER 대상으로 열릴 때 allowed-clients + per-app 예산을 병렬 로드.
   // TEAM scope 는 앱별 예산 개념이 없으므로 스킵.
@@ -130,6 +145,34 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target?.id, isUserScope, isOpen]);
 
+  // TEAM scope: 멤버 목록 + 기존 인당 한도 로드 → 현재 모드 판정/프리필.
+  useEffect(() => {
+    if (!isOpen || !isTeamScope || !target?.id) return;
+    const teamId = target.id;
+    setTeamInfoLoaded(false);
+    startAppLoadTransition(async () => {
+      const r = await getTeamAllocationAction(teamId);
+      if (r.success) {
+        const ms = (r.data?.entries ?? [])
+          .filter((e) => e.target_type === 'USER')
+          .map((e) => ({ id: e.target_id, cap: e.allocated_usd }));
+        setMembers(ms);
+        const caps = ms.map((m) => m.cap).filter((c) => c > 0);
+        setTeamMode(caps.length > 0 ? 'distribute' : 'share');
+        const uniq = new Set(caps);
+        setPerMember(caps.length > 0 && uniq.size === 1 ? String(caps[0]) : '');
+      } else {
+        // 로드 실패 시 모드 자동판정 불가 — share 로 두고 명시 알림.
+        setMembers([]);
+        setTeamMode('share');
+        setPerMember('');
+        toast({ type: 'error', message: t('allocationLoadFailed'), auto_dismiss_ms: 5000 });
+      }
+      setTeamInfoLoaded(true);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target?.id, isTeamScope, isOpen]);
+
   if (!target) return null;
 
   const handleUseTeamBudget = () => {
@@ -160,6 +203,9 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
     setThresholds(prev => prev.filter(v => v !== val));
   };
 
+  const perMemberNum = parseFloat(perMember) || 0;
+  const existingCapCount = members.filter((m) => m.cap > 0).length;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -167,6 +213,22 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
     if (thresholds.length === 0) {
       setError(t('minThresholdError'));
       return;
+    }
+
+    if (isTeamScope && teamMode === 'distribute') {
+      if (!Number.isFinite(perMemberNum) || perMemberNum <= 0) {
+        setError(t('perMemberRequired'));
+        return;
+      }
+      if (members.length > 0 && perMemberNum * members.length > numericValue) {
+        setError(
+          t('perMemberExceeds', {
+            total: (perMemberNum * members.length).toFixed(2),
+            budget: numericValue.toFixed(2),
+          }),
+        );
+        return;
+      }
     }
 
     startTransition(async () => {
@@ -185,9 +247,31 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
 
       // 총 예산 저장 성공. USER scope 에서는 이어서 앱별(per-app) 예산도 저장한다.
       // /users 화면과 동일한 actions·endpoints 를 사용하므로 두 화면이 자동으로 동기화된다.
-      // ★ Codex R2 #6: 허용 클라이언트가 정상 로드된 경우에만 per-app 예산을 건드린다.
-      //   stale 전체허용 기준으로 쓰면 codex 등 잘못된 앱에 예산이 기록될 수 있다.
+      // ★ 허용 클라이언트가 정상 로드된 경우에만 per-app 예산을 건드린다.
+      //   stale 전체허용 기준으로 쓰면 잘못된 앱에 예산이 기록될 수 있다.
       let appError: string | null = null;
+
+      // TEAM scope: 모드에 따라 멤버별 한도를 쓰거나 지운다.
+      if (isTeamScope && teamInfoLoaded) {
+        if (teamMode === 'distribute' && members.length > 0) {
+          const res = await allocateTeamBudgetAction(
+            target.id,
+            members.map((m) => ({
+              target_id: m.id,
+              target_type: 'USER' as const,
+              allocated_usd: perMemberNum,
+            })),
+          );
+          if (!res.success) appError = res.error;
+        } else if (teamMode === 'share' && existingCapCount > 0) {
+          // 공유 풀로 전환 — 인당 한도(USER config)가 남아 있으면 "공유"가 아니므로 제거.
+          for (const m of members.filter((mm) => mm.cap > 0)) {
+            const res = await deleteUserBudgetAction(m.id);
+            if (!res.success && appError === null) appError = res.error;
+          }
+        }
+      }
+
       if (isUserScope && clientsLoaded) {
         // allowed_clients 로 게이팅: 사용자가 허용된 앱만 set/clear. 허용되지 않은 앱은 손대지 않는다.
         const targets = ALL_CLIENTS.filter((c) => allowedClients.includes(c)).map((c) => ({
@@ -258,7 +342,9 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-background rounded-lg p-6 w-full max-w-md shadow-xl border border-border max-h-[90vh] overflow-y-auto">
+      {/* USER scope 는 per-app 예산 열이 추가돼 세로로 길어진다 — 2컬럼으로
+          넓혀 한 화면에 보이게 한다 (모바일은 1열로 자연스럽게 스택). */}
+      <div className="bg-background rounded-lg p-6 w-full max-w-md sm:max-w-3xl shadow-xl border border-border max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">{t('dialogTitle')}</h2>
           <button
@@ -272,30 +358,120 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
 
         <p className="text-sm text-muted-foreground mb-4">
           {t('dialogTarget')} <span className="font-medium text-foreground">{target.name}</span>
+          {target.currentUsed != null && (
+            <span className="ml-3 text-xs tabular-nums">
+              {t('currentUsage')} ${target.currentUsed.toFixed(2)}
+              {target.currentLimit > 0 && ` · ${t('existingLimit')} $${target.currentLimit.toFixed(2)}`}
+            </span>
+          )}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Use Team Budget option (USER scope only) */}
-          {isUserScope && (
-            <div className="flex items-center justify-between rounded-md border border-border p-3 bg-muted/30">
-              <div>
-                <p className="text-sm font-medium">{t('useTeamBudget')}</p>
-                <p className="text-xs text-muted-foreground">{t('useTeamBudgetDesc')}</p>
+        {/* 전폭 섹션 — USER: 팀 예산 전환 / TEAM: 공유·분배 모드 */}
+        {/* Use Team Budget option (USER scope only) */}
+        {isUserScope && (
+          <div className="flex items-center justify-between rounded-md border border-border p-3 bg-muted/30">
+            <div>
+              <p className="text-sm font-medium">{t('useTeamBudget')}</p>
+              <p className="text-xs text-muted-foreground">{t('useTeamBudgetDesc')}</p>
+            </div>
+            <SpinnerButton
+              type="button"
+              onClick={handleUseTeamBudget}
+              isLoading={isPending}
+              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-xs font-medium"
+            >
+              {t('switchToTeamBudget')}
+            </SpinnerButton>
+          </div>
+        )}
+
+        {/* TEAM scope: 공유 풀 vs 인당 분배 모드 */}
+        {isTeamScope && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('teamMode')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { value: 'share' as const, labelKey: 'modeShare' as const, descKey: 'modeShareDesc' as const },
+                    { value: 'distribute' as const, labelKey: 'modeDistribute' as const, descKey: 'modeDistributeDesc' as const },
+                  ]
+                ).map((opt) => (
+                  <label
+                    key={opt.value}
+                    className={`cursor-pointer rounded-lg border p-3 transition-colors ${
+                      teamMode === opt.value
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-accent'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="teamMode"
+                      value={opt.value}
+                      checked={teamMode === opt.value}
+                      onChange={() => setTeamMode(opt.value)}
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-medium">{t(opt.labelKey)}</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">
+                      {t(opt.descKey)}
+                    </span>
+                  </label>
+                ))}
               </div>
-              <SpinnerButton
-                type="button"
-                onClick={handleUseTeamBudget}
-                isLoading={isPending && useTeamBudget}
-                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-xs font-medium"
-              >
-                {t('switchToTeamBudget')}
-              </SpinnerButton>
+
+              {isAppLoadPending ? (
+                <p className="text-xs text-muted-foreground">{t('loadingText')}</p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    {t('memberCountInfo', { count: members.length })}
+                  </p>
+                  {teamMode === 'distribute' && (
+                    <div className="space-y-1.5 rounded-md border border-border p-3 bg-muted/30">
+                      <label className="block text-xs font-medium">{t('perMemberMax')}</label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">$</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={perMember}
+                          onChange={(e) => setPerMember(e.target.value)}
+                          disabled={isPending || members.length === 0}
+                          className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground tabular-nums">
+                        {t('impliedCap', {
+                          total: (perMemberNum * members.length).toFixed(2),
+                          budget: numericValue.toFixed(2),
+                        })}
+                      </p>
+                      {members.length === 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">{t('noMembers')}</p>
+                      )}
+                    </div>
+                  )}
+                  {teamMode === 'share' && existingCapCount > 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      {t('shareRemovesCaps', { count: existingCapCount })}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
           )}
 
+        {/* 본문 — USER: 좌(max/policy/thresholds)·우(per-app) 2컬럼, TEAM: 1컬럼 */}
+        <div className={isUserScope ? 'grid gap-6 sm:grid-cols-2' : ''}>
+        <div className="space-y-4">
           {/* Budget Amount */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('maxBudgetUsd')}</label>
+            <label className="text-sm font-medium">
+              {isTeamScope ? t('teamBudgetTotal') : t('maxBudgetUsd')}
+            </label>
             <div className="space-y-3">
               <input
                 type="range"
@@ -386,10 +562,12 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Per-app budgets (USER scope only, allowed_clients-gated) */}
-          {isUserScope && (
-            <div className="space-y-2 rounded-md border border-border p-3">
+        {/* 오른쪽 컬럼 — Per-app budgets (USER scope only, allowed_clients-gated) */}
+        {isUserScope && (
+        <div className="space-y-4">
+          <div className="space-y-2 rounded-md border border-border p-3">
               <label className="text-sm font-medium">{t('perAppBudget')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('perAppBudgetDesc')}
@@ -425,7 +603,10 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
                 </div>
               )}
             </div>
-          )}
+        </div>
+        )}
+
+        </div>
 
           <FormError error={error} />
 

@@ -2,15 +2,11 @@
 
 import { getRequestConfig } from 'next-intl/server';
 import { cookies } from 'next/headers';
-
-const SUPPORTED_LOCALES = ['ko', 'en'] as const;
-type Locale = (typeof SUPPORTED_LOCALES)[number];
+import { resolveLocale } from './locale';
 
 export default getRequestConfig(async () => {
   const cookieStore = cookies();
-  const raw = cookieStore.get('locale')?.value;
-  const locale: Locale =
-    raw && SUPPORTED_LOCALES.includes(raw as Locale) ? (raw as Locale) : 'ko';
+  const locale = resolveLocale(cookieStore.get('locale')?.value);
 
   return {
     locale,

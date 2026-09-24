@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { SkeletonTable } from '@/components/common/SkeletonTable';
 import { KeysTable } from '@/components/keys/KeysTable';
+import { KeyStatus } from '@/types/enums';
 import type { VirtualKeyListItem } from '@/types/entities';
 
 interface CursorPaginationMeta {
@@ -22,14 +23,21 @@ interface KeyListResponse {
 const PAGE_LIMIT = 50;
 
 interface KeysPageProps {
-  searchParams?: { email?: string };
+  searchParams?: { email?: string; status?: string };
 }
 
 export default async function KeysPage({ searchParams }: KeysPageProps) {
   const t = await getTranslations('keys');
   const email = searchParams?.email?.trim() ?? '';
+  const rawStatus = searchParams?.status?.toUpperCase() as KeyStatus | undefined;
+  const currentStatus: KeyStatus =
+    rawStatus && Object.values(KeyStatus).includes(rawStatus)
+      ? rawStatus
+      : KeyStatus.ACTIVE;
+
   const listQuery: Record<string, string | number> = { limit: PAGE_LIMIT };
   if (email) listQuery.email = email;
+  listQuery.status = currentStatus;
 
   const keysData = await adminAPI
     .get<KeyListResponse>('/admin/keys', listQuery)
@@ -70,6 +78,28 @@ export default async function KeysPage({ searchParams }: KeysPageProps) {
           </Link>
         )}
       </form>
+
+      <div className="flex flex-wrap items-center gap-2 mt-4">
+        {Object.values(KeyStatus).map((status) => {
+          const isActive = status === currentStatus;
+          const params = new URLSearchParams();
+          params.set('status', status);
+          if (email) params.set('email', email);
+          return (
+            <Link
+              key={status}
+              href={`/keys?${params.toString()}`}
+              className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-background text-foreground border-border hover:bg-accent'
+              }`}
+            >
+              {t(`keyStatus.${status}` as const)}
+            </Link>
+          );
+        })}
+      </div>
 
       <Suspense fallback={<SkeletonTable rows={10} columns={6} />}>
         <div className="mt-4">

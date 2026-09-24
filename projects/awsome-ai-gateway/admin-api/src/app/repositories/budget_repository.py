@@ -166,10 +166,14 @@ class BudgetRepository:
         return sum((c.max_budget_usd for c in configs), Decimal("0"))
 
     async def get_usage(self, scope: BudgetScope, scope_id: uuid.UUID, period: str) -> BudgetUsage | None:
+        # client IS NULL 행만 — 총합 usage. per-app 행까지 매칭되면 같은
+        # (scope, scope_id, period) 에 복수 행이 걸려 scalar_one_or_none 이
+        # MultipleResultsFound 를 던진다(바로 아래 list_configs 주석과 같은 함정).
         stmt = select(BudgetUsage).where(
             BudgetUsage.scope == scope,
             BudgetUsage.scope_id == scope_id,
             BudgetUsage.period == period,
+            BudgetUsage.client.is_(None),
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()

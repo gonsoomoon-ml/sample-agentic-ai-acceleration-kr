@@ -37,10 +37,16 @@ class TestSetTeamLeader:
         team.leader_user_id = user_id
         team.created_at = MagicMock()
 
+        user = MagicMock(spec=User)
+        user.id = user_id
+        user.team_id = team_id
+        user.role = UserRole.DEVELOPER
+
         with patch("app.services.user_team_service.UserRepository") as MockRepo, \
              patch("app.services.user_team_service.audit_logger") as mock_audit:
             repo = MockRepo.return_value
-            repo.set_leader = AsyncMock(return_value=team)
+            repo.get_team = AsyncMock(return_value=team)
+            repo.get_user = AsyncMock(return_value=user)
             repo.update_user_role = AsyncMock()
             mock_audit.log = AsyncMock()
 
@@ -55,7 +61,7 @@ class TestSetTeamLeader:
         self, user_team_service: UserTeamService, mock_session: AsyncMock, admin_user: CurrentUser
     ):
         with patch("app.services.user_team_service.UserRepository") as MockRepo:
-            MockRepo.return_value.set_leader = AsyncMock(return_value=None)
+            MockRepo.return_value.get_team = AsyncMock(return_value=None)
 
             with pytest.raises(NotFoundError):
                 await user_team_service.set_team_leader(

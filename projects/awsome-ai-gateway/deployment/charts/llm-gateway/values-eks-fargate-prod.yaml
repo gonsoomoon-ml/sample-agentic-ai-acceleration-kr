@@ -19,6 +19,9 @@
 global:
   environment: prod
   deploymentMode: eks-fargate
+  # 🔴 prod 에서는 반드시 false — admin-api·admin-ui 양쪽에 DEV_LOGIN_ENABLED 로
+  # 주입되는 단일 스위치. true 이면 서명검증 없는 dev 토큰으로 관리자 우회 가능.
+  devLoginEnabled: false
   commonLabels:
     environment: prod
     managed-by: terraform
@@ -315,7 +318,7 @@ adminApi:
     # 켜두면 인터넷에서 도달 가능한 무인증 관리자 우회가 된다.
     # 관리자 로그인은 아래 oidc(Cognito) 경로를 쓴다 — 이미 enabled=true 이고
     # adminBootstrap.emails 가 첫 운영자를 ClaudeAdmin 으로 승격한다.
-    DEV_LOGIN_ENABLED: "false"
+    # DEV_LOGIN_ENABLED 는 global.devLoginEnabled (이 파일 상단, prod=false) 로 주입됨.
     # CHANGE_ME (terraform output): Cognito User Pool ID. terraform output -raw cognito_user_pool_id
     COGNITO_USER_POOL_ID: "ap-northeast-2_oofmkaz81"
     COGNITO_REGION: "ap-northeast-2"
@@ -360,6 +363,13 @@ adminApi:
     groups:
       - "ClaudeAdmin"
 
+  # admin-ui 커스텀 로그인 폼(Cognito ROPC). 고객 SSO/Hosted UI(OIDC PKCE) 외에
+  # Cognito 네이티브 사용자용 폼 로그인을 쓸 때 채운다.
+  # auth.adminUiJwt.privateKeySecretName 도 함께 설정 — 03-secrets.md 참고.
+  adminUiLogin:
+    # CHANGE_ME (terraform output): terraform output -raw cognito_client_id
+    cognitoAppClientId: ""
+
 adminUi:
   replicaCount: 2
   image:
@@ -383,11 +393,10 @@ adminUi:
     enabled: true
     minReplicas: 2
     maxReplicas: 6
+  # DEV_LOGIN_ENABLED 는 global.devLoginEnabled (이 파일 상단, prod=false) 로 주입됨.
+  # 채팅(BI Insight) 미설치 환경이면 사이드바/퀵챗 메뉴를 숨긴다 — 설치 시 "true".
   env:
-    # admin-ui (Next.js) 의 dev-login route 렌더 스위치 (admin-api 와 별개 env).
-    # prod 는 "false" — adminApi 쪽과 반드시 짝을 맞춘다. 한쪽만 내리면 UI 에 버튼은
-    # 보이는데 API 가 401 을 주거나(또는 그 반대) 혼란만 남는다.
-    DEV_LOGIN_ENABLED: "false"
+    CHAT_ENABLED: "false"
 
 scheduler:
   image:
@@ -416,6 +425,9 @@ notificationWorker:
   image:
     tag: "1.0.44-phase2"
   serviceAccount:
+    # provider "ses" 사용 시 SES 발신용 IRSA role ARN 필요 (terraform output).
+    # annotations:
+    #   eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/llm-gateway-prod-notification-worker-ses"
     annotations: {}
   resources:
     requests:
@@ -429,10 +441,14 @@ notificationWorker:
     minReplicas: 2
     maxReplicas: 6
   email:
-    provider: "mock"          # 고객 내부 메일 API 연동 시 "internal_api"로 전환
+    provider: "mock"          # 고객 내부 메일 API 연동 시 "internal_api", AWS SES 사용 시 "ses"로 전환
     internalApi:
       url: ""                 # 고객 내부 메일 API URL
       fromAddress: "no-reply@llm-gateway.local"
+      fromName: "LLM Gateway"
+    ses:
+      region: "ap-northeast-2"
+      fromAddress: "no-reply@example.com"
       fromName: "LLM Gateway"
 
 costRecorderWorker:
@@ -506,3 +522,8 @@ costRecorderWorker:
 migration:
   image:
     tag: "1.0.52-head0033"
+
+auth:
+  adminUiJwt:
+    privateKeySecretName: "llm-gateway-app"
+    privateKeySecretKey: "admin_ui_jwt_private_key_pem"

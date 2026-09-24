@@ -20,7 +20,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { GET as loginGET } from '@/app/api/auth/login/route';
+import { GET as loginGET, POST as loginPOST } from '@/app/api/auth/login/route';
 import { GET as callbackGET } from '@/app/api/auth/callback/route';
 import { GET as devLoginGET, POST as devLoginPOST } from '@/app/api/auth/dev-login/route';
 import { middleware } from '@/middleware';
@@ -115,11 +115,35 @@ function jwtWithExp(expSeconds: number | null, extraClaims: Record<string, unkno
   return `header.${b64}.sig`;
 }
 
-/** token 엔드포인트 스텁. 호출 인자를 캡처해서 PKCE/Basic 을 검증한다. */
-function stubTokenEndpoint(body: unknown, status = 200) {
+/** token 엔드포인트 + admin-session 교환 스텁. 호출 인자를 캡처해서 PKCE/Basic/Bearer 를 검증한다. */
+function stubTokenEndpoint(
+  body: unknown,
+  status = 200,
+  session: { token?: string; status?: number } = {},
+) {
   const calls: Array<{ url: string; init: RequestInit }> = [];
+  // 세션 교환 성공 시 admin-api 가 돌려주는 내부 JWT — 쿠키에는 이것이 들어간다.
+  const sessionJwt = session.token ?? jwtWithExp(Math.floor(Date.now() / 1000) + 3600);
   const spy = vi.fn(async (url: string | URL, init?: RequestInit) => {
     calls.push({ url: String(url), init: init ?? {} });
+    if (String(url).includes('/v1/auth/admin-session')) {
+      const s = session.status ?? 200;
+      return {
+        ok: s >= 200 && s < 300,
+        status: s,
+        json: async () =>
+          s >= 200 && s < 300
+            ? {
+                token: sessionJwt,
+                expires_at: Math.floor(Date.now() / 1000) + 3600,
+                role: 'ADMIN',
+                email: 'sso@example.test',
+                display_name: 'SSO',
+                team_id: null,
+              }
+            : { error: { message: 'admin_ui_access_denied' } },
+      } as unknown as Response;
+    }
     return {
       ok: status >= 200 && status < 300,
       status,
@@ -128,6 +152,11 @@ function stubTokenEndpoint(body: unknown, status = 200) {
   });
   vi.stubGlobal('fetch', spy);
   return calls;
+}
+
+/** admin-session 교환 호출만 골라낸다 (토큰 엔드포인트 호출과 섞이지 않게). */
+function sessionCalls(calls: Array<{ url: string; init: RequestInit }>) {
+  return calls.filter((c) => c.url.includes('/v1/auth/admin-session'));
 }
 
 // ───────────────────────── 0. vacuity control ─────────────────────────
@@ -204,6 +233,12 @@ describe('vacuity control — 하네스가 정말로 핸들러를 실행하는�
 });
 
 // ───────────────────────── 1. /api/auth/login ─────────────────────────
+
+describe('POST /api/auth/login — custom Cognito login form', () => {
+  it('exports the POST handler used by LoginForm', () => {
+    expect(loginPOST).toBeTypeOf('function');
+  });
+});
 
 describe('GET /api/auth/login — dev 는 오늘과 동일해야 한다', () => {
   it('DEV_LOGIN_ENABLED=true + OIDC 미설정 → dev 폼으로 넘긴다', async () => {
@@ -462,11 +497,22 @@ describe('GET /api/auth/callback — happy path', () => {
     });
   }
 
-  it('admin_jwt httpOnly 쿠키를 세우고 / 로 보낸다', async () => {
+  it('admin_jwt httpOnly 쿠키에는 IdP 토큰이 아니라 admin-api 세션 JWT가 들어간다', async () => {
+    // ⚠️ 이 테스트가 세션 교환의 핵심 계약이다 — IdP id_token 을 그대로 구우면
+    //    role/team_id 클레임이 없어 TEAM_LEADER(DB 지정 역할)가 middleware 에서
+    //    DEVELOPER 로 깔려 /403 이 된다. 쿠키에는 admin-api 가 DB 신원으로 자체
+    //    서명한 세션 JWT 가 들어가야 하고, 교환 호출은 Bearer <id_token> 이어야 한다.
     configureOidc();
-    const exp = Math.floor(Date.now() / 1000) + 3600;
-    const idToken = jwtWithExp(exp);
-    stubTokenEndpoint({ id_token: idToken, access_token: 'AT', expires_in: 999 });
+    const idToken = jwtWithExp(Math.floor(Date.now() / 1000) + 3600);
+    const sessionJwt = jwtWithExp(Math.floor(Date.now() / 1000) + 3600, {
+      role: 'TEAM_LEADER',
+      team_id: '22222222-2222-2222-2222-222222222222',
+    });
+    const calls = stubTokenEndpoint(
+      { id_token: idToken, access_token: 'AT', expires_in: 999 },
+      200,
+      { token: sessionJwt },
+    );
 
     const res = await callbackGET(callbackReq());
 
@@ -474,7 +520,12 @@ describe('GET /api/auth/callback — happy path', () => {
     expectRelativeRedirect(res, '/');
     const jar = setCookies(res);
     expect(jar['admin_jwt']).toBeTruthy();
-    expect(cookieValue(jar['admin_jwt'])).toBe(idToken);
+    expect(cookieValue(jar['admin_jwt'])).toBe(sessionJwt);
+    // 교환 호출은 id_token 을 Bearer 로 실어 admin-session 을 두드린다.
+    const sc = sessionCalls(calls);
+    expect(sc.length).toBe(1);
+    expect(sc[0].init.method).toBe('POST');
+    expect((sc[0].init.headers as Record<string, string>).Authorization).toBe(`Bearer ${idToken}`);
     expect(jar['admin_jwt']).toMatch(/HttpOnly/i);
     expect(jar['admin_jwt']).toMatch(/SameSite=Lax/i);
     // 임시 쿠키는 정리된다.
@@ -488,7 +539,8 @@ describe('GET /api/auth/callback — happy path', () => {
 
     await callbackGET(callbackReq());
 
-    expect(calls.length).toBe(1);
+    // 호출은 2회: token 엔드포인트 → admin-session 교환. calls[0] 이 token 호출이다.
+    expect(calls.length).toBe(2);
     expect(calls[0].url).toBe('https://idp.example.test/oauth2/token');
     expect(calls[0].init.method).toBe('POST');
     const sent = new URLSearchParams(String(calls[0].init.body));
@@ -518,13 +570,17 @@ describe('GET /api/auth/callback — happy path', () => {
     expect(String(calls[0].init.body)).not.toContain('s3cr3t');
   });
 
-  it('쿠키 Max-Age 를 토큰 자신의 exp 에서 뽑는다 (하드코딩 24h 금지)', async () => {
+  it('쿠키 Max-Age 를 세션 토큰 자신의 exp 에서 뽑는다 (하드코딩 24h 금지)', async () => {
     configureOidc();
-    // expires_in 은 일부러 크게 준다 — exp 가 이겨야 한다.
-    stubTokenEndpoint({
-      id_token: jwtWithExp(Math.floor(Date.now() / 1000) + 1800),
-      expires_in: 86400,
-    });
+    // expires_in 은 일부러 크게 준다 — 세션 토큰의 exp 가 이겨야 한다.
+    stubTokenEndpoint(
+      {
+        id_token: jwtWithExp(Math.floor(Date.now() / 1000) + 1800),
+        expires_in: 86400,
+      },
+      200,
+      { token: jwtWithExp(Math.floor(Date.now() / 1000) + 1800) },
+    );
 
     const res = await callbackGET(callbackReq());
     const maxAge = Number(/Max-Age=(\d+)/i.exec(setCookies(res)['admin_jwt'])![1]);
@@ -532,16 +588,18 @@ describe('GET /api/auth/callback — happy path', () => {
     expect(maxAge).toBeLessThanOrEqual(1800);
   });
 
-  it('exp 가 없으면 expires_in 으로 폴백한다', async () => {
+  it('세션 토큰에 exp 가 없으면 expires_in 으로 폴백한다', async () => {
     configureOidc();
-    stubTokenEndpoint({ id_token: jwtWithExp(null), expires_in: 600 });
+    stubTokenEndpoint({ id_token: jwtWithExp(null), expires_in: 600 }, 200, {
+      token: jwtWithExp(null),
+    });
     const res = await callbackGET(callbackReq());
     expect(Number(/Max-Age=(\d+)/i.exec(setCookies(res)['admin_jwt'])![1])).toBe(600);
   });
 
   it('exp/expires_in 둘 다 없으면 1시간 폴백 (무기한 금지)', async () => {
     configureOidc();
-    stubTokenEndpoint({ id_token: jwtWithExp(null) });
+    stubTokenEndpoint({ id_token: jwtWithExp(null) }, 200, { token: jwtWithExp(null) });
     const res = await callbackGET(callbackReq());
     expect(Number(/Max-Age=(\d+)/i.exec(setCookies(res)['admin_jwt'])![1])).toBe(3600);
   });
@@ -571,7 +629,11 @@ describe('GET /api/auth/callback — happy path', () => {
     //    미리 빼고 보므로 `now+5` 는 이미 만료로 판정돼 위 502 경로를 탄다(실제로 그렇게
     //    한 번 틀렸다). 45초면 skew(30) 는 넘고 하한(60) 아래라 클램프만 검증된다.
     configureOidc();
-    stubTokenEndpoint({ id_token: jwtWithExp(Math.floor(Date.now() / 1000) + 45) });
+    stubTokenEndpoint(
+      { id_token: jwtWithExp(Math.floor(Date.now() / 1000) + 45) },
+      200,
+      { token: jwtWithExp(Math.floor(Date.now() / 1000) + 45) },
+    );
     const res = await callbackGET(callbackReq());
 
     expect(res.status).toBe(303);
@@ -603,16 +665,37 @@ describe('GET /api/auth/callback — happy path', () => {
     expect(setCookies(res)['admin_jwt']).toBeTruthy();
   });
 
-  it('OIDC_COOKIE_TOKEN=access_token 이면 access_token 을 쿠키에 넣는다', async () => {
-    // ⚠️ 두 토큰 모두 **진짜 JWT** 여야 한다. 예전엔 'AC.TOKEN.Y' 같은 더미 문자열을
-    //    썼는데, 이제 콜백이 굽기 전에 parseJWT 로 가독성을 검사하므로 더미는 502 가 된다
-    //    (그 검사가 무한 리다이렉트를 막는다). 어느 토큰이 선택됐는지는 클레임으로 구분한다.
+  it('OIDC_COOKIE_TOKEN=access_token 이면 교환에 access_token 을 보낸다 (쿠키는 항상 세션 JWT)', async () => {
+    // 세션 교환 도입으로 이 env 의 의미가 바뀌었다 — 예전엔 "쿠키에 넣을 IdP 토큰"을
+    // 골랐지만, 이제 쿠키에는 항상 admin-api 세션 JWT 가 들어가므로 **admin-api 에
+    // 검증을 맡길 토큰**을 고르는 escape hatch 다(id_token 이 불투명한 IdP 대비).
     configureOidc({ OIDC_COOKIE_TOKEN: 'access_token' });
     const accessJwt = jwtWithExp(null, { which: 'access' });
-    stubTokenEndpoint({ id_token: jwtWithExp(null, { which: 'id' }), access_token: accessJwt });
+    const sessionJwt = jwtWithExp(Math.floor(Date.now() / 1000) + 3600);
+    const calls = stubTokenEndpoint(
+      { id_token: jwtWithExp(null, { which: 'id' }), access_token: accessJwt },
+      200,
+      { token: sessionJwt },
+    );
     const res = await callbackGET(callbackReq());
     expect(res.status).toBe(303);
-    expect(cookieValue(setCookies(res)['admin_jwt'])).toBe(accessJwt);
+    expect(cookieValue(setCookies(res)['admin_jwt'])).toBe(sessionJwt);
+    const sc = sessionCalls(calls);
+    expect((sc[0].init.headers as Record<string, string>).Authorization).toBe(`Bearer ${accessJwt}`);
+  });
+
+  it('admin-session 교환이 403(개발자 거부)이면 쿠키 없이 실패 페이지로 끝낸다', async () => {
+    // DEVELOPER 는 admin-ui 페이지가 없어 admin-api 가 거부한다 — 쿠키를 굽지 않고
+    // 무한 리다이렉트가 아니라 원인이 적힌 페이지로 끝나야 한다.
+    configureOidc();
+    const calls = stubTokenEndpoint({ id_token: jwtWithExp(null) }, 200, { status: 403 });
+    const res = await callbackGET(callbackReq());
+
+    expect(res.status).toBe(403);
+    expect(setCookies(res)['admin_jwt']).toBeUndefined();
+    expect(sessionCalls(calls).length).toBe(1);
+    const html = await res.text();
+    expect(html).toContain('admin_ui_access_denied');
   });
 
   it('https 종단이면 admin_jwt 에 Secure 가 붙는다', async () => {
@@ -707,30 +790,33 @@ describe('GET /api/auth/callback — 실패를 읽히게', () => {
 
 // ───────────────────────── 3. middleware 목적지 ─────────────────────────
 
-describe('middleware — 로그인 목적지는 /api/auth/login 이다', () => {
+// ⚠️ 이 describe 는 OIDC_* 미설정(beforeEach 가 ENV_KEYS 를 지운다)에서 돌므로
+//    목적지는 `/login` 이다 — OIDC_* 가 채워진 hosted-UI 배포의 `/api/auth/login`
+//    분기는 tests/unit/middleware.test.ts 의 별도 describe 가 덮는다.
+describe('middleware — 로그인 목적지는 /login 이다', () => {
   function b64(obj: unknown): string {
     return Buffer.from(JSON.stringify(obj)).toString('base64url');
   }
 
-  it('쿠키 없음 → /api/auth/login (dev-login 직행 금지)', async () => {
+  it('쿠키 없음 → /login (dev-login 직행 금지)', async () => {
     const res = await middleware(req('http://admin.test/'));
     expect(res.status).toBe(307);
-    expectSameOriginRedirect(res, 'http://admin.test', '/api/auth/login');
+    expectSameOriginRedirect(res, 'http://admin.test', '/login');
     expect(res.headers.get('location')).not.toContain('/api/auth/dev-login');
   });
 
-  it('만료된 토큰 → /api/auth/login + admin_jwt 제거', async () => {
+  it('만료된 토큰 → /login + admin_jwt 제거', async () => {
     const expired = `header.${b64({ sub: 'u', role: 'ADMIN', exp: Math.floor(Date.now() / 1000) - 60 })}.sig`;
     const res = await middleware(req('http://admin.test/', { cookies: { admin_jwt: expired } }));
-    expectSameOriginRedirect(res, 'http://admin.test', '/api/auth/login');
+    expectSameOriginRedirect(res, 'http://admin.test', '/login');
     const setCookie = res.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('admin_jwt=');
     expect(setCookie).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/);
   });
 
-  it('손상된 토큰 → /api/auth/login + admin_jwt 제거', async () => {
+  it('손상된 토큰 → /login + admin_jwt 제거', async () => {
     const res = await middleware(req('http://admin.test/', { cookies: { admin_jwt: 'not-a-jwt' } }));
-    expectSameOriginRedirect(res, 'http://admin.test', '/api/auth/login');
+    expectSameOriginRedirect(res, 'http://admin.test', '/login');
     expect(res.headers.get('set-cookie') ?? '').toContain('admin_jwt=');
   });
 
@@ -756,7 +842,7 @@ describe('middleware — 로그인 목적지는 /api/auth/login 이다', () => {
     const res = await middleware(
       req('http://admin.internal:3000/budgets?q=secret', { headers: { 'x-forwarded-proto': 'https' } }),
     );
-    expectSameOriginRedirect(res, 'https://admin.internal:3000', '/api/auth/login');
+    expectSameOriginRedirect(res, 'https://admin.internal:3000', '/login');
     expect(res.headers.get('location')).not.toContain('secret');
   });
 });

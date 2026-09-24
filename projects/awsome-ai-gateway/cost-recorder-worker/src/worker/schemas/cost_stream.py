@@ -48,6 +48,8 @@ class CostStreamEntry(BaseModel):
     date: str  # YYYY-MM-DD
 
     threshold_triggered: int | None = None
+    # "user" | "team" — 어느 스코프의 크로싱인지(§ gateway-proxy cost_recorder.py 참고).
+    threshold_scope: str | None = None
     threshold_policy: str | None = None
 
     sso_subject: str | None = None  # OIDC sub or stable user identifier

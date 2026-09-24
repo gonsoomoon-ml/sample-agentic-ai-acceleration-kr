@@ -12,11 +12,17 @@
 #   - ClaudeAdmin               → admin role 부트스트랩 (팀 매핑 제외)
 #   - "Claude_" prefix 없는 그룹은 OIDC 로그인 거부 (REJECT_UNMATCHED_GROUPS=true)
 #   (admin 이 콘솔에서 사용자를 그룹에 직접 추가)
+#   team_leader role 은 Cognito 그룹으로 부트스트랩하지 않는다 — Claude_<team> 으로
+#   정상 배정된 팀원 중 한 명을 admin-ui 에서 관리자가 리더로 지정한다
+#   (PUT /admin/teams/{id}/leader). 그룹 두 개를 맞춰야 하는 운영 부담이 없다.
 #
 # 토큰 형식 주의:
 #   - Cognito access_token: 표준 OIDC `aud` claim 없음 (대신 client_id claim).
 #     admin-api 의 OIDC_AUDIENCE 는 비워두고 audience 검증 skip 사용.
 #   - issuer URL: https://cognito-idp.{region}.amazonaws.com/{user_pool_id}
+#
+# admin-ui 로그인(커스텀 이메일/비밀번호 폼)은 이 `cli` App Client 를 그대로
+# ROPC(USER_PASSWORD_AUTH)로 재사용한다 (admin-api COGNITO_APP_CLIENT_ID = 이 client_id).
 # ==============================================================================
 
 locals {

@@ -8,6 +8,7 @@ from datetime import timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,14 +28,25 @@ router = APIRouter(prefix="/admin/analytics", tags=["Analytics"])
 _ANALYTICS_CACHE_TTL = 30
 
 
-def _analytics_cache_key(*, period: str, group_by: str) -> str:
+def _analytics_cache_key(
+    *,
+    period: str,
+    group_by: str,
+    client: str | None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> str:
     """전사(ADMIN, scope='all') 응답 전용 캐시 키.
 
     ⚠️ scope 를 키에 넣지 않는다 — 이 키는 `scope='all'` 인 경우에만 쓰이므로 상수다.
     대신 **호출부가 role 을 검사**해 ADMIN 이 아니면 캐시를 아예 쓰지 않는다.
     키에 scope 만 넣고 role 을 빼면 TEAM_LEADER 가 ADMIN 의 전사 응답을 받는다.
+    custom 날짜 구간은 키에 실어야 한다 — 빼면 월 질의와 구간 질의가 같은 키를 공유해
+    TTL 안에 서로의 응답을 돌려준다.
     """
-    return f"analytics:global:{period}:{group_by}"
+    normalized_client = "all" if client in (None, "", "all") else client
+    range_part = f"{start_date or ''}~{end_date or ''}"
+    return f"analytics:global:{period}:{range_part}:{group_by}:{normalized_client}"
 
 
 async def _cache_get(request: Request, key: str):
@@ -44,7 +56,13 @@ async def _cache_get(request: Request, key: str):
         return None
     try:
         raw = await redis.get(key)
-        return json.loads(raw) if raw else None
+        if not raw:
+            return None
+        cached = json.loads(raw)
+        # ⚠️ dict 가 아니면 깨진 엔트리다(예: pydantic 모델을 json.dumps(..., default=str)
+        # 로 저장하면 str() repr 문자열이 들어간다). 문자열을 그대로 반환하면 UI 는
+        # data.cost_summary == undefined 를 받아 페이지가 깨진다 — miss 로 처리해 재계산.
+        return cached if isinstance(cached, dict) else None
     except Exception as exc:  # noqa: BLE001
         logger.debug("analytics cache get failed key=%s err=%s", key, exc)
         return None
@@ -55,7 +73,10 @@ async def _cache_set(request: Request, key: str, value: object) -> None:
     if redis is None:
         return
     try:
-        await redis.setex(key, _ANALYTICS_CACHE_TTL, json.dumps(value, default=str))
+        # jsonable_encoder 로 pydantic 모델→dict 를 먼저 펼쳐야 한다.
+        # json.dumps(model, default=str) 는 모델 통째를 str() repr 로 저장해서
+        # 캐시 적중 시 응답이 JSON 객체가 아니라 문자열이 된다.
+        await redis.setex(key, _ANALYTICS_CACHE_TTL, json.dumps(jsonable_encoder(value)))
     except Exception as exc:  # noqa: BLE001
         logger.debug("analytics cache set failed key=%s err=%s", key, exc)
 
@@ -72,6 +93,8 @@ async def get_analytics(
     group_by: Literal["model", "team", "user"] = Query("model"),
     scope: str = Query("all", description="all | team:{uuid}"),
     client: str = Query(default=None, description="claude-code|cowork|codex|other|all"),
+    start_date: str | None = Query(default=None, description="YYYY-MM-DD — custom 구간 시작(end_date 필요)"),
+    end_date: str | None = Query(default=None, description="YYYY-MM-DD — custom 구간 끝(포함)"),
     user: CurrentUser = Depends(require_admin_or_team_leader),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -95,7 +118,10 @@ async def get_analytics(
     #      team_id 까지 넣어야 하고 그러면 적중률이 거의 0 이다 — 복잡도만 늘고 이득이 없다.
     cache_key = None
     if user.role == UserRole.ADMIN and scope == "all":
-        cache_key = _analytics_cache_key(period=period, group_by=group_by)
+        cache_key = _analytics_cache_key(
+            period=period, group_by=group_by, client=client,
+            start_date=start_date, end_date=end_date,
+        )
         if (cached := await _cache_get(request, cache_key)) is not None:
             return cached
 
@@ -106,6 +132,8 @@ async def get_analytics(
         scope=scope,
         client=client,
         actor=user,
+        start_date=start_date,
+        end_date=end_date,
     )
     if cache_key is not None:
         await _cache_set(request, cache_key, result)
@@ -203,6 +231,8 @@ async def export_analytics(
     format: Literal["csv", "json"] = Query("csv"),
     period: str = Query(description="YYYY-MM format"),
     group_by: Literal["model", "team", "user"] = Query("model"),
+    start_date: str | None = Query(default=None, description="YYYY-MM-DD — custom 구간 시작(end_date 필요)"),
+    end_date: str | None = Query(default=None, description="YYYY-MM-DD — custom 구간 끝(포함)"),
     user: CurrentUser = Depends(require_admin_or_team_leader),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -213,9 +243,15 @@ async def export_analytics(
         period=period,
         group_by=group_by,
         actor=user,
+        start_date=start_date,
+        end_date=end_date,
     )
 
-    filename = f"analytics_{period}.{format}"
+    filename = (
+        f"analytics_{start_date}_{end_date}.{format}"
+        if start_date and end_date
+        else f"analytics_{period}.{format}"
+    )
     return Response(
         content=content,
         media_type=content_type,

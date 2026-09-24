@@ -97,6 +97,9 @@ class AllocationEntry(BaseModel):
     target_id: str
     target_name: str
     target_type: str  # TEAM | USER
+    # USER 행의 계정 역할(ADMIN|TEAM_LEADER|USER) — Type 열을 역할 뱃지로 구분하기 위함.
+    # TEAM 행은 None.
+    target_role: str | None = None
     allocated_usd: Decimal
     used_usd: Decimal
     remaining_usd: Decimal

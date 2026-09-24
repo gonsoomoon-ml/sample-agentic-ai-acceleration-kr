@@ -11,30 +11,37 @@ import {
   type PriceSyncPreview,
 } from '@/lib/actions/models';
 import { useToast } from '@/components/common/ToastProvider';
+import { fmtPricePerM } from '@/lib/utils/pricing';
 import { Table, THead, TBody, Tr, Th, Td } from '@/components/common/Table';
 
 /**
- * AWS Price List 단가 동기화 버튼 + diff 미리보기/승인 다이얼로그.
+ * 외부 단가 소스(AWS Price List / LiteLLM Catalog) 동기화 버튼 + diff 미리보기/승인 다이얼로그.
  *
  * 흐름(자동적용 금지): 버튼 → preview(읽기) → diff 표 → 변경분 선택 → 적용(승인).
- * 소스는 AWS Price List API(서버), AgentCore Gateway 아님. 적용은 기존 set_pricing
- * 경로라 시계열·감사·캐시무효화가 보존된다.
+ * 적용은 기존 set_pricing 경로라 시계열·감사·캐시무효화가 보존된다.
  */
 export function PriceSyncButton() {
   const t = useTranslations('models.priceSync');
   const tCommon = useTranslations('common');
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [source, setSource] = useState<'aws' | 'litellm'>('aws');
   const [preview, setPreview] = useState<PriceSyncPreview | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [applying, startApply] = useTransition();
 
-  async function openAndPreview() {
+  function openDialog() {
     setOpen(true);
     setPreview(null);
+    setSelected(new Set());
+  }
+
+  async function runPreview() {
+    setPreview(null);
+    setSelected(new Set());
     setLoading(true);
-    const res = await previewPriceSyncAction();
+    const res = await previewPriceSyncAction(source);
     setLoading(false);
     if (!res.success) {
       toast({ type: 'error', message: res.error || t('toast.previewFailed'), auto_dismiss_ms: 5000 });
@@ -42,8 +49,9 @@ export function PriceSyncButton() {
       return;
     }
     setPreview(res.data);
-    // 기본 선택 = 변경분 전체(matched && changed)
-    setSelected(new Set(res.data.diffs.filter((d) => d.matched && d.changed).map((d) => d.alias)));
+    // 기본 선택 = 변경분 전체(단가 변경 OR 스펙 갱신 — 스펙만 바뀌는 경우도 적용해야
+    // context_window 가 채워진다).
+    setSelected(new Set(res.data.diffs.filter((d) => d.matched && (d.changed || d.spec_changed)).map((d) => d.alias)));
   }
 
   function toggle(alias: string) {
@@ -62,7 +70,7 @@ export function PriceSyncButton() {
       return;
     }
     startApply(async () => {
-      const res = await applyPriceSyncAction(aliases);
+      const res = await applyPriceSyncAction(aliases, source);
       if (!res.success) {
         toast({ type: 'error', message: res.error || t('toast.applyFailed'), auto_dismiss_ms: 5000 });
         return;
@@ -74,14 +82,14 @@ export function PriceSyncButton() {
     });
   }
 
-  const changedDiffs = preview?.diffs.filter((d) => d.matched && d.changed) ?? [];
-  const unchanged = preview?.diffs.filter((d) => d.matched && !d.changed).length ?? 0;
+  const changedDiffs = preview?.diffs.filter((d) => d.matched && (d.changed || d.spec_changed)) ?? [];
+  const unchanged = preview?.diffs.filter((d) => d.matched && !d.changed && !d.spec_changed).length ?? 0;
   const unmatched = preview?.diffs.filter((d) => !d.matched) ?? [];
 
   return (
     <>
       <button
-        onClick={openAndPreview}
+        onClick={openDialog}
         className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         title={t('buttonTitle')}
       >
@@ -100,6 +108,32 @@ export function PriceSyncButton() {
             </div>
 
             <div className="overflow-auto px-5 py-4">
+              <div className="mb-3 flex items-end gap-2">
+                <div className="flex-1">
+                  <label className="mb-1 block text-xs text-muted-foreground">
+                    {t('sourceLabel')}
+                  </label>
+                  <select
+                    value={source}
+                    onChange={(e) => setSource(e.target.value as 'aws' | 'litellm')}
+                    disabled={loading || applying}
+                    className="block w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                  >
+                    <option value="aws">{t('sourceAws')}</option>
+                    <option value="litellm">{t('sourceThirdParty')}</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={runPreview}
+                  disabled={loading || applying}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {loading && <Loader2 size={14} className="animate-spin" />}
+                  {t('previewButton')}
+                </button>
+              </div>
+
               {loading && (
                 <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
                   <Loader2 size={16} className="animate-spin" /> {t('loading')}
@@ -110,6 +144,7 @@ export function PriceSyncButton() {
                 <>
                   <p className="mb-3 text-xs text-muted-foreground">
                     {t('sourceInfo', {
+                      source: source === 'aws' ? 'AWS Price List API' : t('sourceThirdParty'),
                       region: preview.region,
                       matched: preview.matched_count,
                       changed: preview.changed_count,
@@ -128,8 +163,12 @@ export function PriceSyncButton() {
                         <Tr>
                           <Th>{t('columns.apply')}</Th>
                           <Th>{t('columns.model')}</Th>
+                          <Th>{t('columns.modelId')}</Th>
                           <Th numeric>{t('columns.input')}</Th>
                           <Th numeric>{t('columns.output')}</Th>
+                          <Th numeric>{t('columns.cache5m')}</Th>
+                          <Th numeric>{t('columns.cache1h')}</Th>
+                          <Th numeric>{t('columns.cacheRead')}</Th>
                           <Th>{t('columns.note')}</Th>
                         </Tr>
                       </THead>
@@ -144,8 +183,12 @@ export function PriceSyncButton() {
                               />
                             </Td>
                             <Td>{d.alias}</Td>
+                            <Td className="text-xs text-muted-foreground">{d.provider_model_id}</Td>
                             <Td numeric>{fmtChange(d.current?.input_price_per_1k_tokens, d.proposed_input_per_1k)}</Td>
                             <Td numeric>{fmtChange(d.current?.output_price_per_1k_tokens, d.proposed_output_per_1k)}</Td>
+                            <Td numeric>{fmtChange(d.current?.cache_creation_5m_price_per_1k_tokens, d.proposed_cache_5m_per_1k)}</Td>
+                            <Td numeric>{fmtChange(d.current?.cache_creation_1h_price_per_1k_tokens, d.proposed_cache_1h_per_1k)}</Td>
+                            <Td numeric>{fmtChange(d.current?.cache_read_price_per_1k_tokens, d.proposed_cache_read_per_1k)}</Td>
                             <Td>{d.note ? <span className="text-amber-600 dark:text-amber-400 text-[11px]">{d.note}</span> : ''}</Td>
                           </Tr>
                         ))}
@@ -185,8 +228,13 @@ export function PriceSyncButton() {
   );
 }
 
-function fmtChange(current: string | undefined, proposed: string | null): string {
-  const c = current != null ? `$${Number(current).toFixed(6)}` : '—';
-  const p = proposed != null ? `$${Number(proposed).toFixed(6)}` : '—';
+function fmtPrice(value: string | undefined | null): string {
+  if (value == null) return '—';
+  return fmtPricePerM(value);  // per-1K 저장값 → per-1M 표시
+}
+
+function fmtChange(current: string | undefined | null, proposed: string | null): string {
+  const c = fmtPrice(current);
+  const p = proposed != null ? fmtPricePerM(proposed) : '—';
   return `${c} → ${p}`;
 }

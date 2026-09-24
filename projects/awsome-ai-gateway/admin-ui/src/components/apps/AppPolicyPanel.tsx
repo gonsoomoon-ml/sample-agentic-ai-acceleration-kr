@@ -1,20 +1,23 @@
 'use client';
 // Copyright 2026 © Amazon.com and Affiliates: This deliverable is considered Developed Content as defined in the AWS Service Terms.
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { getAppPolicyAction, setAppDefaultModelAction, toggleAppModelAction } from '@/lib/actions/apps';
+import { setClientWebSearchAction } from '@/lib/actions/routing';
 import type { AppPolicy, AppModelRef } from '@/lib/actions/apps';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { InfoTooltip } from '@/components/common/InfoTooltip';
 import { SpinnerButton } from '@/components/common/SpinnerButton';
 import { FormError } from '@/components/common/FormError';
-import { Badge } from '@/components/common/Badge';
 import { Table, THead, TBody, Tr, Th, Td, TEmpty } from '@/components/common/Table';
 import { SkeletonCard } from '@/components/common/SkeletonCard';
 import { useToast } from '@/components/common/ToastProvider';
 import {
   CLIENTS as GATEWAY_CLIENTS,
   CLIENT_LABELS,
+  CLIENT_SHORT_LABELS,
   modelAllowsClient,
   modelAppScope,
 } from '@/lib/constants/gateway';
@@ -27,11 +30,24 @@ const CLIENTS = GATEWAY_CLIENTS.map((value) => ({
   label: CLIENT_LABELS[value] ?? value,
 }));
 
+const APP_PARAM = 'app';
+
 export function AppPolicyPanel() {
   const t = useTranslations('apps');
   const tc = useTranslations('common');
   const { toast } = useToast();
-  const [selectedClient, setSelectedClient] = useState<string>('');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // 선택 앱은 ?app= 쿼리가 정본이다 — useState 로 두면 mutation action 의 revalidatePath
+  // 가 일으키는 RSC 리페치/리마운트 때 선택이 날아간다(실제로 그 버그가 있었다).
+  // URL 에 두면 리마운트·새로고침·딥링크 모두에서 선택이 유지된다.
+  // (APP_PARAM 상수: 쿼리명을 리터럴로 쓰면 i18n 키 스캔 테스트가 t() 호출로 오인한다.)
+  // 쿼리가 없거나 이상하면 첫 앱(claude-code)을 기본 선택 — 빈 상태 문구를 띄우지 않는다.
+  const rawClient = searchParams.get(APP_PARAM) ?? '';
+  const selectedClient = CLIENTS.some((c) => c.value === rawClient)
+    ? rawClient
+    : (CLIENTS[0]?.value ?? '');
   const [policy, setPolicy] = useState<AppPolicy | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoadPending, startLoadTransition] = useTransition();
@@ -44,21 +60,50 @@ export function AppPolicyPanel() {
   const [pendingToggle, setPendingToggle] = useState<
     { alias: string; allowed: boolean; kind: 'all' | 'last' } | null
   >(null);
+  const [isWsPending, startWsTransition] = useTransition();
 
-  const handleClientChange = (client: string) => {
-    setSelectedClient(client);
+  // 선택 변경 → URL 갱신. policy fetch 는 아래 useEffect 가 selectedClient 를 보고 수행한다
+  // (클릭 경로뿐 아니라 리마운트 복구 경로에서도 같은 코드를 타게 하기 위함).
+  useEffect(() => {
     setPolicy(null);
     setLoadError(null);
     setDefaultModelInput('');
     setSaveError(null);
-    if (!client) return;
+    if (!selectedClient) return;
+    let cancelled = false;
     startLoadTransition(async () => {
-      const result = await getAppPolicyAction(client);
+      const result = await getAppPolicyAction(selectedClient);
+      if (cancelled) return;
       if (result.success) {
         setPolicy(result.data);
         setDefaultModelInput(result.data.default_model ?? '');
       } else {
         setLoadError(result.error);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClient]);
+
+  const handleClientChange = (client: string) => {
+    if (client === selectedClient) return;
+    const sp = new URLSearchParams(searchParams.toString());
+    if (client) sp.set(APP_PARAM, client);
+    else sp.delete(APP_PARAM);
+    const qs = sp.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  };
+
+  const handleToggleWebSearch = (enabled: boolean) => {
+    if (!policy) return;
+    startWsTransition(async () => {
+      const result = await setClientWebSearchAction(selectedClient, enabled);
+      if (result.success) {
+        setPolicy((prev) => (prev ? { ...prev, web_search_enabled: enabled } : prev));
+        toast({ type: 'success', message: t('webSearchSaved'), auto_dismiss_ms: 3000 });
+      } else {
+        toast({ type: 'error', message: result.error, auto_dismiss_ms: 4000 });
       }
     });
   };
@@ -128,22 +173,29 @@ export function AppPolicyPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-4 glass rounded-apple p-4">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="client-select" className="text-xs font-medium text-muted-foreground">
-            {t('selectApp')}
-          </label>
-          <select
-            id="client-select"
-            value={selectedClient}
-            onChange={(e) => handleClientChange(e.target.value)}
-            className="rounded-apple-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="">{t('selectPlaceholder')}</option>
-            {CLIENTS.map(({ value, label }) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+      <div className="glass rounded-apple p-4">
+        <p className="text-xs font-medium text-muted-foreground mb-2">{t('selectApp')}</p>
+        <div
+          role="group"
+          aria-label={t('selectApp')}
+          className="glass inline-flex items-center gap-0.5 rounded-apple-md p-1"
+        >
+          {CLIENTS.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => handleClientChange(value)}
+              aria-pressed={selectedClient === value}
+              className={[
+                'pressable rounded-apple-sm px-3 py-1.5 text-sm font-medium transition-[background,color,box-shadow] duration-150',
+                selectedClient === value
+                  ? 'bg-primary/10 text-primary font-semibold shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]'
+                  : 'text-muted-foreground interactive',
+              ].join(' ')}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -177,7 +229,10 @@ export function AppPolicyPanel() {
           </div>
 
           <div className="glass rounded-apple p-4 space-y-3">
-            <h2 className="text-sm font-semibold">{t('defaultModel')}</h2>
+            <h2 className="text-sm font-semibold flex items-center gap-1">
+              {t('defaultModel')}
+              <InfoTooltip label={t('defaultModel')} side="top">{t('defaultModelHint')}</InfoTooltip>
+            </h2>
             <div className="flex items-center gap-3">
               <select
                 value={defaultModelInput}
@@ -202,11 +257,36 @@ export function AppPolicyPanel() {
             {saveError && <FormError error={saveError} />}
           </div>
 
+          <div className="glass rounded-apple p-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('webSearchTitle')}</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('webSearchHint')}</p>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <div className="relative inline-flex items-center">
+                <input
+                  type="checkbox"
+                  checked={policy.web_search_enabled}
+                  onChange={(e) => handleToggleWebSearch(e.target.checked)}
+                  disabled={isWsPending}
+                  className="sr-only peer"
+                  aria-label={t('webSearchTitle')}
+                />
+                <div className="w-9 h-5 bg-muted-foreground/30 peer-checked:bg-primary rounded-full transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-background after:rounded-full after:transition-transform peer-checked:after:translate-x-4" />
+              </div>
+              <span className="text-sm">
+                {policy.web_search_enabled ? t('webSearchOn') : t('webSearchOff')}
+              </span>
+            </label>
+          </div>
+
           <div className="space-y-3">
             <h2 className="text-sm font-semibold">{t('modelManagement')}</h2>
             <div className="glass rounded-apple overflow-hidden">
-              <Table>
-                <THead>
+              {/* 모델 수만큼 길어지는 표 — max-h + overflow-y 로 스크롤시키고
+                  헤더는 sticky 로 고정(bg-card 로 아래 행을 가림). */}
+              <Table wrapperClassName="max-h-96 overflow-y-auto">
+                <THead className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
                   <Tr>
                     <Th>{t('colAlias')}</Th>
                     <Th>{t('colAllowAll')}</Th>
@@ -221,32 +301,41 @@ export function AppPolicyPanel() {
                       <Tr key={m.alias}>
                         <Td emphasis className="font-mono mono-id text-xs">{m.alias}</Td>
                         <Td>
-                          {/* 세 상태를 세 가지로 표시한다. 예전엔 `[]`(전면 거부) 가
-                              ['cowork'] 같은 평범한 부분 허용과 똑같은 em-dash 로 보였다 —
-                              전면 거부를 만드는 화면이 그 상태를 숨기고 있었던 셈이다.
-                              판정은 `modelAppScope` 로만 한다(3갈래 판정의 사본을 만들지 않는다). */}
+                          {/* 앱 상태 = 앱별 고정 칩 3개 — 켜짐(teal)/꺼짐(dim)으로 커버리지를
+                              한눈에 읽게 한다. 예전 표시(전체 배지/전면 거부 배지/— 대시)는
+                              부분 허용의 "어떤 앱인지" 를 숨기고 세 상태의 형식이 달라
+                              행 비교가 안 됐다.
+                              NULL(전체 허용) 은 세 칩이 모두 켜진 것과 같지만 "향후 추가 앱도
+                              포함" 이라는 별도 의미가 있으므로 title/sr-only 로 구분한다. */}
                           {(() => {
                             const scope = modelAppScope(m.allowed_clients);
-                            if (scope.kind === 'unrestricted') {
-                              return <Badge tone="neutral">{t('allBadge')}</Badge>;
-                            }
-                            if (scope.kind === 'none') {
-                              // 배지 문구 자체가 "전체 허용" 열 안에서 홀로 읽혀도 뜻이 통해야 한다.
-                              // 예전 문구는 '없음'/None 이었는데, 이 열에서 부분 허용이 쓰는 em-dash
-                              // 와 같은 뜻("전체 허용은 아님")으로 읽혀 전면 거부가 평범한 제한처럼
-                              // 보였다. 색(pink)은 보조 단서일 뿐이라 문구가 정본이어야 한다.
-                              //
-                              // 그리고 hover 전용 title 하나로 끝내지 않는다: <span> 은 포커스 대상이
-                              // 아니라 키보드 사용자에게는 tooltip 이 아예 열리지 않고, 스크린리더도
-                              // title 을 읽지 않는 조합이 흔하다. 같은 문장을 sr-only 로 한 번 더 둔다.
-                              return (
-                                <span title={t('noneHint')} className="cursor-help">
-                                  <Badge tone="pink">{t('noneBadge')}</Badge>
-                                  <span className="sr-only">{t('noneHint')}</span>
-                                </span>
-                              );
-                            }
-                            return <span className="text-muted-foreground">—</span>;
+                            const hint =
+                              scope.kind === 'unrestricted'
+                                ? t('appStatusUnrestrictedHint')
+                                : undefined;
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1"
+                                title={hint}
+                              >
+                                {GATEWAY_CLIENTS.map((c) => {
+                                  const on = modelAllowsClient(m.allowed_clients, c);
+                                  return (
+                                    <span
+                                      key={c}
+                                      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                        on
+                                          ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                                          : 'bg-muted/50 text-muted-foreground/50 line-through'
+                                      }`}
+                                    >
+                                      {CLIENT_SHORT_LABELS[c]}
+                                    </span>
+                                  );
+                                })}
+                                {hint && <span className="sr-only">{hint}</span>}
+                              </span>
+                            );
                           })()}
                         </Td>
                         <Td>
@@ -269,18 +358,30 @@ export function AppPolicyPanel() {
           <div className="space-y-3">
             <h2 className="text-sm font-semibold">{t('allowedUsers')}</h2>
             <div className="glass rounded-apple overflow-hidden">
-              <Table>
-                <THead>
-                  <Tr><Th>{t('colUser')}</Th><Th>ID</Th></Tr>
+              {/* 유저 수만큼 길어진다 — 모델 표와 같은 스크롤+sticky 헤더. */}
+              <Table wrapperClassName="max-h-96 overflow-y-auto">
+                <THead className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
+                  <Tr><Th>{t('colUser')}</Th><Th>{t('colAccess')}</Th><Th>ID</Th></Tr>
                 </THead>
                 <TBody>
                   {policy.allowed_users.length === 0 ? (
-                    <TEmpty colSpan={2}>{t('noAllowedUsers')}</TEmpty>
+                    <TEmpty colSpan={3}>{t('noAllowedUsers')}</TEmpty>
                   ) : (
                     policy.allowed_users.map((u) => (
                       <Tr key={u.user_id}>
                         <Td emphasis>
                           {u.email ?? <span className="text-muted-foreground">{t('noEmail')}</span>}
+                        </Td>
+                        <Td>
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              u.explicit
+                                ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {u.explicit ? t('accessExplicit') : t('accessUnrestricted')}
+                          </span>
                         </Td>
                         <Td className="font-mono mono-id text-xs text-muted-foreground">{u.user_id}</Td>
                       </Tr>

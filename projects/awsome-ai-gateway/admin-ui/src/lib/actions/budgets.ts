@@ -9,7 +9,7 @@ import { adminAPI } from '@/lib/api-client';
 import { BudgetSetSchema } from '@/types/api';
 import { withRetry } from '@/lib/utils/retry';
 import { APIError } from '@/lib/utils/retry';
-import type { AllocationEntry } from '@/types/entities';
+import type { AllocationEntry, TeamBudgetAllocation } from '@/types/entities';
 import type { ActionResult } from './types';
 
 // ─── setBudgetAction ──────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ export async function deleteUserBudgetAction(userId: string): Promise<ActionResu
 
 export async function allocateTeamBudgetAction(
   teamId: string,
-  allocations: AllocationEntry[]
+  allocations: Pick<AllocationEntry, 'target_id' | 'target_type' | 'allocated_usd'>[]
 ): Promise<ActionResult<void>> {
   if (!teamId) {
     return { success: false, error: 'Team ID is required' };
@@ -76,6 +76,59 @@ export async function allocateTeamBudgetAction(
     );
     revalidatePath('/budgets');
     return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: toErrorMessage(err) };
+  }
+}
+
+// ─── Team Allocation 조회 ────────────────────────────────────────────────────
+// SetBudgetDialog(TEAM)의 share/distribute 모드 판정용 — 멤버 목록과 기존
+// 인당 한도(USER scope config)를 읽는다. Decimal 필드는 문자열로 오므로 파싱.
+
+interface RawAllocationEntry {
+  target_id: string;
+  target_name: string;
+  target_type: string;
+  target_role?: string | null;
+  allocated_usd: string;
+  used_usd: string;
+  remaining_usd: string;
+  alert_level: string;
+}
+
+interface RawTeamAllocation {
+  team_id: string;
+  team_name: string;
+  total_budget_usd: string;
+  entries: RawAllocationEntry[];
+}
+
+export async function getTeamAllocationAction(
+  teamId: string
+): Promise<ActionResult<TeamBudgetAllocation | null>> {
+  try {
+    const data = await withRetry(() =>
+      adminAPI.get<RawTeamAllocation | null>(`/admin/budgets/team/${teamId}/allocation`)
+    );
+    if (!data) return { success: true, data: null };
+    return {
+      success: true,
+      data: {
+        team_id: data.team_id,
+        team_name: data.team_name,
+        total_budget_usd: parseFloat(data.total_budget_usd) || 0,
+        entries: (data.entries ?? []).map((e) => ({
+          target_id: e.target_id,
+          target_name: e.target_name,
+          target_type: e.target_type.toUpperCase() as AllocationEntry['target_type'],
+          target_role: e.target_role ?? null,
+          allocated_usd: parseFloat(e.allocated_usd) || 0,
+          used_usd: parseFloat(e.used_usd) || 0,
+          remaining_usd: parseFloat(e.remaining_usd) || 0,
+          alert_level: (e.alert_level ?? 'NORMAL').toUpperCase() as AllocationEntry['alert_level'],
+        })),
+      },
+    };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };
   }
@@ -116,7 +169,8 @@ export async function setDowngradeConfigAction(
         { enabled: config.enabled, rules: config.rules }
       )
     );
-    revalidatePath('/budgets');
+    // 다운그레이드 설정은 요약 테이블 데이터와 무관 — revalidatePath 하면
+    // RSC 리페치가 테이블을 리마운트시켜 펼침/패널 상태가 날아간다.
     return { success: true, data };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };
@@ -131,7 +185,6 @@ export async function deleteDowngradeConfigAction(
     await withRetry(() =>
       adminAPI.delete(`/admin/budgets/${scope}/${scopeId}/downgrade`)
     );
-    revalidatePath('/budgets');
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };

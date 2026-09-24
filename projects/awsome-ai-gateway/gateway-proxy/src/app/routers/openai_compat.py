@@ -725,10 +725,17 @@ async def _handle_responses(request: Request):
             tb["model"] = _pmid
             return await adapter.invoke_stream(json.dumps(tb).encode(), _pmid, **invoke_kwargs)
 
+        # 클라이언트 체감 TTFT — 루프의 on_usage 는 1-arg(멀티턴 합산이라 per-turn
+        # TTFT 를 안 넘긴다)라 ttft_ms 가 항상 NULL 로 기록돼 모니터링에 "ttft=-" 로
+        # 나왔다. 응답 이터레이터의 첫 청크 시각을 잡아 기록한다.
+        _ws_first_frame: dict[str, float | None] = {"t": None}
+
         async def _ws_record(usage: TokenUsage) -> None:
             if not auth_context:
                 return
             duration_ms = int((time.monotonic() - start_time) * 1000)
+            ft = _ws_first_frame["t"]
+            ttft_ms = int((ft - start_time) * 1000) if ft is not None else duration_ms
             # bedrock_request_id is deliberately NOT set on the web-search path, and left
             # NULL. The loop makes N Bedrock invocations (one per tool-use turn) whose
             # usage is summed into ONE usage_logs row, so no single x-amzn-requestid is
@@ -740,6 +747,7 @@ async def _handle_responses(request: Request):
             # routing profile, so this affects only profiles that enabled it.
             await cost_recorder.finalize(
                 redis, auth_context, model_config, usage, request_id, is_stream, duration_ms,
+                ttft_ms=ttft_ms,
                 rate_limit_state=rate_limit_state,
                 downgraded_from=state.get("downgraded_from"), client=client,
             )
@@ -798,7 +806,7 @@ async def _handle_responses(request: Request):
         _ws_logging = await resolve_body_logger(request.app.state, redis, session_factory)
 
         _settings_ws = get_settings()
-        return await run_web_search_loop(
+        _ws_resp = await run_web_search_loop(
             dialect="responses",
             invoke=_ws_invoke,
             invoke_stream=_ws_invoke_stream,
@@ -817,6 +825,19 @@ async def _handle_responses(request: Request):
             on_stream_complete=_ws_log_stream if _ws_logging else None,
             on_nonstream_complete=_ws_log_nonstream if _ws_logging else None,
         )
+        # messages.py 의 웹서치 경로와 동일 — 첫 yield 시각을 _ws_record 가 ttft_ms 로
+        # 쓰게 한다. 비스트리밍은 래핑 대상이 없어 duration_ms 폴백.
+        if isinstance(_ws_resp, StreamingResponse):
+            _ws_body_iter = _ws_resp.body_iterator
+
+            async def _ws_timed_iter():
+                async for chunk in _ws_body_iter:
+                    if _ws_first_frame["t"] is None:
+                        _ws_first_frame["t"] = time.monotonic()
+                    yield chunk
+
+            _ws_resp.body_iterator = _ws_timed_iter()
+        return _ws_resp
 
     if is_stream:
         # 4th element = x-amzn-requestid. Populated on the runtime plane (the join key to

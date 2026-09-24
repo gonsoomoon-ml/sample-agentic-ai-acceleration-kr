@@ -1,7 +1,7 @@
 // Copyright 2026 © Amazon.com and Affiliates: This deliverable is considered Developed Content as defined in the AWS Service Terms.
 
 import type { AdminSession } from '@/types/entities';
-import type { UserRole } from '@/types/enums';
+import { UserRole } from '@/types/enums';
 import { PAGE_PERMISSIONS } from './permissions';
 
 /**
@@ -40,14 +40,18 @@ function envList(name: string): string[] {
  * 토큰에서 역할을 정한다. **admin-api 와 같은 정책**이어야 한다
  * (admin-api/src/app/core/oidc_identity.py `derive_role`).
  *
- * 우선순위:
+ * 우선순위 (admin-api `derive_role` 와 동일 순서):
  *   1. `role` 클레임 — 내부 admin JWT / dev-login 토큰이 갖는다. 그대로 신뢰한다
  *      (서명 검증은 admin-api 몫이고, 여기서 뒤집으면 두 판정이 갈린다).
- *   2. 그룹 매핑 — IdP id_token 에는 `role` 이 **없고** groups 만 있다. groups claim
+ *   2. `ADMIN_EMAILS` — 백엔드는 emails + groups 둘 다 검사한다. emails 만 빠뜨리면
+ *      등재된 관리자가 API 는 통과하는데 UI 는 차단되는 불일치가 된다.
+ *   3. 그룹 매핑 — IdP id_token 에는 `role` 이 **없고** groups 만 있다. groups claim
  *      이름은 IdP 마다 다르므로(Cognito 는 `cognito:groups`) 설정으로 읽는다.
- *   3. 둘 다 없으면 undefined — checkPagePermission 이 거부한다(fail-closed).
+ *   4. 둘 다 아니면 DEVELOPER — 백엔드 derive_role 의 폴백과 동일. undefined 가 아닌
+ *      이유: DEVELOPER 도 /my 페이지 권한이 있고, 어드민 페이지는 checkPagePermission
+ *      이 어차피 거부한다(fail-closed 는 permissions 테이블이 담당).
  *
- * ⚠️ 2번이 없던 동안 IdP 로그인은 **항상** 관리자 잠김이었다. id_token 에 `role` 이
+ * ⚠️ 3번이 없던 동안 IdP 로그인은 **항상** 관리자 잠김이었다. id_token 에 `role` 이
  *    없으니 role 이 undefined 가 되고, checkPagePermission 은 등재되지 않은 역할을
  *    거부하므로 로그인 직후 모든 페이지가 /403 이었다. admin-api 쪽은 같은 토큰으로
  *    ADMIN 을 인가하고 있었다 — API 는 통과, UI 는 차단이라는 최악의 조합.
@@ -62,9 +66,11 @@ function resolveRole(payload: Record<string, unknown>): UserRole {
     return claimed as UserRole;
   }
 
-  const adminGroups = envList('ADMIN_GROUPS');
-  if (adminGroups.length === 0) {
-    return undefined as unknown as UserRole;
+  // derive_role: ADMIN_EMAILS 우선, 이메일 비교는 대소문자 무시.
+  const email = typeof payload['email'] === 'string' ? payload['email'].toLowerCase() : '';
+  const adminEmails = envList('ADMIN_EMAILS').map((e) => e.toLowerCase());
+  if (email && adminEmails.includes(email)) {
+    return UserRole.ADMIN;
   }
 
   const claimName = env('OIDC_GROUPS_CLAIM') || 'groups';
@@ -76,8 +82,9 @@ function resolveRole(payload: Record<string, unknown>): UserRole {
       : [];
 
   // 원소 동등 비교 — 부분 문자열 매칭을 만들지 않는다(위 주석 참조).
+  const adminGroups = envList('ADMIN_GROUPS');
   const isAdmin = groups.some((g) => adminGroups.includes(g));
-  return (isAdmin ? 'ADMIN' : undefined) as unknown as UserRole;
+  return isAdmin ? UserRole.ADMIN : UserRole.DEVELOPER;
 }
 
 /**

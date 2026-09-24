@@ -11,12 +11,11 @@
  *    자기 code 를 밀어 넣어 **피해자를 공격자 계정으로 로그인**시킬 수 있다(로그인 CSRF).
  *    실패 시에는 admin_jwt 를 절대 세팅하지 않고 임시 쿠키를 정리한다.
  *
- * ⚠️ 쿠키에 넣는 토큰: 기본 id_token(사용자 표시용 email/name 클레임을 갖고 있고,
- *    admin-ui/src/lib/auth.ts:44 의 parseJWT 가 그것을 읽는다). provider 가 id_token 을
- *    안 주면 access_token 으로 폴백하고, OIDC_COOKIE_TOKEN=access_token 으로 강제도 된다.
- *    admin-api 쪽 검증 경로는 admin-api/src/app/core/auth.py:151 의 JWTVerifier —
- *    `auth.admin_jwt_configs` 에 IdP 서명키(issuer/audience/PEM) 행이 등록돼 있어야 하고
- *    토큰에 `sub`/`role` 클레임이 있어야 한다. 그 등록은 운영자 작업이며 이 파일 밖이다.
+ * ⚠️ 쿠키에 넣는 토큰: IdP 토큰을 그대로 굽지 않는다 — POST /v1/auth/admin-session
+ *    에서 admin-api 자체 서명 세션 JWT(role/team_id 클레임 포함)로 교환해 굽는다.
+ *    IdP 토큰에는 role/team_id 가 없어 TEAM_LEADER(DB 지정 역할)가 middleware 의
+ *    resolveRole 에서 DEVELOPER 로 깔리기 때문이다. 내부 세션은 auth.admin_jwt_configs
+ *    의 ds-gateway-admin 키로 검증된다(ROPC 폼 로그인과 동일 경로).
  *
  * ⚠️ request.url 대신 request.nextUrl / Host 헤더를 쓴다 — dev-login/route.ts:112 와 같은
  *    이유로 컨테이너 안에서 request.url 은 0.0.0.0 으로 풀린다.
@@ -25,9 +24,83 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { redirectRelative } from '@/lib/redirect';
 import { parseJWT, isSessionExpired } from '@/lib/auth';
+import { ADMIN_API_URL } from '@/lib/adminSessionCookie';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+type SessionExchange =
+  | { ok: true; token: string }
+  | { ok: false; failure: (secure: boolean) => NextResponse };
+
+/**
+ * IdP 토큰 → admin-api 자체 서명 세션 JWT 교환 (POST /v1/auth/admin-session).
+ *
+ * 쿠키에 넣는 토큰을 내부 세션으로 바꾸는 이유는 GET 아래의 주석 참조 —
+ * IdP 토큰에는 role/team_id 가 없어 TEAM_LEADER(DB 지정 역할)가 admin-ui
+ * 권한 게이트에서 DEVELOPER 로 깔린다.
+ */
+async function exchangeAdminSession(oidcToken: string): Promise<SessionExchange> {
+  let res: Response;
+  try {
+    res = await fetch(`${ADMIN_API_URL}/v1/auth/admin-session`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${oidcToken}` },
+      cache: 'no-store',
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      failure: (secure) =>
+        failure(
+          502,
+          'admin-api unreachable',
+          `세션 교환 호출이 실패했습니다: ${(e as Error).message}`,
+          secure,
+        ),
+    };
+  }
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = (await res.json()) as { error?: { message?: string } };
+      detail = body?.error?.message ?? '';
+    } catch {
+      /* JSON 이 아니면 상태코드만으로 보고한다 */
+    }
+    return {
+      ok: false,
+      failure: (secure) =>
+        failure(
+          res.status === 403 ? 403 : 502,
+          'Admin session exchange failed',
+          `admin-api 가 세션을 발급하지 못했습니다 (HTTP ${res.status}). ${detail}`.trim(),
+          secure,
+        ),
+    };
+  }
+
+  let body: { token?: unknown };
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    return {
+      ok: false,
+      failure: (secure) =>
+        failure(502, 'Session response is not JSON', 'admin-api 세션 응답을 해석할 수 없습니다.', secure),
+    };
+  }
+
+  if (typeof body.token !== 'string' || !body.token) {
+    return {
+      ok: false,
+      failure: (secure) =>
+        failure(502, 'Session response missing token', 'admin-api 응답에 token 이 없습니다.', secure),
+    };
+  }
+  return { ok: true, token: body.token };
+}
 
 /** exp/expires_in 을 둘 다 못 읽었을 때만 쓰는 최후 폴백(초). 짧게 둔다. */
 const FALLBACK_COOKIE_MAX_AGE = 3600;
@@ -288,9 +361,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const preferAccess = env('OIDC_COOKIE_TOKEN') === 'access_token';
   const idToken = typeof tokens.id_token === 'string' ? tokens.id_token : '';
   const accessToken = typeof tokens.access_token === 'string' ? tokens.access_token : '';
-  const cookieToken = preferAccess ? accessToken || idToken : idToken || accessToken;
+  // admin-api 에 검증을 맡길 IdP 토큰 — id_token 우선(claims 가 풍부), 없으면
+  // access_token 폴백. OIDC_COOKIE_TOKEN 은 이제 **쿠키 내용이 아니라** 교환에
+  // 보낼 토큰을 고른다(쿠키에는 항상 admin-api 가 발급한 내부 세션이 들어간다).
+  const oidcToken = preferAccess ? accessToken || idToken : idToken || accessToken;
 
-  if (!cookieToken) {
+  if (!oidcToken) {
     return failure(
       502,
       'No usable token returned',
@@ -299,22 +375,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ⚠️ 굽기 전에 **middleware 가 쓰는 그 파서로** 실제 읽히는지 확인한다.
+  // ⚠️ 교환 전 선검사 — admin-api 호출 전에 읽을 수 없는/만료된 토큰을 걸러낸다.
   //
-  // 없으면 이런 무한 루프가 실제로 난다(적대적 검증에서 재현):
-  //   `OIDC_COOKIE_TOKEN=access_token` + access_token 이 불투명한 IdP(Okta org 서버),
-  //   또는 scope 에 `openid` 가 없어 id_token 이 안 와서 access_token 으로 폴백 →
-  //   그 문자열을 admin_jwt 로 굽는다 → 브라우저가 `/` 요청 → middleware 의 parseJWT 가
-  //   throw → catch 에서 쿠키 제거 + `/api/auth/login` 리다이렉트 → IdP 세션이 아직
-  //   살아 있으니 즉시 콜백으로 되돌아옴 → 다시 같은 쿠키 → **영원히 반복**.
-  //   화면에는 아무 진단도 안 나온다 — 이 라우트가 애초에 없애려던 그 막다른 길이다.
-  //
-  // 그래서 실패는 루프가 아니라 원인이 적힌 페이지로 끝낸다. 검증은 서명 검증이 아니라
-  // **형식/클레임 가독성**만 본다(서명은 admin-api 가 OIDC 검증기로 확인한다) — 여기서
-  // 막아야 하는 것은 "admin-ui 가 읽을 수 없는 문자열을 쿠키에 넣는 것" 이다.
-  let parsedSession: ReturnType<typeof parseJWT>;
+  // 없으면 이런 무한 루프가 실제로 난다(적대적 검증에서 재현): 불투명 토큰을
+  // 굽는다 → middleware 의 parseJWT 가 throw → 쿠키 제거 + /api/auth/login →
+  // IdP 세션이 살아 있으니 즉시 콜백으로 되돌아옴 → 같은 쿠키 → **영원히 반복**.
+  // 서명 검증은 admin-api 가 하지만, 원인이 적힌 페이지로 끝내려면 형식/만료
+  // 판정은 여기서 먼저 해야 한다.
+  let parsedOidc: ReturnType<typeof parseJWT>;
   try {
-    parsedSession = parseJWT(cookieToken);
+    parsedOidc = parseJWT(oidcToken);
   } catch (e) {
     const which = preferAccess ? 'access_token' : 'id_token';
     return failure(
@@ -323,6 +393,45 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       `${which} 을 admin-ui 가 해석할 수 없습니다(${(e as Error).message}). ` +
         'IdP 가 불투명(opaque) 토큰을 주는 경우입니다 — OIDC_SCOPES 에 openid 를 넣어 ' +
         'id_token 을 받고, OIDC_COOKIE_TOKEN 은 비워 두거나 id_token 으로 두세요. ' +
+        '이 검사가 없으면 로그인이 무한 리다이렉트로 빠집니다.',
+      secure,
+    );
+  }
+  if (isSessionExpired(parsedOidc)) {
+    return failure(
+      502,
+      'Token is already expired',
+      '발급된 토큰의 exp 가 이미 지났습니다(서버 시계 불일치일 수 있습니다). ' +
+        '그대로 쿠키에 넣으면 다음 요청에서 만료로 판정돼 로그인이 무한 반복됩니다.',
+      secure,
+    );
+  }
+
+  // ⚠️ IdP 토큰을 그대로 굽지 않는다 — admin-api 에서 **내부 세션 JWT** 로 교환한다.
+  //
+  // IdP 가 직접 발급한 토큰에는 `role`/`team_id` 클레임이 없다. 그대로 쿠키에 넣으면
+  // middleware 의 resolveRole 이 DEVELOPER 로 깔아 모든 페이지가 /403 이 된다 —
+  // TEAM_LEADER 는 Cognito 그룹이 아니라 DB(auth.users.role)에 지정되는 역할이라
+  // 토큰만으로는 알 수 없다. admin-api 가 토큰을 검증하고 DB 신원으로 자체 서명한
+  // 세션을 발급하면(POST /v1/auth/admin-session), ROPC 폼 로그인과 쿠키 형태가
+  // 같아져 후속 경로가 한 가지 토큰만 보면 된다.
+  const sessionResponse = await exchangeAdminSession(oidcToken);
+  if (!sessionResponse.ok) {
+    return sessionResponse.failure(secure);
+  }
+
+  const cookieToken = sessionResponse.token;
+
+  // 세션 토큰도 같은 가독성 검사를 통과해야 한다 — 굽는 토큰이 admin-ui 가 못 읽는
+  // 형태면 위와 같은 무한 루프가 된다.
+  let parsedSession: ReturnType<typeof parseJWT>;
+  try {
+    parsedSession = parseJWT(cookieToken);
+  } catch (e) {
+    return failure(
+      502,
+      'Session token is not a readable JWT',
+      `admin-api 세션 토큰을 admin-ui 가 해석할 수 없습니다(${(e as Error).message}). ` +
         '이 검사가 없으면 로그인이 무한 리다이렉트로 빠집니다.',
       secure,
     );

@@ -306,6 +306,10 @@ class SecurityEvent(BaseModel):
         envelope 4필드(event_id/type/timestamp/source) 외 도메인 필드는 전부 payload 로.
         """
         d = self.model_dump(mode="json")
+        # 템플릿(auth_failure_spike.{ko,en}.html)이 기존 local 봉투의
+        # time_window / period 를 그대로 사용하므로 호환 필드도 추가한다.
+        d["time_window"] = f"{self.window_minutes} minutes"
+        d["period"] = f"{self.window_minutes} minutes"
         return {
             "event_id": d.pop("event_id"),
             "type": d.pop("type"),

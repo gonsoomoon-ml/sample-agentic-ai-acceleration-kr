@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -24,6 +25,28 @@ from app.schemas.domain import (
 logger = structlog.get_logger(__name__)
 
 MODEL_CACHE_TTL = 300  # 5분
+
+# 미등록 모델 이름(404) 집계 — admin 이 "클라이언트가 보내지만 매칭 안 되는 이름"을
+# 볼 수 있게 한다. usage_logs 는 성공 요청만 기록하므로 이 신호는 Redis 에 따로 둔다.
+UNMATCHED_MODELS_ZSET = "gw:unmatched_models"          # name → 404 횟수
+UNMATCHED_MODELS_SEEN = "gw:unmatched_models:last_seen"  # name → 마지막 404 시각
+
+
+async def _record_unmatched_model(redis, name: str) -> None:
+    """미등록 이름 집계 — best-effort. 관측 실패가 요청을 깨면 안 된다."""
+    if redis is None or not name:
+        return
+    try:
+        pipe = redis.pipeline(transaction=False)
+        pipe.zincrby(UNMATCHED_MODELS_ZSET, 1, name)
+        pipe.hset(
+            UNMATCHED_MODELS_SEEN,
+            name,
+            datetime.now(UTC).isoformat(),
+        )
+        await pipe.execute()
+    except Exception:  # noqa: BLE001
+        logger.debug("unmatched_model_record_failed", name=name)
 MODEL_LIST_CACHE_TTL = 300
 
 # The OpenAI **Responses** wire is served by two different Bedrock planes, and a client on
@@ -274,6 +297,7 @@ class RouterService:
             )
             alias_row = result.scalar_one_or_none()
         if alias_row is None:
+            await _record_unmatched_model(redis, model_ref)
             raise LookupError(f"Model alias '{model_ref}' not found")
 
         if alias_row.status != "ACTIVE":

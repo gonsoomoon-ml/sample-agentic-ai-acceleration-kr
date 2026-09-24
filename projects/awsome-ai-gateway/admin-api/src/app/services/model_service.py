@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import structlog
+from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
 from app.core.exceptions import ConflictError, NotFoundError
-from app.models.model import ApiFormat, ModelAlias, ModelPricing, ModelStatus, Provider
+from app.models.budget import DowngradePolicy
+from app.models.model import (
+    ApiFormat,
+    ModelAlias,
+    ModelPricing,
+    ModelStatus,
+    Provider,
+    RateLimitConfig,
+    TeamAllowedModel,
+    UserAllowedModel,
+)
+from app.models.routing import RoutingProfile
 from app.repositories.model_repository import ModelRepository
 from app.schemas.models import (
     ModelCreateRequest,
@@ -21,10 +33,22 @@ from app.schemas.models import (
     ModelResponse,
     ModelUpdateRequest,
     PricingRequest,
+    WireNameItem,
+    WireNameListResponse,
     StatusPatchRequest,
 )
 
 logger = structlog.get_logger()
+
+
+def _parse_iso(value) -> datetime | None:
+    """Redis 에 저장한 ISO 문자열 → datetime. 파싱 실패 시 None."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
 
 
 class ModelService:
@@ -39,6 +63,80 @@ class ModelService:
             pricing = await repo.get_current_pricing(m.alias)
             result.append(self._to_response(m, pricing))
         return result
+
+    async def list_wire_names(
+        self, session: AsyncSession, *, days: int = 30, redis=None
+    ) -> WireNameListResponse:
+        """최근 N일간 클라이언트가 실제로 보낸 모델 이름(와이어 키) 목록.
+
+        두 소스를 합친다:
+          - usage_logs: resolve 성공 요청(보통 등록된 이름)
+          - Redis gw:unmatched_models: resolve 실패(404) 이름 — 게이트웨이가
+            집계. **미등록 이름으로 들어오는 신호는 여기에만 있다** — 새 모델이
+            나와 클라이언트가 새 이름을내면 이 목록에 뜬다.
+        """
+        from app.models.usage import UsageLog
+
+        days = max(1, min(days, 365))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        rows = (
+            await session.execute(
+                select(
+                    UsageLog.model_alias,
+                    func.count(),
+                    func.max(UsageLog.requested_at),
+                )
+                .where(UsageLog.requested_at >= cutoff)
+                .group_by(UsageLog.model_alias)
+                .order_by(func.count().desc())
+                .limit(100)
+            )
+        ).all()
+        registered = set(
+            (await session.execute(select(ModelAlias.alias))).scalars().all()
+        )
+
+        items: dict[str, WireNameItem] = {
+            name: WireNameItem(
+                name=name,
+                request_count=cnt,
+                last_seen_at=last,
+                registered=name in registered,
+            )
+            for name, cnt, last in rows
+        }
+
+        # 404 집계 병합 — 성공 기록이 없는 미등록 이름도 rows 에 추가한다.
+        if redis is not None:
+            try:
+                rejected = await redis.zrevrange(
+                    "gw:unmatched_models", 0, 99, withscores=True
+                )
+                last_seen = await redis.hgetall("gw:unmatched_models:last_seen")
+                for raw_name, score in rejected:
+                    name = raw_name.decode() if isinstance(raw_name, bytes) else raw_name
+                    item = items.get(name)
+                    if item is None:
+                        raw_last = last_seen.get(raw_name) or last_seen.get(name)
+                        if isinstance(raw_last, bytes):
+                            raw_last = raw_last.decode()
+                        item = WireNameItem(
+                            name=name,
+                            request_count=0,
+                            last_seen_at=_parse_iso(raw_last),
+                            registered=name in registered,
+                        )
+                        items[name] = item
+                    item.rejected_count = int(score)
+            except Exception:  # noqa: BLE001 — Redis 장애가 목록을 깨면 안 된다
+                logger.warning("wire_names_unmatched_fetch_failed")
+
+        merged = sorted(
+            items.values(),
+            key=lambda i: (i.rejected_count + i.request_count, i.name),
+            reverse=True,
+        )
+        return WireNameListResponse(days=days, items=merged)
 
     async def create_model(
         self,
@@ -162,6 +260,85 @@ class ModelService:
 
         return self._to_response(model, pricing)
 
+    async def delete_model(
+        self,
+        session: AsyncSession,
+        *,
+        alias: str,
+        actor: CurrentUser,
+        ip_address: str = "0.0.0.0",
+        request_id: str = "",
+    ) -> None:
+        """모델 alias 삭제.
+
+        alias 는 요청 라우팅 키이므로, 없는 모델을 가리키는 설정행은 무의미하다 —
+        FK(RESTRICT) 참조를 같은 트랜잭션에서 같이 지운다: pricing 이력,
+        team/user_allowed_models, 모델별 rate_limit, downgrade 규칙(from/to).
+        usage_logs 는 FK 없는 과금 이력이라 보존한다.
+
+        차단(409): routing_profiles.default_model 로 참조 중이면 거부한다.
+        default_model 은 FK 가 없어 DB 가 못 막고, 지우면 그 앱의 모든 요청이
+        런타임에 404/resolve 실패로 깨진다 — 먼저 다른 기본 모델로 바꿔야 한다.
+        """
+        repo = ModelRepository(session)
+        model = await repo.get_by_alias(alias)
+        if model is None:
+            raise NotFoundError("ModelAlias", alias)
+
+        rp_clients = (
+            await session.execute(
+                select(RoutingProfile.client).where(
+                    RoutingProfile.default_model == alias
+                )
+            )
+        ).all()
+        if rp_clients:
+            raise ConflictError(
+                f"Model '{alias}' is the default model of app(s): "
+                f"{', '.join(sorted(r[0] for r in rp_clients))}. "
+                f"Change the default model first."
+            )
+
+        await session.execute(
+            sa_delete(ModelPricing).where(ModelPricing.model_alias == alias)
+        )
+        await session.execute(
+            sa_delete(TeamAllowedModel).where(TeamAllowedModel.model_alias == alias)
+        )
+        await session.execute(
+            sa_delete(UserAllowedModel).where(UserAllowedModel.model_alias == alias)
+        )
+        await session.execute(
+            sa_delete(RateLimitConfig).where(RateLimitConfig.model_alias == alias)
+        )
+        await session.execute(
+            sa_delete(DowngradePolicy).where(
+                or_(
+                    DowngradePolicy.from_model_alias == alias,
+                    DowngradePolicy.to_model_alias == alias,
+                )
+            )
+        )
+        await session.delete(model)
+
+        # 게이트웨이는 model:{alias} 와 model:{provider_model_id} 두 키로 캐시한다.
+        await self._cache_mgr.invalidate(
+            [f"model:{alias}", f"model:{model.provider_model_id}", "model:list"],
+            session=session,
+        )
+
+        await audit_logger.log(
+            session,
+            actor_user_id=actor.user_id,
+            actor_role=actor.role.value,
+            action="DELETE_MODEL",
+            resource_type="ModelAlias",
+            resource_id=alias,
+            changes={"before": {"alias": alias, "provider_model_id": model.provider_model_id}},
+            ip_address=ip_address,
+            request_id=request_id,
+        )
+
     async def set_pricing(
         self,
         session: AsyncSession,
@@ -243,7 +420,7 @@ class ModelService:
                 continue  # OpenModel/vLLM 은 AWS 단가 없음
             cur = await repo.get_current_pricing(m.alias)
             cur_resp = self._to_response(m, cur).current_pricing
-            np = fetched.prices.get(m.provider_model_id.lower())
+            np = fetched.lookup(m.provider_model_id)
             if np is None:
                 diffs.append(PriceSyncDiff(
                     alias=m.alias,
@@ -268,7 +445,15 @@ class ModelService:
             ])
             if is_changed:
                 changed += 1
+            # 스펙(context_window/max_output_tokens) 차이도 별도 플래그 —
+            # 단가 동일해도 스펙만 새로 채워지는 경우가 있다.
+            spec_changed = bool(
+                (np.context_window and m.context_window != np.context_window)
+                or (np.max_output_tokens and m.max_output_tokens != np.max_output_tokens)
+            )
             note = "캐시 단가 일부 파생(AWS 미게시 → input 기반 추정)" if np.cache_derived else None
+            if spec_changed:
+                note = (note + " · " if note else "") + "스펙 갱신(context/max output)"
             diffs.append(PriceSyncDiff(
                 alias=m.alias,
                 provider_model_id=m.provider_model_id,
@@ -281,6 +466,7 @@ class ModelService:
                 proposed_cache_1h_per_1k=p_1h,
                 proposed_cache_read_per_1k=p_rd,
                 changed=is_changed,
+                spec_changed=spec_changed,
             ))
 
         return PriceSyncPreviewResponse(
@@ -323,7 +509,7 @@ class ModelService:
             if model.provider != Provider.BEDROCK:
                 skipped.append(alias)
                 continue
-            np = fetched.prices.get(model.provider_model_id.lower())
+            np = fetched.lookup(model.provider_model_id)
             if np is None:
                 skipped.append(alias)  # AWS 단가 미발견 → 적용 안 함
                 continue
@@ -340,6 +526,21 @@ class ModelService:
                 session, alias=alias, data=req, actor=actor,
                 ip_address=ip_address, request_id=request_id,
             )
+            # 카탈로그가 스펙을 주면 같이 채운다 — LiteLLM만 제공, AWS 소스는 None.
+            # 모델 행은 캐시 키(model:{alias})를 공유하므로 변경 시 무효화 필요.
+            spec_changed = False
+            if np.context_window and model.context_window != np.context_window:
+                model.context_window = np.context_window
+                spec_changed = True
+            if np.max_output_tokens and model.max_output_tokens != np.max_output_tokens:
+                model.max_output_tokens = np.max_output_tokens
+                spec_changed = True
+            if spec_changed:
+                await session.flush()
+                await self._cache_mgr.invalidate(
+                    [f"model:{alias}", f"model:{model.provider_model_id}"],
+                    session=session,
+                )
             applied.append(alias)
 
         return PriceSyncApplyResponse(applied=applied, skipped=skipped, errors=errors)
@@ -403,7 +604,11 @@ class ModelService:
             # 전면 거부를 화면에서 볼 수 없다.
             allowed_clients=model.allowed_clients,
             description=model.description,
-            display_name=model.display_name,
+            # display_name 은 표시 전용 — 비어 있으면 alias 로 대체해 모든 API
+            # 소비자(목록·피커·정책 표시)가 같은 이름을 보게 한다. DB 는 NULL 유지.
+            display_name=model.display_name or model.alias,
+            context_window=model.context_window,
+            max_output_tokens=model.max_output_tokens,
             current_pricing=pricing_resp,
             created_at=model.created_at,
             updated_at=model.updated_at,

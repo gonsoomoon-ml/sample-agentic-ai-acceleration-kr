@@ -470,13 +470,13 @@ def _admin_actor():
     )
 
 
-def _leader_actor(team_id):
+def _leader_actor(team_id, user_id=None):
     from app.core.auth import CurrentUser
     from app.models.auth import UserRole
 
     return CurrentUser(
-        user_id=uuid.uuid4(), email="lead@example.com", role=UserRole.TEAM_LEADER,
-        team_id=team_id,
+        user_id=user_id or uuid.uuid4(), email="lead@example.com",
+        role=UserRole.TEAM_LEADER, team_id=team_id,
     )
 
 
@@ -526,9 +526,52 @@ async def test_analytics_chart_ranks_by_total_including_seed(session):
 async def test_team_leader_does_not_see_other_teams_seed(session):
     """권한 누출 방어 — budget_usages 에는 team_id 가 없어 users 조인으로 걸러야 한다.
 
-    시드 사용자 전원이 같은 팀이므로, **다른** 팀 리더에게는 아무것도 보이지 않아야 한다.
+    TEAM_LEADER 의 범위는 ``auth.teams.leader_user_id`` 로 지정된 팀이다(엄격 정책 —
+    소속 팀은 범위가 아니다). 시드 사용자 전원이 같은 팀이므로, **다른** 팀의 리더에게는
+    아무것도 보이지 않아야 한다.
     """
-    other_team = uuid.uuid4()  # 존재하지 않는 팀 → 어떤 행도 매칭되지 않아야 한다
-    by_email = await _analytics_by_user(session, _leader_actor(other_team))
+    from sqlalchemy import text
+
+    leader_id = uuid.uuid4()
+    other_team = uuid.uuid4()  # 실제 팀 행 — 리더 지정이 있어야 스코프가 열린다
+    dept_id = await session.scalar(text("SELECT dept_id FROM auth.teams LIMIT 1"))
+    await session.execute(
+        text(
+            "INSERT INTO auth.users (id, team_id, email, display_name, role, sso_subject)"
+            " VALUES (:id, NULL, :email, 'other-lead', 'TEAM_LEADER', :sub)"
+        ),
+        {
+            "id": leader_id,
+            "email": f"otherlead-{leader_id}@example.com",
+            "sub": f"sub-{leader_id}",
+        },
+    )
+    await session.execute(
+        text(
+            "INSERT INTO auth.teams (id, dept_id, name, leader_user_id)"
+            " VALUES (:id, :dept, 'other-team', :leader)"
+        ),
+        {"id": other_team, "dept": dept_id, "leader": leader_id},
+    )
+
+    by_email = await _analytics_by_user(
+        session, _leader_actor(other_team, user_id=leader_id)
+    )
     leaked = [e for e in by_email if e and e.endswith("@example.com")]
     assert not leaked, f"다른 팀 리더에게 사용자가 새어 나갔다: {leaked}"
+
+
+async def test_team_leader_without_led_teams_is_denied(session):
+    """리더로 지정된 팀이 하나도 없는 TEAM_LEADER 는 빈 결과가 아니라 403 이다.
+
+    회귀 방어 — 예전엔 스코프 id 가 None 이 되며 WHERE 절이 통째로 사라져 전사
+    분석이 그대로 나갔다(analytics_service 의 ⚠️ 주석 참조).
+    """
+    from app.core.exceptions import ForbiddenError
+    from app.services.analytics_service import AnalyticsService
+
+    with pytest.raises(ForbiddenError):
+        await AnalyticsService().get_analytics(
+            session, period=PERIOD, group_by="user", scope="all",
+            actor=_leader_actor(uuid.uuid4()),  # led 팀 0 개
+        )

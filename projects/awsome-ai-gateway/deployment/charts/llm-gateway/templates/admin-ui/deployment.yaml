@@ -83,6 +83,7 @@ spec:
               value: {{ .Values.observability.otel.endpoint | quote }}
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
               value: "http/protobuf"
+            {{- include "llm-gateway.devLoginEnv" . | nindent 12 }}
             {{- include "llm-gateway.downwardApiEnv" . | nindent 12 }}
             {{/* admin-api 와 **같은 values 키**에서 그룹 매핑 두 값을 받는다.
                  어긋나면 관리자 잠김(_helpers.tpl adminUiIdpEnv 주석 참조). */}}

@@ -41,14 +41,14 @@ SOURCE = Path(dash.__file__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def test_the_kpi_route_exists_and_is_admin_only():
+def test_the_kpi_route_exists_and_scopes_the_cache_key():
     paths = {r.path for r in dash.router.routes}
     assert "/admin/dashboard/kpi" in paths, f"등록된 경로: {sorted(paths)}"
     src = inspect.getsource(dash.dashboard_kpi)
-    assert "require_admin" in src, "관리자 전용이 아니다"
-    assert "require_admin_or_team_leader" not in src, (
-        "TEAM_LEADER 에 열면 캐시 키에 actor 가 없어 유출이 된다"
-    )
+    assert "require_admin_or_team_leader" in src, "관리자/팀 리더 전용이 아니다"
+    # TEAM_LEADER 에 연 엔드포인트는 캐시 키에 유효 scope 가 없으면 ADMIN 이 채운
+    # 전사 응답이 리더에게 새어 나간다 — scope= 를 키에 넣는 게 유출 방지 조건이다.
+    assert "scope=" in src, "캐시 키에 유효 scope 가 없다 — TEAM_LEADER 유출 경로"
 
 
 def test_kpi_returns_every_card_field():
@@ -133,12 +133,15 @@ def test_key_and_model_symbols_come_from_the_modules_that_exist():
 
 
 def test_period_default_goes_through_the_shared_kst_helper():
-    """지역 _default_period() 를 다시 만들지 말 것 — 6개 핸들러가 한 헬퍼를 공유한다."""
+    """6개 핸들러가 한 기본 period 를 공유하고, 그 구현은 단일 진실원을 거쳐야 한다."""
     body = inspect.getsource(dash.dashboard_kpi)
-    assert "current_kst_period()" in body, "공유 KST 헬퍼를 쓰지 않는다"
+    assert "_default_period()" in body, "공유 기본 period 헬퍼를 쓰지 않는다"
     src = SOURCE.read_text(encoding="utf-8")
-    assert "def _default_period" not in src, (
-        "지역 기간 기본값 함수가 생겼다 — 프로세스 로컬타임에 의존하게 되어 KST 통일이 깨진다"
+    # _default_period 는 모듈 레벨 공유 헬퍼인데, 그 구현이 usage_filters 의
+    # current_kst_period(내부는 reporting_timezone)를 거치지 않고 따로 파생하면
+    # 나머지 라우터와 월 정의가 갈라진다.
+    assert "current_kst_period" in src, (
+        "_default_period 가 단일 진실원(current_kst_period)을 거치지 않는다"
     )
 
 

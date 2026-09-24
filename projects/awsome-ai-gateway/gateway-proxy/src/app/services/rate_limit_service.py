@@ -157,12 +157,16 @@ class RateLimitService:
         은 포기 — 앞 scope 통과 후 뒤 scope 거부 시 앞 scope 에 phantom +1 이 남지만
         보수적(과잉제한) 방향이고 다음 윈도우에 자가보정. budget_service 와 동형.
         """
-        effective = [d for d in descriptors if d.rpm_limit and d.rpm_limit > 0]
-        if not effective:
-            return RateLimitResult(allowed=True, remaining=-1, limit=-1)
-
         now_ms = int(time.time() * 1000)
         req_id = request_id or str(uuid4())
+
+        effective = [d for d in descriptors if d.rpm_limit and d.rpm_limit > 0]
+        if not effective:
+            # 한도 미설정이라도 관측성 카운터는 적재 — admin-ui Live RPM 이
+            # unlimited 스코프에서도 동작하도록. 집행은 아니므로 실패 시 경고만.
+            await self._record_unlimited_rpm(redis, descriptors, req_id, now_ms, window_ms)
+            return RateLimitResult(allowed=True, remaining=-1, limit=-1)
+
         script = LuaScriptLoader.get("rate_limit_check")
 
         last: dict | None = None
@@ -194,6 +198,10 @@ class RateLimitService:
                 )
             last = result
 
+        # 전 scope 통과 — 한도 없는 스코프의 관측성 카운터도 적재
+        # (한도 있는 스코프는 Lua Phase 2 가 ZADD 함 — 중복 적재 아님).
+        await self._record_unlimited_rpm(redis, descriptors, req_id, now_ms, window_ms)
+
         # 전 scope 통과 — 마지막(가장 광역) scope 결과의 remaining/limit 노출.
         if last is not None:
             return RateLimitResult(
@@ -203,6 +211,44 @@ class RateLimitService:
                 window_reset=last.get("window_reset") or 0,
             )
         return RateLimitResult(allowed=True, remaining=-1, limit=-1)
+
+    async def _record_unlimited_rpm(
+        self,
+        redis,
+        descriptors: list[ScopeDescriptor],
+        request_id: str,
+        now_ms: int,
+        window_ms: int,
+    ) -> None:
+        """한도 미설정 USER/TEAM 스코프의 live-usage 카운터 적재 (거부 아님).
+
+        rate_limit_check.lua 는 한도가 있는 스코프만 ZADD 하므로 unlimited
+        스코프는 `{SCOPE:id:model}:rpm` 키가 생기지 않아 admin-ui Live RPM 이
+        항상 0 이었다. 여기서 Lua 와 같은 규약(ZADD+ZREMRANGEBYSCORE+EXPIRE)으로
+        한도 없는 스코프만 적재한다. GLOBAL 은 단일 hot key 가 되고 패널도 안
+        쓰므로 제외. 관측성이라 실패는 경고만 — 요청 경로에 영향 없음.
+        """
+        unlimited = [
+            d
+            for d in descriptors
+            if not (d.rpm_limit and d.rpm_limit > 0)
+            and d.scope != RateLimitScope.GLOBAL
+        ]
+        if not unlimited:
+            return
+        try:
+            pipe = redis.pipeline(transaction=False)
+            for d in unlimited:
+                key = build_rl_key(d.scope, d.scope_id, d.model_alias, "rpm")
+                pipe.zadd(key, {request_id: now_ms})
+                pipe.zremrangebyscore(key, 0, now_ms - window_ms)
+                pipe.expire(key, (window_ms // 1000) + 60)
+            await pipe.execute()
+        except Exception:
+            logger.warning(
+                "rpm_usage_record_failed",
+                scopes=[d.scope.value for d in unlimited],
+            )
 
     async def check_multi_scope_tpm(
         self,

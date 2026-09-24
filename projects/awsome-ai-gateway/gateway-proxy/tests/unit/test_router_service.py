@@ -188,6 +188,41 @@ async def test_unregistered_alias_raises_lookup_error():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_unmatched_model_recorded_in_redis():
+    """미등록 이름 404 → gw:unmatched_models 에 집계 (admin wire-names 가 읽는다)."""
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    pipe = MagicMock()
+    pipe.execute = AsyncMock()
+    redis.pipeline = MagicMock(return_value=pipe)
+    db = _make_db_mock([None, None])
+
+    rs = RouterService()
+    with pytest.raises(LookupError, match="not found"):
+        await rs.resolve_bedrock_model(redis, db, "claude-fictional")
+
+    redis.pipeline.assert_called_once()
+    pipe.zincrby.assert_called_once_with("gw:unmatched_models", 1, "claude-fictional")
+    pipe.hset.assert_called_once()
+    pipe.execute.assert_awaited_once()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_unmatched_record_failure_does_not_break_404():
+    """관측 집계 실패가 요청 경로를 깨면 안 된다 — 404 는 그대로."""
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.pipeline = MagicMock(side_effect=RuntimeError("redis down"))
+    db = _make_db_mock([None, None])
+
+    rs = RouterService()
+    with pytest.raises(LookupError, match="not found"):
+        await rs.resolve_bedrock_model(redis, db, "claude-fictional")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_unregistered_full_id_raises_lookup_error():
     """회귀 검증: 기존엔 '.'이 있으면 통과시켰음. 이제는 무조건 LookupError."""
     redis = AsyncMock()

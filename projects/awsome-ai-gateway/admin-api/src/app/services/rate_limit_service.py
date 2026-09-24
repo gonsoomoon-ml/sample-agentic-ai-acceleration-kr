@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.auth import Team, User
 from app.models.model import ModelAlias, RateLimitConfig, RateLimitScope
@@ -20,6 +21,17 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.rate_limits import RateLimitConfigItem, RateLimitResponse, RateLimitSetRequest, RateLimitTreeNode
 
 logger = structlog.get_logger()
+
+
+def _team_display_name(team: Team) -> str:
+    """부서가 default가 아니면 '부서명_팀명' 형태로 반환한다.
+    예: Claude_NDS_Developers 그룹 → Team.name='Developers', department='NDS' → 'NDS_Developers'"""
+    settings = get_settings()
+    default_dept_id = uuid.UUID(settings.DEFAULT_DEPT_ID)
+    dept = getattr(team, "department", None)
+    if dept is not None and team.dept_id != default_dept_id:
+        return f"{dept.name}_{team.name}"
+    return team.name
 
 
 class RateLimitService:
@@ -161,7 +173,7 @@ class RateLimitService:
             nodes.append(
                 RateLimitTreeNode(
                     id=team_id,
-                    label=team.name,
+                    label=_team_display_name(team),
                     scope="TEAM",
                     is_active=has_active_members,
                     config=_make_config(team_cfg, "TEAM") if team_cfg else None,
@@ -231,6 +243,113 @@ class RateLimitService:
         except Exception as exc:  # noqa: BLE001 — 실시간 조회 실패가 화면을 막지 않게
             logger.warning("rl_live_usage_failed", error=str(exc), scope=sc, scope_id=scope_id)
             return {"available": False, "reason": f"{type(exc).__name__}"}
+
+    # 트렌드 조회의 창/버킷은 고정 조합만 허용 — free-form bucket 을 받으면 임의
+    # 비용의 집계가 가능해져 admin-api 풀(pool_size=5+overflow10)을 압박한다.
+    _TREND_WINDOWS = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800}
+    _TREND_BUCKETS = {"1h": 60, "6h": 300, "24h": 900, "7d": 3600}
+    _TREND_CACHE_TTL_SEC = 60
+
+    async def get_usage_trend(
+        self,
+        session: AsyncSession,
+        scope: str,
+        scope_id: str,
+        window: str = "24h",
+    ) -> dict:
+        """USER/TEAM 의 과거 사용량 트렌드 — usage_logs 를 시간 버킷으로 집계.
+
+        한도 설정의 근거 데이터: 버킷당 요청 수(RPM 근거)·토큰 수(TPM 근거,
+        cache_read 제외 = compute_tpm_incr 과 동일 기준)·비용(CPH 근거)을 반환.
+        idx_usage_logs_{user,team}_time 인덱스로 bounded window 만 스캔하고,
+        결과는 60초 Redis 캐시 — 노드 재선택/윈도우 토글 반복이 매번 집계를
+        치지 않게 한다. fail-soft: DB/Redis 오류 시 available=false.
+        """
+        from datetime import datetime, timezone
+
+        from sqlalchemy import text
+
+        sc = (scope or "").upper()
+        # GLOBAL 은 usage_logs 의 단일 소유 컬럼에 대응하지 않아 트렌드 대상 아님.
+        if sc not in ("USER", "TEAM"):
+            return {"available": False, "reason": "invalid scope"}
+        win_sec = self._TREND_WINDOWS.get(window)
+        if win_sec is None:
+            return {"available": False, "reason": "invalid window"}
+        try:
+            sid = uuid.UUID(scope_id)
+        except (ValueError, AttributeError):
+            return {"available": False, "reason": "invalid scope_id"}
+        bucket_sec = self._TREND_BUCKETS[window]
+        col = "user_id" if sc == "USER" else "team_id"
+        cache_key = f"trend:rl:{sc}:{scope_id}:{window}"
+
+        try:
+            cached = await self._cache_mgr._redis.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception:  # noqa: BLE001 — 캐시 실패는 무시하고 DB 조회로 진행
+            pass
+
+        try:
+            rows = (
+                await session.execute(
+                    text(
+                        f"""
+                        SELECT to_timestamp(
+                                   floor(extract(epoch from requested_at) / :bucket) * :bucket
+                               ) AS b,
+                               count(*) AS req,
+                               coalesce(sum(input_tokens + output_tokens
+                                            + cache_creation_tokens), 0) AS tok,
+                               coalesce(sum(cost_usd), 0) AS cost
+                        FROM usage.usage_logs
+                        WHERE {col} = :sid
+                          AND requested_at >= now() - (:win * interval '1 second')
+                        GROUP BY b
+                        ORDER BY b
+                        """
+                    ),
+                    {"bucket": bucket_sec, "sid": sid, "win": win_sec},
+                )
+            ).all()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("rl_usage_trend_failed", error=str(exc), scope=sc, scope_id=scope_id)
+            return {"available": False, "reason": f"{type(exc).__name__}"}
+
+        by_t = {int(r.b.timestamp()): r for r in rows}
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        start_ts = now_ts - win_sec
+        start_ts -= start_ts % bucket_sec
+        points = []
+        t = start_ts
+        while t <= now_ts:
+            r = by_t.get(t)
+            points.append(
+                {
+                    "t": t,
+                    "requests": int(r.req) if r else 0,
+                    "tokens": int(r.tok) if r else 0,
+                    "cost_usd": float(r.cost) if r else 0.0,
+                }
+            )
+            t += bucket_sec
+
+        result = {
+            "available": True,
+            "scope": sc,
+            "scope_id": scope_id,
+            "window_sec": win_sec,
+            "bucket_sec": bucket_sec,
+            "points": points,
+        }
+        try:
+            await self._cache_mgr._redis.setex(
+                cache_key, self._TREND_CACHE_TTL_SEC, json.dumps(result)
+            )
+        except Exception:  # noqa: BLE001 — 캐시 쓰기 실패는 결과에 영향 없음
+            pass
+        return result
 
     async def _set_rate_limit(
         self,

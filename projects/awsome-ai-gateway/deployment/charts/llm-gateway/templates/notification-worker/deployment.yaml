@@ -117,6 +117,13 @@ spec:
                   name: {{ .Values.notificationWorker.email.smtp.credentialsSecretName }}
                   key: password
             {{- end }}
+            {{- else if eq .Values.notificationWorker.email.provider "ses" }}
+            - name: AWS_SES_REGION
+              value: {{ .Values.notificationWorker.email.ses.region | quote }}
+            - name: EMAIL_SENDER_ADDRESS
+              value: {{ .Values.notificationWorker.email.ses.fromAddress | quote }}
+            - name: EMAIL_SENDER_NAME
+              value: {{ .Values.notificationWorker.email.ses.fromName | quote }}
             {{- end }}
             {{- include "llm-gateway.downwardApiEnv" . | nindent 12 }}
             {{- range $key, $value := .Values.notificationWorker.env }}

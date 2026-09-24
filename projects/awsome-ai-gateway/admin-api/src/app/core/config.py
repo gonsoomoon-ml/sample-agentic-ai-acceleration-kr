@@ -150,6 +150,13 @@ class Settings(BaseSettings):
     ADMIN_EMAILS: Annotated[list[str], NoDecode] = []
     ADMIN_GROUPS: Annotated[list[str], NoDecode] = []
 
+    # TEAM_LEADER 는 Cognito 그룹으로 부트스트랩하지 않는다 (의도적). "역할" 과 "어느
+    # 팀" 두 가지를 그룹명만으로 모호함 없이 표현하려면 팀 매핑 그룹과 별도로 또 하나의
+    # 그룹에 동시 가입해야 해 운영 부담이 크다. 대신 admin-ui 에서 관리자가 팀원 한 명을
+    # 리더로 지정한다 (PUT /admin/teams/{id}/leader) — 팀이 고정되어 있어 모호하지 않다.
+    # oidc_service._upsert_user / cognito_sync_service._upsert_one_user 가 이 수동
+    # 지정을 Cognito 재로그인/재동기화 때 덮어쓰지 않도록 보존한다.
+
     # ── Auto-provisioning Defaults ──
     # 기본 시드 (db/init/03_seed_data.sql) 의 UUID 와 정확히 일치해야 함.
     DEFAULT_TEAM_ID: str = "00000000-0000-4000-a000-000000000003"  # "Default Team"
@@ -166,11 +173,38 @@ class Settings(BaseSettings):
     # Cognito 에 없는 OIDC 사용자를 비활성화할지 여부
     COGNITO_SYNC_DEACTIVATE_MISSING: bool = False
 
+    # ── Admin-UI 로그인 (Cognito ROPC) ──
+    # admin-ui 커스텀 로그인 폼 → Cognito InitiateAuth(USER_PASSWORD_AUTH). Public app
+    # client 필요(ALLOW_USER_PASSWORD_AUTH, secret 없음) — terraform cognito 모듈의
+    # `cli` client 를 그대로 재사용(cognito_client_id output). OIDC_ISSUER_URL 도 같은
+    # User Pool 을 가리키게 설정해야 함 (OIDCVerifier 로 id_token 검증).
+    COGNITO_APP_CLIENT_ID: str = ""
+
+    # 로그인 성공 시 admin-api 가 자체 발급하는 admin-ui 세션 JWT(RS256) 서명용 개인키.
+    # 짝이 되는 공개키는 db/init/03_seed_data.sql 의 auth.admin_jwt_configs 행에 저장되며
+    # core.auth.JWTVerifier 가 그 공개키로 검증한다. 키 생성:
+    # scripts/generate_admin_jwt_keypair.py 참고. 비어있으면 admin-ui 로그인 비활성.
+    ADMIN_UI_JWT_PRIVATE_KEY_PEM: SecretStr = SecretStr("")
+    # admin_jwt_configs.id 와 반드시 일치해야 함 (JWTVerifier 가 kid 로 공개키 매칭).
+    ADMIN_UI_JWT_CONFIG_ID: str = "00000000-0000-4000-a000-000000000030"
+    ADMIN_UI_JWT_ISSUER: str = "ds-gateway-admin"
+    ADMIN_UI_JWT_AUDIENCE: str = "ds-gateway-admin-api"
+    ADMIN_UI_JWT_TTL_HOURS: int = 12
+
+    # admin-ui ROPC 로그인 경로(POST /v1/auth/admin/login, /new-password).
+    # 평문 비밀번호가 admin-api 를 통과하는 경로라, HTTPS/도메인이 준비돼 admin-ui 가
+    # OIDC hosted-UI 로그인(OIDC_CLIENT_ID 등)으로 동작하는 배포에서는 false 로 끈다.
+    # admin-api 는 공인 ALB 에 노출되므로 UI 쪽 게이트만으로는 노출면이 닫히지 않는다.
+    ADMIN_ROPC_ENABLED: bool = True
+
     # AWS Price List API 리전(GetProducts). Price List 는 us-east-1/ap-south-1/
     # eu-central-1 엔드포인트만 지원 — 우리 홈리전 ap-northeast-2 가 아니어도 정상.
     # 가격 동기화(모델관리 화면 버튼)용. IAM: admin-api 역할에 pricing:GetProducts.
     PRICING_API_REGION: str = "us-east-1"
 
+    # LiteLLM Model Catalog API — AWS Price List 미게시 모델/가격 보조 소스.
+    LITELLM_API_URL: str = "https://api.litellm.ai"
+    LITELLM_PROVIDER_FILTER: str = "bedrock_converse"
     # ── Bedrock model-invocation logging (audit reconcile) ──
     # Bedrock 이 남기는 invocation log 는 **호출이 일어난 Region 의 계정 단위**로 켜진다
     # (모델별/주체별 스위치 없음). 그래서 log group 과 Region 을 따로 설정한다 — 로그는
@@ -221,6 +255,8 @@ class Settings(BaseSettings):
     # ── Scheduler ──
     ROI_AGGREGATION_CRON: str = "*/15 * * * *"
     KEY_EXPIRY_CRON: str = "0 * * * *"
+    KEY_PURGE_CRON: str = "30 3 * * *"
+    KEY_PURGE_RETENTION_DAYS: int = 90
     # DAILY_USAGE_AGG_CRON: 2026-04-21 cost-recorder-worker 로 이관됨. 이 setting
     # 은 worker 서비스 환경변수로 관리.
 

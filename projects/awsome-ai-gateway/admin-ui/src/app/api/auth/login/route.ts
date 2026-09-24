@@ -36,6 +36,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { redirectRelative } from '@/lib/redirect';
+import {
+  ADMIN_API_URL,
+  clientIpHeader,
+  isAdminChallenge,
+  withAdminSessionCookie,
+  type AdminChallenge,
+  type AdminErrorBody,
+  type AdminLoginSuccess,
+} from '@/lib/adminSessionCookie';
 
 // 로그인 진입점 — 캐시/정적최적화 금지. 여기서 만든 state/PKCE 가 캐시되면 모든 사용자가
 // 같은 state·verifier 를 쓰게 되어 CSRF 보호가 무력화된다(cli-download/route.ts:21 과 같은 이유).
@@ -215,4 +224,57 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   res.headers.set('Cache-Control', 'no-store');
 
   return res;
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  // OIDC(hosted-UI) 배포에서는 ROPC 폼 경로를 닫는다 — 비밀번호가 admin-ui/admin-api 를
+  // 통과하는 이 경로는 HTTPS IdP 로그인이 가능해진 배포에서 제거 대상이다(middleware
+  // 도 /login 을 닫는다). 404 로 경로 자체가 없는 것처럼 보이게 한다.
+  if (env('OIDC_CLIENT_ID')) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  let email: string | undefined;
+  let password: string | undefined;
+
+  try {
+    const body = (await request.json()) as { email?: string; password?: string };
+    email = body.email;
+    password = body.password;
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  if (!email || !password) {
+    return NextResponse.json({ error: 'email and password are required' }, { status: 400 });
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${ADMIN_API_URL}/v1/auth/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...clientIpHeader(request) },
+      body: JSON.stringify({ email, password }),
+      cache: 'no-store',
+    });
+  } catch {
+    return NextResponse.json({ error: 'admin-api unreachable' }, { status: 502 });
+  }
+
+  if (!upstream.ok) {
+    let errorBody: AdminErrorBody = {};
+    try {
+      errorBody = (await upstream.json()) as AdminErrorBody;
+    } catch {
+      // ignore — non-JSON error body
+    }
+    return NextResponse.json(
+      { error: errorBody.error?.message ?? 'Login failed' },
+      { status: upstream.status },
+    );
+  }
+
+  const result = (await upstream.json()) as AdminLoginSuccess | AdminChallenge;
+  if (isAdminChallenge(result)) return NextResponse.json(result);
+  return withAdminSessionCookie(request, result);
 }

@@ -19,6 +19,7 @@ from app.core.config import get_settings
 from app.core.db import AsyncSessionLocal
 from app.core.usage_filters import current_kst_period
 from app.scheduler.key_expirer import expire_virtual_keys
+from app.scheduler.key_purger import purge_expired_keys
 from app.scheduler.roi_aggregator import aggregate_usage
 
 logger = structlog.get_logger()
@@ -49,12 +50,22 @@ async def run_key_expiry() -> None:
             logger.exception("scheduler.key_expiry_failed")
 
 
+async def run_key_purge() -> None:
+    async with AsyncSessionLocal() as session:
+        try:
+            await purge_expired_keys(session, get_settings().KEY_PURGE_RETENTION_DAYS)
+        except Exception:
+            logger.exception("scheduler.key_purge_failed")
+
+
 def main() -> None:
     settings = get_settings()
     logger.info(
         "scheduler.starting",
         roi_cron=settings.ROI_AGGREGATION_CRON,
         key_expiry_cron=settings.KEY_EXPIRY_CRON,
+        key_purge_cron=settings.KEY_PURGE_CRON,
+        key_purge_retention_days=settings.KEY_PURGE_RETENTION_DAYS,
     )
 
     loop = asyncio.new_event_loop()
@@ -71,6 +82,12 @@ def main() -> None:
         run_key_expiry,
         CronTrigger.from_crontab(settings.KEY_EXPIRY_CRON),
         id="key_expiry",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_key_purge,
+        CronTrigger.from_crontab(settings.KEY_PURGE_CRON),
+        id="key_purge",
         replace_existing=True,
     )
     scheduler.start()

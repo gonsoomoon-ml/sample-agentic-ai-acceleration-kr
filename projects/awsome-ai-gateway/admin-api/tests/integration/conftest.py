@@ -149,7 +149,23 @@ async def _mock_get_db_session(request: Request):
     session = AsyncMock()
     # begin_nested 는 실물에서 sync 호출 → async CM (session_double 주석 참조)
     wire_savepoint(session)
-    session.execute = AsyncMock(return_value=_mock_db_result())
+
+    def _leader_scoped_result():
+        """auth.teams.leader_user_id 인가 조회 — leader-token 의 TEAM_LEADER 가
+        ADMIN_TEAM_ID 의 리더로 지정된 상태를 흉내낸다(엄격 정책: 리더인 팀만 열람)."""
+        result = _mock_db_result()
+        scalars = MagicMock()
+        scalars.all.return_value = [ADMIN_TEAM_ID]
+        result.scalars.return_value = scalars
+        return result
+
+    async def _execute(stmt, *args, **kwargs):
+        text = str(stmt)
+        if "leader_user_id" in text:
+            return _leader_scoped_result()
+        return _mock_db_result()
+
+    session.execute = AsyncMock(side_effect=_execute)
     session.get = AsyncMock(return_value=None)
     session.add = MagicMock()
     session.flush = AsyncMock()

@@ -63,6 +63,7 @@ test-results/
 # Local helm values overrides
 values-local.yaml
 values.local.yaml
+*.local.yaml
 
 # Misc
 *.bak

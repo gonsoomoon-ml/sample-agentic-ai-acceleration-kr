@@ -1,8 +1,9 @@
 # Copyright 2026 © Amazon.com and Affiliates: This deliverable is considered Developed Content as defined in the AWS Service Terms.
 
-"""집계 기간(월/일)의 **단일 진실원** — KST 경계.
+"""집계 기간(월/일)의 **단일 진실원** — 리포팅 타임존(REPORTING_TIMEZONE, 기본 KST) 경계.
 
-이 자산의 집계 데이터는 전부 **KST(Asia/Seoul) 경계**로 버킷된다:
+이 자산의 집계 데이터는 전부 **리포팅 타임존 경계**로 버킷된다
+(기본값 Asia/Seoul = KST; 네 서비스 모두 같은 REPORTING_TIMEZONE env 를 읽는다):
 
   * ``usage.daily_aggregates.date``
       = ``DATE(requested_at AT TIME ZONE 'Asia/Seoul')``
@@ -53,38 +54,49 @@ gateway-proxy 만 ``datetime.now(tz=timezone.utc).strftime("%Y-%m")`` 로 UTC �
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
-# KST = UTC+9 고정 오프셋. 한국은 1988 년 이후 서머타임이 없어 오프셋이 불변이므로
-# zoneinfo 대신 고정 오프셋으로 충분하다(admin-api usage_filters.KST 와 동일 전제).
-# 이 전제가 깨지면(=DST 재도입) 두 곳을 함께 zoneinfo 기반으로 바꿔야 한다.
+from app.config import get_settings
+
+# KST = UTC+9 고정 오프셋 — 기본 리포팅 타임존(Asia/Seoul)의 오프셋이며, 테스트·
+# 호환용 공개 이름이다(admin-api usage_filters.KST 와 같은 역할). 실제 경계 계산은
+# 아래 _reporting_tz() 를 거친다 — REPORTING_TIMEZONE 을 Seoul 이 아닌 값으로 둔
+# 배포에서는 KST 상수가 아니라 설정 타임존이 기준이다.
 KST = timezone(timedelta(hours=9))
 
 
+def _reporting_tz() -> ZoneInfo:
+    """경계 계산용 tzinfo. 고정 오프셋이 아니라 zoneinfo 를 쓴다 — America/Los_Angeles
+    처럼 DST 가 있는 리포팅 타임존에서는 월 경계의 UTC 오프셋이 3월/11월에 달라져
+    고정 오프셋으로는 경계가 1시간 틀어진다(admin-api usage_filters._reporting_tz
+    와 동일 규약 — 같은 budget_usages.period 행을 읽고 쓰므로 정의가 같아야 한다)."""
+    return ZoneInfo(get_settings().reporting_timezone)
+
+
 def current_kst_period() -> str:
-    """"지금"이 속한 KST 월을 ``YYYY-MM`` 으로.
+    """"지금"이 속한 리포팅 타임존 월을 ``YYYY-MM`` 으로.
 
     ``budget:*`` Redis 카운터 키와 ``budget_usages.period`` 의 기준 월이다.
     admin-api ``usage_filters.current_kst_period()`` 와 **같은 값**을 돌려줘야 한다 —
-    두 서비스가 같은 행/키를 읽고 쓴다.
+    두 서비스가 같은 행/키를 읽고 쓰고, 둘 다 REPORTING_TIMEZONE(기본 Asia/Seoul)을
+    따른다.
     """
-    now_kst = datetime.now(KST)
-    return f"{now_kst.year}-{now_kst.month:02d}"
+    now_local = datetime.now(_reporting_tz())
+    return f"{now_local.year}-{now_local.month:02d}"
 
 
 def current_kst_date() -> str:
-    """"지금"이 속한 KST 날짜를 ``YYYY-MM-DD`` 으로.
+    """"지금"이 속한 리포팅 타임존 날짜를 ``YYYY-MM-DD`` 으로.
 
     ``usage:daily:*`` Redis 카운터 키의 날짜이며, ``daily_aggregates.date`` 의 버킷
     기준과 같아야 한다. 왜 같아야 하는지:
 
     ``/v1/usage/me`` 는 한 달 사용량을 **두 소스에서** 합산한다 —
-    ``date < 오늘`` 인 DB 집계 행 + 오늘분 Redis 카운터. DB 행은 KST 일자로 버킷되어
-    있으므로, 오늘을 UTC 로 잡으면 KST 09:00 이전에는 "오늘"이 KST 기준 어제가 되어
+    ``date < 오늘`` 인 DB 집계 행 + 오늘분 Redis 카운터. DB 행은 리포팅 타임존 일자로
+    버킷되어 있으므로, 오늘을 UTC 로 잡으면 리포팅 타임존의 새벽 몇 시간 동안
+    "오늘"이 어제가 되어 그 날의 앞부분이 DB/Redis 양쪽 어디에도 안 들어간다.
 
-      * DB 쪽: ``date < 어제`` 로 걸러 **KST 어제 하루가 빠지고**,
-      * Redis 쪽: UTC 어제 키(=KST 어제 09:00~오늘 09:00 구간)만 읽어
-        **KST 어제 00:00~09:00 이 어느 쪽에도 없다.**
-
-    즉 매일 9시간 분량이 조용히 사라진다. 두 경계를 KST 로 통일해야 이어붙는다.
+    즉 매일 몇 시간 분량이 조용히 사라진다. 두 경계를 리포팅 타임존으로 통일해야
+    이어붙는다.
     """
-    return datetime.now(KST).strftime("%Y-%m-%d")
+    return datetime.now(_reporting_tz()).strftime("%Y-%m-%d")

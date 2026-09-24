@@ -144,6 +144,8 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 
 admin-api · admin-ui **둘 다** `DEV_LOGIN_ENABLED: "false"` 로 바꾼다(한쪽만 끄면 화면과 API 가 어긋난다). `19` 는 Cognito 로그인이 배포돼 있고 DB 에 관리자가 있을 때만 진행한다 — 아니면 모두가 잠긴다. 이번엔 admin-api·admin-ui 파드가 교체된다(추론 무중단).
 
+> ⚠️ **이 차트에는 `global.devLoginEnabled` 단일 스위치가 있다** — `_helpers.tpl` 이 이 값으로 admin-api·admin-ui 양쪽에 `DEV_LOGIN_ENABLED` 를 주입한다. `19` 의 `dev-login-off` 가 `adminApi.env` / `adminUi.env` 에 같은 env 를 **한 번 더** 쓰면, values 에 두 군데가 생겨 helm upgrade 가 "duplicate env" 로 실패한다(atomic 롤백). 따라서 `dev-login-off` 실행 후에는 스크립트가 넣은 `adminApi.env` / `adminUi.env` 의 `DEV_LOGIN_ENABLED` 항목을 지우고 **`global.devLoginEnabled: false` 만** 남긴다. (`ADMIN_ROPC_ENABLED: "false"` 항목은 유지 — 폼 로그인 엔드포인트를 닫는 별개 스위치다.)
+
 ▶ **실행** · 배포 EC2 — 끝 확인
 
 ```bash
@@ -167,6 +169,11 @@ dev 에서 ④ 까지 끝낸 뒤, **prod 계정의 배포 EC2** 에서 같은 �
 - **Cognito 화면에 `redirect_mismatch`** — ① 의 `terraform apply` 가 안 됐다. ⓪ 의 ① 이 `OK registered` 인지 본다.
 - **로그인 뒤 403 `user_not_provisioned`** — 그 관리자가 DB 에 없다. 본인이 `gateway-cli login` 한 번 → 다시 로그인.
 - **로그인 뒤 `/403` 화면** — 그 계정이 `ClaudeAdmin` 그룹이 아니다([8-Y](8-Y-onboarding.md)).
+- **로그인은 되는데 대시보드가 비고 API 가 전부 401** — admin-api 가 쿠키 토큰의 서명을 검증하지 못하는 상태다.
+  - 이 배포의 콜백은 Cognito id_token 을 `POST /v1/auth/admin-session` 으로 교환해 **내부 JWT**(`iss=ds-gateway-admin`)를 쿠키에 넣는다. 이 키는 DB seed 에 이미 있으므로 별도 등록은 필요 없다. 단, 콜백이 IdP 토큰을 쿠키에 그대로 넣는 배포(상향 코드 그대로)라면 **Cognito JWKS 를 `auth.admin_jwt_configs` 에 등록**해야 한다 — issuer = user pool issuer URL, audience = 앱 클라이언트 ID, RS256 PEM. 등록 후 admin-api 재시작(키는 시작 시에만 로드). Cognito 가 서명키를 로테이션하면 같은 절차로 다시 등록한다.
+  - Cognito id_token 의 `at_hash` 클레임은 `python-jose` 가 access_token 없이는 검증하지 못해 실패한다 — `JWTVerifier.verify()` 가 `options={"verify_at_hash": False}` 를 쓰는지 확인한다(1.0.92 이상).
+- **팀 리더가 로그인하면 `/403`** — Cognito id_token 에는 `role`/`team_id` 클레임이 없어 middleware 가 DEVELOPER 로 깐다. admin-session 교환(내부 JWT 에 DB 의 role/team_id 가 박힘)이 들어간 이미지(1.0.94/1.0.173 이상)인지 확인한다.
+- **로그아웃 눌러도 바로 대시보드로 돌아온다** — admin 쿠키만 지우면 Cognito 세션이 살아 있어 즉시 재로그인된다. 로그아웃이 Cognito `/logout` 으로 보내는 이미지(1.0.172 이상)인지, Cognito 앱 클라이언트의 **로그아웃 URL** 에 admin 주소가 등록됐는지(`cognito_logout_urls`) 본다.
 
 ## 되돌리기
 
@@ -176,6 +183,6 @@ dev 에서 ④ 까지 끝낸 뒤, **prod 계정의 배포 EC2** 에서 같은 �
 
 ## 알아둘 점
 
-- **세션 1시간** — admin 쿠키는 Cognito id_token 이라 1시간 뒤 만료되고 로그인 화면으로 돌아간다. 수명은 [8-Z](8-Z-token-ttl.md) ②.
-- **로그아웃은 admin 쿠키만 지운다** — Cognito 쪽 로그인 세션은 별개다. 다른 계정으로 바꿀 때는 시크릿 창으로.
+- **세션 12시간** — admin 쿠키는 admin-api 가 발급한 내부 JWT(`ADMIN_UI_JWT_TTL_HOURS`, 기본 12h)다. Cognito 토큰 TTL 과 무관하다. 수명은 [8-Z](8-Z-token-ttl.md) ②.
+- **로그아웃은 Cognito 세션까지 끊는다** — 로그아웃 라우트가 admin 쿠키를 지우고 Cognito `/logout` 으로 보낸다(로그아웃 URL 등록 필요 — ① 의 `cognito_logout_urls`).
 - **관리자 권한은 그룹이 정한다** — `ClaudeAdmin` 에서 빼면 그 사람의 다음 토큰(최대 1시간 뒤)부터 관리자가 아니다.

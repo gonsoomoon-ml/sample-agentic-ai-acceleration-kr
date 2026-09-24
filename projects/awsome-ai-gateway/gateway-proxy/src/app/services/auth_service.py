@@ -121,7 +121,10 @@ class VKAuthStrategy:
         else:
             allowed_models = None
 
-        # 사용자별 allowed_clients (행 0개 = None = both 허용).
+        # allowed_clients — 우선순위 user > team > org > none (alembic 0038,
+        # allowed_models 의 user > team > none 과 같은 구조에 org 기본값 한 단계 추가).
+        #   각 스코프에서 행 0개 = 정책 없음 = 하위 스코프로 폴백. 전면 거부는 표현 불가.
+        #   모두 없음 → None(전체 허용).
         # text 는 모듈 상단에서 import — except 가 ImportError 까지 삼켜 enforcement 를
         # 조용히 끄지 않도록(실제 DB I/O 실패만 fail-open) 범위를 좁힌다.
         allowed_clients: list[str] | None = None
@@ -130,7 +133,32 @@ class VKAuthStrategy:
                 _sql_text("SELECT client FROM auth.user_allowed_clients WHERE user_id = :uid"),
                 {"uid": str(user.id)},
             )).scalars().all()
-            allowed_clients = list(rows) if rows else None
+            if rows:
+                allowed_clients = list(rows)
+            elif user.team_id:
+                rows = (await db.execute(
+                    _sql_text(
+                        "SELECT client FROM auth.team_allowed_clients WHERE team_id = :tid"
+                    ),
+                    {"tid": str(user.team_id)},
+                )).scalars().all()
+                if rows:
+                    allowed_clients = list(rows)
+                else:
+                    rows = (await db.execute(
+                        _sql_text(
+                            """
+                            SELECT oac.client FROM auth.org_allowed_clients oac
+                             WHERE oac.org_id = (
+                                 SELECT d.org_id FROM auth.teams t
+                                  JOIN auth.departments d ON d.id = t.dept_id
+                                 WHERE t.id = :tid
+                             )
+                            """
+                        ),
+                        {"tid": str(user.team_id)},
+                    )).scalars().all()
+                    allowed_clients = list(rows) if rows else None
         except Exception:
             allowed_clients = None  # DB 조회 실패 시 막지 않음(allow-all) — fail-open(soft gating)
 

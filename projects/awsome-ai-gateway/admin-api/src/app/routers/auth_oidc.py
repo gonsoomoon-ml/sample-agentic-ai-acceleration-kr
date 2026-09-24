@@ -11,8 +11,10 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
+from app.core.admin_jwt_signer import sign_admin_session_jwt
 from app.core.db import get_db_session
 from app.core.oidc_verifier import OIDCConfigError
+from app.routers.auth_admin import AdminLoginResponse
 from app.schemas.cli import VirtualKeyIssueResponse
 from app.schemas.oidc import OIDCExchangeRequest
 from app.services.oidc_service import (
@@ -98,3 +100,48 @@ async def exchange_oidc_jwt(
         raise _oidc_error(403, "not_provisionable", str(e))
     except OIDCConfigError as e:
         raise _oidc_error(503, "idp_unavailable", str(e))
+
+
+@router.post("/admin-session", response_model=AdminLoginResponse)
+async def admin_oidc_session(
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """admin-ui OIDC 콜백용 세션 교환 — IdP id_token → 내부 admin JWT.
+
+    IdP 가 직접 발급한 토큰에는 ``role``/``team_id`` 클레임이 없다. 그대로
+    ``admin_jwt`` 쿠키에 구우면 admin-ui middleware 의 ``resolveRole`` 이
+    DEVELOPER 로 깔아 /403 이 된다 — TEAM_LEADER 는 Cognito 그룹이 아니라
+    DB(``auth.users.role``)에 지정되는 역할이라 토큰만으로는 알 수 없다.
+
+    그래서 admin-api 가 IdP 토큰을 검증하고 DB 신원(수동 지정 역할 포함)으로
+    자체 서명한 세션 JWT 를 발급한다 — ROPC 로그인(``auth_admin._finish_login``)
+    과 최종 형태가 같아져서 이후 경로는 한 가지 토큰 형상만 보면 된다.
+    """
+    svc: OIDCService | None = request.app.state.oidc_service
+    if svc is None:
+        raise _oidc_error(
+            503,
+            "oidc_disabled",
+            "OIDC is not configured. Set OIDC_ISSUER_URL.",
+        )
+
+    token = _extract_bearer(request)
+    try:
+        user = await svc.authenticate_for_admin_ui(session, token=token)
+    except OIDCAuthError as e:
+        raise _oidc_error(401, "invalid_token", str(e))
+    except OIDCNotProvisionableError as e:
+        raise _oidc_error(403, "not_provisionable", str(e))
+    except OIDCConfigError as e:
+        raise _oidc_error(503, "idp_unavailable", str(e))
+
+    jwt_token, expires_at = sign_admin_session_jwt(user)
+    return AdminLoginResponse(
+        token=jwt_token,
+        expires_at=expires_at,
+        role=user.role.value,
+        email=user.email,
+        display_name=user.display_name,
+        team_id=str(user.team_id) if user.team_id else None,
+    )

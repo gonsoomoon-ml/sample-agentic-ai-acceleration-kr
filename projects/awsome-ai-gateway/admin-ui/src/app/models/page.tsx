@@ -6,9 +6,6 @@ import type { ModelListItem } from '@/types/entities';
 import { ModelsTable } from '@/components/models/ModelsTable';
 import { CreateModelButton } from '@/components/models/CreateModelButton';
 import { PriceSyncButton } from '@/components/models/PriceSyncButton';
-import { TeamModelPermissionPanel } from '@/components/models/TeamModelPermissionPanel';
-import { WebSearchTogglePanel } from '@/components/models/WebSearchTogglePanel';
-import type { RoutingProfileItem } from '@/lib/actions/routing';
 
 interface APIModelItem {
   alias: string;
@@ -25,12 +22,8 @@ interface APIModelItem {
     cache_creation_1h_price_per_1k_tokens?: string;
     cache_read_price_per_1k_tokens?: string;
   } | null;
-}
-
-interface APITeamItem {
-  id: string;
-  name: string;
-  member_count?: number;
+  context_window: number | null;
+  max_output_tokens: number | null;
 }
 
 function mapToModelListItem(item: APIModelItem): ModelListItem {
@@ -52,8 +45,8 @@ function mapToModelListItem(item: APIModelItem): ModelListItem {
     cache_read_price_per_1k: p?.cache_read_price_per_1k_tokens
       ? parseFloat(p.cache_read_price_per_1k_tokens)
       : 0,
-    max_tokens: 0,
-    context_window: 0,
+    max_tokens: item.max_output_tokens ?? 0,
+    context_window: item.context_window ?? 0,
     description: item.description,
     display_name: item.display_name,
   };
@@ -62,18 +55,11 @@ function mapToModelListItem(item: APIModelItem): ModelListItem {
 export default async function ModelsPage() {
   const t = await getTranslations('models');
 
-  const [modelsRes, teamsRes, routingRes] = await Promise.allSettled([
+  const [modelsRes] = await Promise.allSettled([
     adminAPI.get<{ items: APIModelItem[] }>('/admin/models'),
-    adminAPI.get<{ items: APITeamItem[] }>('/admin/users/teams'),
-    adminAPI.get<{ items: RoutingProfileItem[] }>('/admin/routing-profiles'),
   ]);
 
   const models = (modelsRes.status === 'fulfilled' && modelsRes.value?.items ? modelsRes.value.items : []).map(mapToModelListItem);
-  const allTeams = teamsRes.status === 'fulfilled' && teamsRes.value?.items ? teamsRes.value.items : [];
-  const routingProfiles = routingRes.status === 'fulfilled' && routingRes.value?.items ? routingRes.value.items : [];
-  const teams = allTeams
-    .filter(t => (t.member_count ?? 0) > 0)
-    .map(t => ({ id: t.id, name: t.name }));
 
   return (
     <div className="space-y-8">
@@ -86,20 +72,6 @@ export default async function ModelsPage() {
           </div>
         </div>
         <ModelsTable models={models} />
-      </div>
-
-      <div>
-        <h2 className="text-lg font-semibold mb-4">{t('teamModelAccess')}</h2>
-        <TeamModelPermissionPanel
-          teams={teams}
-          allTeams={allTeams.map(t => ({ id: t.id, name: t.name }))}
-          models={models}
-        />
-      </div>
-
-      <div>
-        <h2 className="text-lg font-semibold mb-4">{t('webSearch.title')}</h2>
-        <WebSearchTogglePanel initial={routingProfiles} />
       </div>
     </div>
   );
