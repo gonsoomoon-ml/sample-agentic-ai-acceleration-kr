@@ -281,16 +281,9 @@ Claude Code 의 관리형 설정 파일을 써서 요청이 게이트웨이로 �
 전용입니다. 설치 파일에 사내 접속 정보가 들어 있으므로 주소를 손으로 넣을 일은 없고, 고르는 값은
 보통 `--model` 하나입니다.
 
-모델 선택 목록까지 PC 에 고정하고 싶을 때만 `--available-models` 를 줍니다. 목록 밖의 값은
-`setup` 이 거부하므로 오타는 막히지만, 모델을 새로 등록하면 그 PC 들은 `setup` 을 다시 돌려야
-합니다. 평소에는 `--model` 만 주고, 허용 범위는 서버의 팀·사용자 허용 목록에 맡깁니다.
-
-▶ **실행 (선택)** · 사용자 PC — 🔴 관리자 PowerShell
-
-```powershell
-$m = "claude-sonnet-5,claude-opus-5,claude-opus-4-8,claude-haiku-4-5-20251001"
-gateway-cli setup --model claude-sonnet-5 --available-models $m
-```
+모델 선택 목록까지 PC 에 고정하는 `--available-models` 옵션도 있지만 **이 배포에서는 쓰지
+않습니다.** 목록을 박으면 모델을 새로 등록할 때마다 그 PC 들에서 `setup` 을 다시 돌려야
+합니다. 허용 범위는 서버의 팀·사용자 허용 목록에 맡깁니다.
 
 **다음** — 사용자가 본인 세션에서 Claude Code 설치 → `login` → 사용(§4).
 
@@ -422,8 +415,8 @@ gateway-cli env
 ### 텔레메트리(OTel) 설정
 
 `gateway-cli setup` 은 텔레메트리 관련 환경변수 17개(`OTEL_*` 15개 + `CLAUDE_CODE_*` 2개)를
-관리형 설정에 **항상** 씁니다. 통째로 끄는 스위치는 없고, 고를 수 있는 것은 "무엇을 보낼지"와
-"어디로 보낼지" 입니다.
+관리형 설정에 **항상** 씁니다. `setup` 에 끄는 옵션은 없지만, `site-extra.json` 으로 "무엇을
+보낼지"·"어디로 보낼지" 를 정하거나 내보내기 자체를 멈출 수 있습니다.
 
 **기본으로 심기는 값**
 
@@ -472,3 +465,7 @@ Get-Content 'C:\Program Files\ClaudeCode\managed-settings.json' -Raw
 ```
 
 `env` 안의 `OTEL_LOG_*` 세 값과 `OTEL_EXPORTER_OTLP_ENDPOINT` 를 봅니다.
+
+**내보내기를 아예 멈추려면** — exporter 세 개를 `none` 으로 둡니다(`OTEL_METRICS_EXPORTER`·
+`OTEL_LOGS_EXPORTER`·`OTEL_TRACES_EXPORTER`). `CLAUDE_CODE_ENABLE_TELEMETRY=1` 은 남지만
+보낼 곳이 없어집니다. **이 배포는 이 방법을 쓰지 않고 내용 로깅만 끕니다**(§1-3).
