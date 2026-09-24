@@ -230,6 +230,15 @@ SmartScreen 경고를 눌러 줄 사람도 없습니다 — 정식 배포용은 
 | 설치된 앱 목록 | Windows *설정 → 앱 → 설치된 앱* 에 "LLM Gateway CLI" 로 표시됩니다 |
 | 권한 | 설치 자체가 관리자 권한을 요구합니다(마법사 대화상자에서 사용자 설치 선택 가능) |
 
+⚠️ **설치 뒤에는 PowerShell 창을 닫고 새로 엽니다.** PATH 는 새로 열리는 터미널부터
+적용되므로, 설치 전부터 열어 두었던 창에서는 `gateway-cli` 가
+`is not recognized ... CommandNotFoundException` 로 뜹니다. §3 은 어차피 관리자 권한이
+필요하니 **관리자 PowerShell 을 새로 열어** 이어갑니다.
+
+```powershell
+gateway-cli version
+```
+
 ## 3. 게이트웨이 설정 적용 (관리자, PC 당 1회)
 
 ▶ **실행** · 사용자 PC — 🔴 관리자 PowerShell
