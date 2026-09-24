@@ -83,13 +83,19 @@ bash 04-verify.sh
 
 ## 등록 뒤
 
-**클라이언트에서 보이게 하기** — 서버에 등록해도 여기까지 해야 사용자가 고를 수 있다.
+### 클라이언트에서 보이게 하기
+
+서버에 등록해도 여기까지 해야 사용자가 고를 수 있다.
 
 - **Claude Code** — 게이트웨이가 내려주는 모델 목록을 따른다. `model:list` 캐시 5분이 지나면
-  보인다. 설치할 때 `--available-models` 로 **모델 목록을 PC 에 고정**한 곳만 `gateway-cli setup`
-  을 다시 돌려야 한다.
+  보인다. **새 모델은 클라이언트 최소 버전을 요구할 수 있으니 먼저 `claude update` 를 실행한다** —
+  버전이 낮으면 목록에 보여도 Bedrock 이 400 으로 거절한다(Opus 5.5 는 2.1.280 이상, 2026-09-23
+  실측). 설치할 때 `--available-models` 로 모델 목록을 PC 에 고정한 곳만 `gateway-cli setup` 을
+  다시 돌려야 한다.
 - **Cowork** — PC 마다 모델 목록(`inferenceModels`)을 다시 써야 한다. 레지스트리를 직접 고치지
-  말고 설치기 CLI 를 쓴다. `--model` 이 기본 모델이고, 그 값은 목록 안에 있어야 한다.
+  말고 설치기 CLI 를 쓴다. `--model` 이 기본 모델이고, 그 값은 목록 안에 있어야 한다. `setup` 은
+  설정을 쓴 뒤 Claude Desktop 을 자동으로 재시작한다. **앱에 내장된 Claude Code 가 낮아 새 모델이
+  거절되면 새 offline `.msix` 로 앱을 올린다.**
 
 ▶ **실행** · 사용자 PC — 🔴 관리자 PowerShell (정책이 HKLM 이면 관리자 권한이 필요하다)
 
@@ -98,16 +104,12 @@ $m = "claude-sonnet-5,claude-opus-5-5,claude-haiku-4-5-20251001"
 gateway-cli-cowork setup --model claude-sonnet-5 --available-models $m
 ```
 
-▶ **실행** · 사용자 PC — 🔵 일반 PowerShell (앱을 띄워야 하므로 사용자 세션에서)
-
-```powershell
-gateway-cli-cowork relaunch
-```
-
 확인은 `gateway-cli-cowork verify` 와 Cowork 의 모델 선택기다. GPO 로 관리하는 조직은 같은
 `inferenceModels` 값(JSON 배열 문자열)을 정책으로 배포하고 앱을 재시작한다.
 
-**폴백 체인** — 장애(5xx)나 예산 초과 때 다른 모델로 내려가게 하려면 관리 화면 **예산 →
+### 폴백 체인
+
+장애(5xx)나 예산 초과 때 다른 모델로 내려가게 하려면 관리 화면 **예산 →
 자동 다운그레이드** 에서 규칙을 추가한다(예: `claude-opus-5-5` → `claude-sonnet-5`). 기존 규칙은
 지우지 않는다 — 화면이 목록 전체를 저장한다.
 
@@ -123,7 +125,9 @@ kubectl -n llm-gateway rollout restart deploy/llm-gateway-gateway-proxy
 ⚠️ web search 가 켜진 앱(`routing_profiles.web_search_enabled`)은 이 fork 에서 폴백 루프를 우회하는
 결함이 있어, 그 조건에서는 체인이 걸리지 않는다. 검증은 웹서치를 끈 앱으로 한다.
 
-**단가 검산** — 하루 뒤 Cost Explorer 에서 실제 청구 단가와 대조한다. 어긋나면 `config.env` 를
+### 단가 검산
+
+하루 뒤 Cost Explorer 에서 실제 청구 단가와 대조한다. 어긋나면 `config.env` 를
 고쳐 `08-set-model-pricing.sh` 로 갱신한다.
 
 ---
