@@ -123,6 +123,12 @@ $j = '{ "managed": { "env": { "ENABLE_TOOL_SEARCH": "true" } } }'
 [IO.File]::WriteAllText("$PWD\packaging\site-extra.json", $j)
 ```
 
+확인 — 넣은 값이 그대로 보여야 합니다.
+
+```powershell
+Get-Content .\packaging\site-extra.json -Raw
+```
+
 ⚠️ `>` 나 `Set-Content -Encoding UTF8` 로 만들면 안 됩니다 — 이 파일은 그대로 exe 안에 실려
 `setup` 때 파이썬이 **BOM 없는 UTF-8** 로만 읽습니다. BOM 이 있으면 경고만 남기고 **조용히
 무시**합니다. 위 `WriteAllText` 가 BOM 없이 씁니다. 파일이 아예 없으면 빌드는 그대로 진행되고
