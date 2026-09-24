@@ -309,6 +309,19 @@ $u=[Environment]::GetEnvironmentVariable("PATH","User")
 [Environment]::SetEnvironmentVariable("PATH","$p;$u","User")
 ```
 
+⚠️ **PATH 를 고쳤으면 PowerShell 창을 닫고 새로 엽니다.** `SetEnvironmentVariable` 은 새로
+뜨는 프로세스부터 적용됩니다.
+
+▶ **실행** · 새 🔵 일반 PowerShell
+
+```powershell
+claude --version
+```
+
+설치 스크립트는 최신 버전을 받습니다. **이미 오래된 Claude Code 가 깔려 있던 PC 는 다시
+받아야 합니다** — 모델마다 요구하는 최소 버전이 있어, 낮으면 게이트웨이가 아니라 Bedrock 이
+`version 2.1.280 or newer is required` 같은 400 을 돌려줍니다.
+
 로그인은 기본 브라우저를 열어 회사 계정(OIDC)으로 합니다. 토큰은 사용자별
 `%LOCALAPPDATA%\gateway-cli` 에 저장되므로 사용량도 사용자별로 집계됩니다.
 
