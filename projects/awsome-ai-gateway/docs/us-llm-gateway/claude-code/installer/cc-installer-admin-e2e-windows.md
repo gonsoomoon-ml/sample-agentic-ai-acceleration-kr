@@ -146,15 +146,22 @@ Get-Content .\packaging\site-config.json -Raw
 
 ### 1-3. 기본 오버레이 넣기 — `packaging\site-extra.json`
 
-`ENABLE_TOOL_SEARCH=true` 한 줄이라 설치한 PC 는 MCP 도구 정의를 매 요청에 싣지 않습니다
-(도구 100개 실측 기준 요청당 입력 ~180K → ~30K). 프록시·권한 같은 사내 값이 더 있으면 같은
-파일에 키를 덧붙입니다.
+이 배포가 기본으로 심는 값 4개입니다.
+
+| 키 | 값 | 이유 |
+|---|---|---|
+| `ENABLE_TOOL_SEARCH` | `true` | MCP 도구 정의를 매 요청에 싣지 않습니다 (도구 100개 실측 기준 요청당 입력 ~180K → ~30K) |
+| `OTEL_LOG_USER_PROMPTS` | `0` | `setup` 기본값이 `1` 이라 프롬프트 본문이 텔레메트리에 실립니다 |
+| `OTEL_LOG_TOOL_DETAILS` | `0` | 같은 이유 — 도구 호출 인자 |
+| `OTEL_LOG_TOOL_CONTENT` | `0` | 같은 이유 — 도구 결과 본문 |
+
+프록시·권한 같은 사내 값이 더 있으면 같은 파일에 키를 덧붙입니다.
 
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
 
 ```powershell
 cd C:\build\sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
-$j = '{ "managed": { "env": { "ENABLE_TOOL_SEARCH": "true" } } }'
+$j = '{ "managed": { "env": { "ENABLE_TOOL_SEARCH": "true", "OTEL_LOG_USER_PROMPTS": "0", "OTEL_LOG_TOOL_DETAILS": "0", "OTEL_LOG_TOOL_CONTENT": "0" } } }'
 [IO.File]::WriteAllText("$PWD\packaging\site-extra.json", $j)
 ```
 
@@ -168,7 +175,19 @@ Get-Content .\packaging\site-extra.json -Raw
 `Set-Content -Encoding UTF8` 로 만들면 BOM 이 붙어 **조용히 무시**됩니다 — 위 `WriteAllText`
 를 쓰는 이유입니다. 파일이 없으면 빌드는 그대로 되고 이 오버레이만 빠집니다.
 
-### 1-4. 빌드 실행
+### 1-4. 텔레메트리(OTel) 설정
+
+**이 배포는 1-3 의 기본값 그대로 두면 됩니다.** 바꿀 일이 있을 때만 읽습니다.
+
+`setup` 은 텔레메트리 환경변수 17개를 항상 씁니다. 통째로 끄는 스위치는 없고,
+`site-extra.json` 으로 바꿀 수 있는 것은 `OTEL_` 로 시작하는 키뿐입니다 — 그래서 1-3 이 내용
+로깅 3개를 `0` 으로 끄고 `CLAUDE_CODE_ENABLE_TELEMETRY=1` 은 남습니다. 수집기 주소는 게이트웨이
+호스트의 80 포트로 자동 유추되는데, 이 배포는 그 포트를 열지 않아 전송이 그냥 실패합니다.
+
+수집기를 실제로 붙이거나 내용 로깅을 다시 켜려면 문서 맨 뒤 §9 의 "텔레메트리(OTel) 설정" 을
+봅니다.
+
+### 1-5. 빌드 실행
 
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
 
@@ -399,3 +418,57 @@ gateway-cli env
 
 **빌드 PC 가 인터넷과 끊겨 있으면** — 같은 Windows·Python 버전의 연결된 PC 에서 wheel 캐시를
 만들어 옮긴 뒤 `-WheelDir` 로 지정합니다.
+
+### 텔레메트리(OTel) 설정
+
+`gateway-cli setup` 은 텔레메트리 관련 환경변수 17개(`OTEL_*` 15개 + `CLAUDE_CODE_*` 2개)를
+관리형 설정에 **항상** 씁니다. 통째로 끄는 스위치는 없고, 고를 수 있는 것은 "무엇을 보낼지"와
+"어디로 보낼지" 입니다.
+
+**기본으로 심기는 값**
+
+| 키 | 기본값 | 뜻 |
+|---|---|---|
+| `CLAUDE_CODE_ENABLE_TELEMETRY` | `1` | 텔레메트리 켜기 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://<게이트웨이 호스트>:80` | 수집기 주소. 안 주면 게이트웨이 호스트의 80 포트로 자동 유추합니다 |
+| `OTEL_LOGS_EXPORTER` 외 2 | `otlp` | 로그·지표·추적 내보내기 방식 |
+| `OTEL_LOG_USER_PROMPTS` | `1` | **프롬프트 본문**을 함께 보냅니다 |
+| `OTEL_LOG_TOOL_DETAILS` | `1` | 도구 호출 인자를 함께 보냅니다 |
+| `OTEL_LOG_TOOL_CONTENT` | `1` | 도구 결과 본문을 함께 보냅니다 |
+| `OTEL_RESOURCE_ATTRIBUTES` | `user.id=<사용자>` | 사용자 식별자 |
+
+**무엇을 덮어쓸 수 있나**
+
+`site-extra.json` 의 `managed.env` 는 보통 게이트웨이가 정한 값보다 약해서, 같은 키를 주면
+게이트웨이 값이 이깁니다. **단 `OTEL_` 로 시작하는 키만은 예외로 `site-extra.json` 이 이깁니다.**
+
+- `OTEL_*` → 덮어쓸 수 있습니다 (내용 로깅 끄기, 수집기 주소 지정)
+- `CLAUDE_CODE_ENABLE_TELEMETRY` → 접두사가 달라 **덮어쓸 수 없습니다**
+
+**이 배포의 선택** — 내용 로깅 3개를 `0` 으로 끕니다(§1-3). 수집기는 지정하지 않았고,
+게이트웨이 ALB 가 80 포트를 열지 않아 전송은 그냥 실패합니다. 확인은 이렇게 합니다.
+
+```powershell
+Test-NetConnection gateway-dev.awsome-ai-gw.click -Port 80 | Select TcpTestSucceeded
+```
+
+`False` 면 수집기가 없는 상태입니다.
+
+**실제 수집기를 붙일 때** — `site-extra.json` 에 주소를 명시합니다. 이 값을 주면 `setup` 이
+`/v1/logs`·`/v1/metrics`·`/v1/traces` 세 갈래 주소도 같은 수집기로 맞춰 줍니다. 그 뒤
+재빌드·재설치·`setup` 재실행이 필요합니다.
+
+```powershell
+$j = '{ "managed": { "env": { "OTEL_EXPORTER_OTLP_ENDPOINT": "https://otel.example.com" } } }'
+```
+
+내용 로깅을 다시 켜려면 같은 파일에서 세 키를 `1` 로 돌립니다. ⚠️ **켜서 내보낼 때는 프롬프트
+본문이 수집기로 간다는 점을 고객사와 먼저 합의합니다.**
+
+**설치된 PC 에서 확인**
+
+```powershell
+Get-Content 'C:\Program Files\ClaudeCode\managed-settings.json' -Raw
+```
+
+`env` 안의 `OTEL_LOG_*` 세 값과 `OTEL_EXPORTER_OTLP_ENDPOINT` 를 봅니다.
