@@ -87,9 +87,10 @@ cd sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
 PC 에서 `setup` 이 `--gateway-url`·`--admin-api-url`·`--oidc-issuer-url`·`--oidc-client-id`
 네 개를 직접 달라고 요구합니다. 만든 파일은 커밋하지 않습니다.
 
-▶ **실행** · 빌드 PC — 🔵 일반 PowerShell (설치기 폴더에서. `<…>` 를 이 배포 값으로 바꿉니다)
+▶ **실행** · 빌드 PC — 🔵 일반 PowerShell (`<…>` 를 이 배포 값으로 바꿉니다)
 
 ```powershell
+cd C:\build\sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
 $c = @'
 {
   "oidcIssuerUrl": "https://cognito-idp.<region>.amazonaws.com/<pool-id>",
@@ -114,9 +115,10 @@ Get-Content .\packaging\site-config.json -Raw
 (도구 100개 실측 기준 요청당 입력 ~180K → ~30K). 프록시·권한 같은 사내 값이 더 있으면 같은
 파일에 키를 덧붙입니다.
 
-▶ **실행** · 빌드 PC — 🔵 일반 PowerShell (설치기 폴더에서)
+▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
 
 ```powershell
+cd C:\build\sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
 $j = '{ "managed": { "env": { "ENABLE_TOOL_SEARCH": "true" } } }'
 [IO.File]::WriteAllText("$PWD\packaging\site-extra.json", $j)
 ```
