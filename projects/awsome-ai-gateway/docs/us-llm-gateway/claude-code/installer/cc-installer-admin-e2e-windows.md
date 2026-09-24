@@ -30,7 +30,7 @@
 
 | 단계 | 누가 | 횟수 |
 |---|---|---|
-| 빌드(1~3) | 빌드 담당 관리자 | 배포 좌표가 바뀔 때마다 |
+| 빌드(1~3) | 빌드 담당 관리자 | 배포 접속 정보가 바뀔 때마다 |
 | 배포·설정 적용(4~5) | 배포 관리자 | PC 당 1회 (관리자 권한) |
 | Claude Code 설치·로그인·사용(6~8) | 최종 사용자 | 사용자당 1회 |
 
@@ -39,7 +39,7 @@
 | 이름 | 무엇 | 언제 |
 |---|---|---|
 | `gateway-cli-setup-<ver>.exe` | Inno Setup 이 만든 **설치 파일**. 프로그램을 PC 에 깝니다 | PC 당 1회 |
-| `gateway-cli setup` | 설치된 CLI 의 **하위 명령**. Claude Code 설정을 씁니다 | 설치 뒤, 모델·좌표가 바뀔 때마다 |
+| `gateway-cli setup` | 설치된 CLI 의 **하위 명령**. Claude Code 설정을 씁니다 | 설치 뒤, 모델·접속 정보가 바뀔 때마다 |
 
 파일 이름은 하이픈으로 이어지고(`gateway-cli-setup-…exe`), 명령은 띄어 씁니다
 (`gateway-cli` + `setup`). 설치 파일은 `setup` 명령을 자동 실행하지 않습니다 — 선택값을 받고
@@ -56,7 +56,7 @@ Claude Code 에 적용한 것입니다.
 |---|---|---|
 | 코드 서명 | 테스트 = 미서명 / 정식 배포 = 사내 코드서명 인증서(`-SignThumbprint`) | 미서명 PyInstaller exe 는 SmartScreen 경고·EDR 오탐 대상 |
 | 모델 지정 | `--model` 만 지정하고 모델 목록은 비워 둔다 | 허용 모델은 서버(팀·사용자 허용 목록)가 정한다. `--available-models` 를 박으면 모델을 새로 등록할 때마다 PC 마다 `setup` 을 다시 돌려야 한다 |
-| 사용자 환경변수 | 같은 PC 에 Cowork 가 **다른 배포**를 보면 `--no-persist-env` | `setup` 기본값은 좌표 4개를 사용자 환경변수로도 남깁니다 |
+| 사용자 환경변수 | 같은 PC 에 Cowork 가 **다른 배포**를 보면 `--no-persist-env` | `setup` 기본값은 접속 정보 4개를 사용자 환경변수로도 남깁니다 |
 
 ## 1. 빌드
 
@@ -66,6 +66,8 @@ Inno Setup 6(`ISCC.exe`) · 설치기 소스.
 설치기 소스는 벤더 배포본 0.2.0 이고, fork 의 **`feat/cc-installer-import`** 브랜치에 있습니다.
 주석과 테스트 입력의 고객 식별 문구 4곳만 placeholder 로 바꾼 사본이라 기능 코드는 벤더 원본과
 같습니다. 이 브랜치는 `us/deploy-fixes` 에 머지하지 않습니다.
+
+### 1-1. 소스 받기
 
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
 
@@ -79,23 +81,16 @@ cd sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
 작업 폴더를 먼저 정합니다. 관리자 PowerShell 은 `C:\Windows\system32` 에서 열리므로, 그대로
 `git clone` 하면 소스가 시스템 폴더 안에 들어갑니다.
 
-소스에는 벤더 문서 4종이 함께 있습니다 —
-`entrypoints/gateway-cli-v2/docs/` 의 `CONFIG_ITEMS_AND_DEFAULTS.md`(설정 키 전체),
-`FILE_AND_ENV_OPERATIONS.md`(어느 파일·환경변수를 건드리는가), `PROXY_PRECEDENCE.md`,
-`OTEL_PRECEDENCE.md`. 키 하나의 우선순위가 궁금할 때 그쪽을 봅니다.
+### 1-2. 사내 접속 정보 넣기 — `packaging\site-config.json`
 
-직원 PC 로 배포되는 것은 산출물 exe 하나뿐입니다.
+**이 파일은 저장소에 없습니다. 직접 만듭니다.** 넣지 않고 빌드하면 범용 빌드가 되어, 설치한
+PC 에서 `setup` 이 `--gateway-url`·`--admin-api-url`·`--oidc-issuer-url`·`--oidc-client-id`
+네 개를 직접 달라고 요구합니다. 만든 파일은 커밋하지 않습니다.
 
-사내 좌표는 `packaging\site-config.json` 에 넣습니다. 이 파일은 커밋하지 않습니다. 넣지 않고
-빌드하면 범용 빌드가 되어, 설치한 PC 에서 `setup` 이 `--gateway-url`·`--admin-api-url`·
-`--oidc-issuer-url`·`--oidc-client-id` 네 개를 직접 달라고 요구합니다.
+▶ **실행** · 빌드 PC — 🔵 일반 PowerShell (설치기 폴더에서. `<…>` 를 이 배포 값으로 바꿉니다)
 
-사내 프록시 검사 값 3개(`-ExpectedProxyUrl`·`-NoProxyValue`·`-ForbiddenNoProxyToken`)는 이
-JSON 으로 못 넣습니다. `build.ps1` 파라미터나 `GATEWAY_CLI_DEFAULT_*` 환경변수로만 들어갑니다.
-
-📋 **참고** — `packaging\site-config.json`
-
-```json
+```powershell
+$c = @'
 {
   "oidcIssuerUrl": "https://cognito-idp.<region>.amazonaws.com/<pool-id>",
   "oidcClientId":  "<client-id>",
@@ -103,11 +98,21 @@ JSON 으로 못 넣습니다. `build.ps1` 파라미터나 `GATEWAY_CLI_DEFAULT_*
   "adminApiUrl":   "https://admin-api-dev.example.com",
   "caBundle":      ""
 }
+'@
+[IO.File]::WriteAllText("$PWD\packaging\site-config.json", $c)
 ```
 
-이 배포의 기본 오버레이도 함께 넣습니다. `ENABLE_TOOL_SEARCH=true` 한 줄이라 설치한 PC 는 MCP
-도구 정의를 매 요청에 싣지 않습니다(도구 100개 실측 기준 요청당 입력 ~180K → ~30K). 프록시·권한
-같은 사내 값이 더 있으면 같은 파일에 키를 덧붙입니다.
+확인 — 넣은 값이 그대로 보여야 합니다.
+
+```powershell
+Get-Content .\packaging\site-config.json -Raw
+```
+
+### 1-3. 기본 오버레이 넣기 — `packaging\site-extra.json`
+
+`ENABLE_TOOL_SEARCH=true` 한 줄이라 설치한 PC 는 MCP 도구 정의를 매 요청에 싣지 않습니다
+(도구 100개 실측 기준 요청당 입력 ~180K → ~30K). 프록시·권한 같은 사내 값이 더 있으면 같은
+파일에 키를 덧붙입니다.
 
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell (설치기 폴더에서)
 
@@ -116,9 +121,13 @@ $j = '{ "managed": { "env": { "ENABLE_TOOL_SEARCH": "true" } } }'
 [IO.File]::WriteAllText("$PWD\packaging\site-extra.json", $j)
 ```
 
-⚠️ `>` 나 `Set-Content -Encoding UTF8` 로 만들면 안 됩니다 — 설치기는 이 파일을 **BOM 없는
-UTF-8** 로만 읽고, 아니면 경고만 남기고 **조용히 무시**합니다. 위 `WriteAllText` 가 BOM 없이
-씁니다. 파일이 아예 없으면 빌드는 그대로 진행되고 이 오버레이만 빠집니다.
+⚠️ `>` 나 `Set-Content -Encoding UTF8` 로 만들면 안 됩니다 — 이 파일은 그대로 exe 안에 실려
+`setup` 때 파이썬이 **BOM 없는 UTF-8** 로만 읽습니다. BOM 이 있으면 경고만 남기고 **조용히
+무시**합니다. 위 `WriteAllText` 가 BOM 없이 씁니다. 파일이 아예 없으면 빌드는 그대로 진행되고
+이 오버레이만 빠집니다. (1-2 의 `site-config.json` 은 빌드 때 PowerShell 이 읽으므로 BOM 이
+있어도 됩니다.)
+
+### 1-4. 빌드 실행
 
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
 
@@ -128,10 +137,8 @@ powershell -ExecutionPolicy Bypass -File <설치기 경로>\packaging\build.ps1
 
 스크립트가 자기 위치를 기준으로 경로를 잡으므로 어느 폴더에서 실행해도 됩니다. `.build-venv` 를
 만들어 의존성을 설치하고, PyInstaller 로 exe 3개를 만든 뒤 Inno Setup 으로 묶습니다.
-결과물은 `dist\installer\gateway-cli-setup-<ver>.exe` 하나입니다.
-
-빌드 PC 가 인터넷과 끊겨 있으면 같은 Windows·Python 버전의 연결된 PC 에서 wheel 캐시를 만들어
-옮긴 뒤 `-WheelDir` 로 지정합니다.
+결과물은 `dist\installer\gateway-cli-setup-<ver>.exe` 하나이고, 직원 PC 로 배포되는 것도
+이 exe 하나뿐입니다.
 
 ## 2. 배포 — 설치 파일 전달
 
@@ -197,7 +204,7 @@ Claude Code 의 관리형 설정 파일을 써서 요청이 게이트웨이로 �
 나중에 설치해도 그대로 적용됩니다.
 
 **관리자 권한이 필요합니다** — `C:\Program Files\ClaudeCode` 는 표준 사용자에게 읽기
-전용입니다. 설치 파일에 사내 좌표가 들어 있으므로 주소를 손으로 넣을 일은 없고, 고르는 값은
+전용입니다. 설치 파일에 사내 접속 정보가 들어 있으므로 주소를 손으로 넣을 일은 없고, 고르는 값은
 보통 `--model` 하나입니다.
 
 모델 선택 목록까지 PC 에 고정하고 싶을 때만 `--available-models` 를 줍니다. 목록 밖의 값은
@@ -260,7 +267,7 @@ claude
 | 확인 | 기준 |
 |---|---|
 | CLI 설치 | `gateway-cli` 가 `C:\Program Files\GatewayCLI\` 에서 실행됩니다 |
-| 관리형 설정 | `managed-settings.json` 의 `apiKeyHelper` 가 절대경로이고 `ANTHROPIC_BASE_URL` 이 배포 좌표와 일치합니다 |
+| 관리형 설정 | `managed-settings.json` 의 `apiKeyHelper` 가 절대경로이고 `ANTHROPIC_BASE_URL` 이 배포 접속 정보와 일치합니다 |
 | 점검 명령 | `gateway-cli verify` 가 전 항목을 통과합니다 |
 | 버전 | `gateway-cli version` 이 설치 파일 계열(0.2.0 이상)을 가리킵니다 |
 
@@ -318,8 +325,22 @@ gateway-cli env
 
 ## 8. 진행 상태 (2026-09-23)
 
-- 테스트용 Windows 머신에 설치기 소스를 배치하고 `site-config.json`(이 배포 좌표)을 작성한
+- 테스트용 Windows 머신에 설치기 소스를 배치하고 `site-config.json`(이 배포 접속 정보)을 작성한
   단계까지 마쳤습니다. 전송본은 원본과 SHA256 이 일치합니다.
 - 빌드·설치·`setup`·로그인은 아직 실행하지 않았습니다. 실행 후 결과와 `/status` 판독, 같은
   PC 의 Cowork 동작 확인 결과를 이 문서에 추가합니다.
 - 테스트 머신에는 Python 3.12·git·Inno Setup 6 이 이미 있어 추가 설치가 필요 없었습니다.
+
+## 9. 부록 — 참고
+
+**벤더 문서 4종** — 소스에 함께 들어 있습니다. `entrypoints/gateway-cli-v2/docs/` 의
+`CONFIG_ITEMS_AND_DEFAULTS.md`(설정 키 전체), `FILE_AND_ENV_OPERATIONS.md`(어느 파일·
+환경변수를 건드리는가), `PROXY_PRECEDENCE.md`, `OTEL_PRECEDENCE.md`. 키 하나의 우선순위가
+궁금할 때 그쪽을 봅니다.
+
+**사내 프록시 검사 값 3개** — `-ExpectedProxyUrl`·`-NoProxyValue`·`-ForbiddenNoProxyToken`
+은 `site-config.json` 으로 못 넣습니다. `build.ps1` 파라미터나 `GATEWAY_CLI_DEFAULT_*`
+환경변수로만 들어갑니다.
+
+**빌드 PC 가 인터넷과 끊겨 있으면** — 같은 Windows·Python 버전의 연결된 PC 에서 wheel 캐시를
+만들어 옮긴 뒤 `-WheelDir` 로 지정합니다.
