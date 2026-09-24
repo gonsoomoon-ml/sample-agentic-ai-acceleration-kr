@@ -209,9 +209,13 @@ cd $env:USERPROFILE\Downloads
 ```
 
 마법사: 설치 위치 기본값 유지 → "Add to PATH" 켜짐 유지 → Install → Finish.
-고객 IT 배포 도구로 무인 설치할 때(기본값 그대로 적용):
 
-▶ **실행 (무인)** · 관리자 컨텍스트
+⚠️ **아래는 직원이 직접 칠 명령이 아닙니다.** 관리자가 배포 도구(SCCM·Intune 등)로 여러
+PC 에 한 번에 설치할 때 쓰는 무인 모드이고, 기본값 그대로 설치됩니다. 창이 뜨지 않으니
+SmartScreen 경고를 눌러 줄 사람도 없습니다 — 정식 배포용은 §0 표대로 서명한 설치 파일을
+씁니다. 직원은 위의 마법사 방식만 쓰면 됩니다.
+
+▶ **실행 (무인)** · 관리자 컨텍스트 — 직원용 아님
 
 ```powershell
 .\gateway-cli-setup-<ver>.exe /VERYSILENT /NORESTART
