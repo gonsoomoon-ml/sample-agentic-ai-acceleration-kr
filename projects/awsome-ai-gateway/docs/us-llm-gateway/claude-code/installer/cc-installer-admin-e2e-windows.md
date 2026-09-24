@@ -70,9 +70,14 @@ Inno Setup 6(`ISCC.exe`) · 설치기 소스.
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
 
 ```powershell
+mkdir C:\build -Force | Out-Null
+cd C:\build
 git clone --depth 1 -b feat/cc-installer-import https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr.git
 cd sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
 ```
+
+작업 폴더를 먼저 정합니다. 관리자 PowerShell 은 `C:\Windows\system32` 에서 열리므로, 그대로
+`git clone` 하면 소스가 시스템 폴더 안에 들어갑니다.
 
 소스에는 벤더 문서 4종이 함께 있습니다 —
 `entrypoints/gateway-cli-v2/docs/` 의 `CONFIG_ITEMS_AND_DEFAULTS.md`(설정 키 전체),
