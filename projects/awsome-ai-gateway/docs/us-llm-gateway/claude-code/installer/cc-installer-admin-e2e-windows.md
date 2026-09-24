@@ -67,6 +67,41 @@ Inno Setup 6(`ISCC.exe`) · 설치기 소스.
 주석과 테스트 입력의 고객 식별 문구 4곳만 placeholder 로 바꾼 사본이라 기능 코드는 벤더 원본과
 같습니다. 이 브랜치는 `us/deploy-fixes` 에 머지하지 않습니다.
 
+### 1-0. 빌드 PC 준비 (처음 한 번)
+
+빌드 PC 에만 필요합니다. 직원 PC 에는 아무것도 깔지 않습니다.
+
+| 도구 | 용도 | 없으면 |
+|---|---|---|
+| Python 3.11 이상 | `.build-venv` 생성 · PyInstaller 실행 | `No Python >= 3.11 found` 로 중단 |
+| Inno Setup 6 | exe 들을 설치 파일 하나로 묶기 | 경고만 남기고 **설치 파일이 안 나옴** |
+| git | 소스 clone | zip 다운로드로 대체 가능 |
+
+▶ **실행** · 빌드 PC — 🔴 관리자 PowerShell (winget 이 있는 Windows)
+
+```powershell
+winget install -e --id Python.Python.3.12
+winget install -e --id JRSoftware.InnoSetup
+winget install -e --id Git.Git
+```
+
+winget 이 없는 Windows Server 등에서는 설치 파일을 직접 받습니다.
+
+- Python — `https://www.python.org/downloads/windows/` (설치 시 **Add python.exe to PATH** 체크)
+- Inno Setup 6 — `https://jrsoftware.org/isdl.php`
+- Git — `https://git-scm.com/download/win`
+
+설치 뒤 새 PowerShell 을 열어 확인합니다.
+
+```powershell
+py -3 --version
+git --version
+```
+
+⚠️ Inno Setup 을 **사용자 계정 폴더**에 설치하면(`%LOCALAPPDATA%\Programs\Inno Setup 6`)
+그 계정 세션에서 빌드해야 `build.ps1` 이 찾습니다. 다른 계정이나 원격 실행 도구로 돌리면
+설치 파일 단계만 조용히 건너뜁니다.
+
 ### 1-1. 소스 받기
 
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
