@@ -129,18 +129,17 @@ $j = '{ "managed": { "env": { "ENABLE_TOOL_SEARCH": "true" } } }'
 Get-Content .\packaging\site-extra.json -Raw
 ```
 
-⚠️ `>` 나 `Set-Content -Encoding UTF8` 로 만들면 안 됩니다 — 이 파일은 그대로 exe 안에 실려
-`setup` 때 파이썬이 **BOM 없는 UTF-8** 로만 읽습니다. BOM 이 있으면 경고만 남기고 **조용히
-무시**합니다. 위 `WriteAllText` 가 BOM 없이 씁니다. 파일이 아예 없으면 빌드는 그대로 진행되고
-이 오버레이만 빠집니다. (1-2 의 `site-config.json` 은 빌드 때 PowerShell 이 읽으므로 BOM 이
-있어도 됩니다.)
+⚠️ 이 파일은 그대로 exe 안에 실려 `setup` 때 **BOM 없는 UTF-8** 로만 읽힙니다. `>` 나
+`Set-Content -Encoding UTF8` 로 만들면 BOM 이 붙어 **조용히 무시**됩니다 — 위 `WriteAllText`
+를 쓰는 이유입니다. 파일이 없으면 빌드는 그대로 되고 이 오버레이만 빠집니다.
 
 ### 1-4. 빌드 실행
 
 ▶ **실행** · 빌드 PC — 🔵 일반 PowerShell
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File <설치기 경로>\packaging\build.ps1
+cd C:\build\sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\installer
+powershell -ExecutionPolicy Bypass -File .\packaging\build.ps1
 ```
 
 스크립트가 자기 위치를 기준으로 경로를 잡으므로 어느 폴더에서 실행해도 됩니다. `.build-venv` 를
