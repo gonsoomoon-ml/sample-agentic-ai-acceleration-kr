@@ -109,7 +109,7 @@ bash 19-admin-login.sh
 bash 19-admin-login.sh callback --apply
 ```
 
-`terraform.tfvars` 끝에 `cognito_callback_urls` 를 붙인다 = 지금 목록 + `https://<admin-ui host>/api/auth/callback`. 지금 목록(localhost 3개)은 **직원의 `gateway-cli login` 이 쓰는 주소**라 반드시 남긴다 — 같은 앱 클라이언트다. tfvars 에 이미 그 변수가 있으면 멈추고 손으로 넣을 한 줄을 알려준다.
+`terraform.tfvars` 끝에 `cognito_callback_urls` 를 붙인다 = 지금 목록 + `https://<admin-ui host>/api/auth/callback`. 지금 목록(localhost 3개)은 **직원의 `gateway-cli login` 이 쓰는 주소**라 반드시 남긴다 — 같은 앱 클라이언트다. tfvars 에 이미 그 변수가 있으면 멈추고 손으로 넣을 한 줄을 알려준다. 이미 등록된 배포면 `callback already registered … nothing to do` 로 끝난다 — 그때는 아래 terraform 단계를 건너뛰고 ② 로 간다.
 
 ▶ **실행** · 배포 EC2
 
