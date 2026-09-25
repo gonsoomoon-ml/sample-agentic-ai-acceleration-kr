@@ -12,7 +12,7 @@
 ## 전제 3가지
 
 - **https 주소** — admin-ui 가 `https://<host>` 여야 한다([8-H](8-H-alb-https.md), US-06). Cognito 는 localhost 가 아닌 http 콜백을 거부한다. `19` 가 먼저 확인하고 아니면 멈춘다.
-- **관리자가 `ClaudeAdmin` 그룹** — Cognito 로 들어온 사람 중 이 그룹만 관리자다(그룹 이름 = values `adminApi.adminBootstrap.groups`). 추가는 [8-Y](8-Y-onboarding.md).
+- **관리자가 `ClaudeAdmin` 그룹** — Cognito 로 들어온 사람 중 이 그룹만 관리자다(그룹 이름 = values `adminApi.adminBootstrap.groups`). 추가는 [8-Y](8-Y-onboarding.md). ADFS 등 외부 IdP 를 붙인 배포는 [아래 절](#adfs-등-외부-idp-를-붙인-배포)을 먼저 읽는다.
 - **관리자가 게이트웨이 로그인을 한 번 했다** — `gateway-cli login`(VK 발급)이 DB 에 사용자를 만든다. 없으면 로그인 직후 403 `user_not_provisioned`. ⓪ 이 확인한다.
 
 ## 흐름
@@ -187,11 +187,35 @@ dev 에서 ④ 까지 끝낸 뒤, **prod 계정의 배포 EC2** 에서 같은 �
 - **사람 확인은 VPN PC 에서** — prod admin 은 internal 이라 배포 EC2 에서도 브라우저로 닿지 않는다. `verify` 는 클러스터 안에서 도니 그대로 되지만, ③ 의 브라우저 확인은 생략하지 말고 Client VPN 에 연결된 PC 에서 한다. Cognito 로그인 화면은 인터넷으로, admin 주소는 VPN 으로 간다(split tunnel).
 - **적용 시각** — ② ④ 모두 관리 화면(④ 는 VK 발급 API 도)의 파드가 교체된다. 추론은 그대로지만 사용자가 적은 시간에.
 
+## ADFS 등 외부 IdP 를 붙인 배포
+
+Cognito 사용자 풀에 ADFS(SAML)·다른 IdP 가 이미 붙어 있어도 **절차는 위와 같다**. admin-ui 가 가리키는 주소는 Cognito Hosted UI 그대로고, Cognito 가 그 뒤에서 ADFS 로 넘긴다 — 사람이 보는 로그인 화면만 ADFS 가 된다. issuer·토큰 검증·`19` 가 넣는 값 4줄은 달라지지 않는다.
+
+**성패는 하나 — 관리자 그룹이 토큰에 실려 오는가.**
+
+- admin-api 는 그룹(`ADMIN_GROUPS`) · 이메일(`ADMIN_EMAILS`) · DB role 중 하나만 ADMIN 이면 인가한다.
+- admin-ui 는 **그룹만** 본다 — `OIDC_GROUPS_CLAIM` 안의 값이 `ADMIN_GROUPS` 와 정확히 일치해야 한다. 못 찾으면 역할이 비어 모든 페이지가 `/403` 이다. **이메일만 넣어서는 화면이 열리지 않는다**(API 는 되는데 화면만 막힌다).
+- 두 값은 차트가 admin-api·admin-ui 에 같이 주입한다(values `adminApi.oidc.groupsClaim` · `adminApi.adminBootstrap.groups`) — 한쪽만 고치는 실수는 나지 않는다.
+
+**시작 전 판정 — 직원의 `gateway-cli login` 이 알려 준다.** VK 발급(`/v1/auth/exchange`)이 같은 그룹 클레임으로 팀을 정한다. 접두사 `Claude_`(values `adminApi.oidc.groupPrefix`)가 붙은 그룹만 팀으로 해석하고(`Claude_팀` · `Claude_부서_팀`, 없으면 예산 $0 으로 자동 생성), `ClaudeAdmin` 은 팀 판정에서 무시된다. 그래서 세 갈래로 갈린다.
+
+- **직원이 VK 를 받아 쓰고 있고 팀이 그룹대로 붙어 있다** → 그룹이 흐른다. 그대로 진행해도 된다.
+- **로그인은 되는데 VK 발급이 `no_matching_team_group` 으로 막힌다** → 그룹이 안 오거나 이름 규칙이 다르다. 그것부터 고친다.
+- **다들 `Default Team` 으로 떨어진다** → `adminApi.oidc.rejectUnmatchedGroups` 를 `false` 로 둔 배포라 그룹이 비어도 통과한 것이다(기본값은 `true`). 증거가 못 되니 클레임부터 확인한다.
+
+관리 화면의 **사용자 목록**에서 그 직원의 팀 이름으로 눈으로도 확인된다.
+
+**그 밖에 챙길 것**
+
+- Cognito 자체 그룹(`cognito:groups`)은 페더레이션 사용자에게 자동으로 붙지 않는 것이 보통이다. ADFS 의 그룹 클레임을 속성으로 매핑하거나, 관리자만 Cognito 그룹에 등록해 둔다.
+- Hosted UI 에 IdP 가 둘 이상이면 선택 화면이 먼저 뜬다. 바로 ADFS 로 보내려면 `19` 가 넣은 `OIDC_AUTHORIZE_URL` 끝에 `?identity_provider=<IdP 이름>` 을 붙인다(admin-ui 는 그 쿼리를 보존한다).
+- ③ 에서 `/403` 이면 그룹이 안 온 것이다. **④ 로 가지 말 것** — dev-login 이 아직 열려 있으니 `https://<admin-ui host>/api/auth/dev-login` 으로 들어가 매핑을 고치고 ③ 을 다시 한다.
+
 ## 문제 해결
 
 - **Cognito 화면에 `redirect_mismatch`** — ① 의 `terraform apply` 가 안 됐다. ⓪ 의 ① 이 `OK registered` 인지 본다.
 - **로그인 뒤 403 `user_not_provisioned`** — 그 관리자가 DB 에 없다. 본인이 `gateway-cli login` 한 번 → 다시 로그인.
-- **로그인 뒤 `/403` 화면** — 그 계정이 `ClaudeAdmin` 그룹이 아니다([8-Y](8-Y-onboarding.md)).
+- **로그인 뒤 `/403` 화면** — 그 계정이 `ClaudeAdmin` 그룹이 아니다([8-Y](8-Y-onboarding.md)). 외부 IdP 배포면 그룹이 토큰에 안 실린 것일 수 있다 — [ADFS 절](#adfs-등-외부-idp-를-붙인-배포).
 
 ## 되돌리기
 
