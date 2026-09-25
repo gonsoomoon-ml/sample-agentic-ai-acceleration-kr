@@ -4,6 +4,11 @@
 
 관리 화면(admin-ui)에 **Cognito 로그인**을 켠다. 지금은 개발용 로그인(dev-login)이 켜져 있어 **admin 주소에 닿는 사람은 누구나 관리자**다 — 역할만 고르면 서명 없는 관리자 토큰이 나온다. 로그인 코드는 이미 배포된 이미지에 있고(US-10), 켜는 데 필요한 것은 **설정 3가지**다: Cognito 콜백 주소 1개 · admin-ui 설정 4줄 · dev-login 끄기. 셋 다 `update-scripts/19-admin-login.sh` 가 계산해서 넣는다. 약 30분, 배포 두 번.
 
+**이 문서가 다루는 두 배포** — 절차(⓪~④)는 같고, 다른 점은 마지막 절에 모았다.
+
+- **Cognito 단독** — 사용자 계정이 Cognito 사용자 풀에 있다. 이 문서를 위에서 아래로 그대로 따라 한다.
+- **사내 IdP(ADFS 등) + Cognito** — 사용자는 사내 IdP 로 로그인하고 그 뒤에 Cognito 가 있다. 같은 절차를 따르되 [사내 IdP 연동 배포](#사내-idp-연동-배포-adfs-등)를 먼저 읽는다.
+
 ## 언제
 
 - admin 콘솔을 IP·VPN 이 아니라 **계정**으로 막을 때. 네트워크로만 막는 방법은 [8-S](8-S-hardening.md) — admin 이 internal 인 배포(prod)는 둘이 겹쳐 이중 보호가 된다.
@@ -12,7 +17,7 @@
 ## 전제 3가지
 
 - **https 주소** — admin-ui 가 `https://<host>` 여야 한다([8-H](8-H-alb-https.md), US-06). Cognito 는 localhost 가 아닌 http 콜백을 거부한다. `19` 가 먼저 확인하고 아니면 멈춘다.
-- **관리자가 `ClaudeAdmin` 그룹** — Cognito 로 들어온 사람 중 이 그룹만 관리자다(그룹 이름 = values `adminApi.adminBootstrap.groups`). 추가는 [8-Y](8-Y-onboarding.md). 고객사처럼 사내 IdP(ADFS 등)를 붙인 배포는 [아래 절](#고객사처럼-adfs-를-cognito-에-붙인-배포)을 먼저 읽는다.
+- **관리자가 `ClaudeAdmin` 그룹** — Cognito 로 들어온 사람 중 이 그룹만 관리자다(그룹 이름 = values `adminApi.adminBootstrap.groups`). 추가는 [8-Y](8-Y-onboarding.md). 사내 IdP(ADFS 등)를 연동한 배포는 [아래 절](#사내-idp-연동-배포-adfs-등)을 먼저 읽는다.
 - **관리자가 게이트웨이 로그인을 한 번 했다** — `gateway-cli login`(VK 발급)이 DB 에 사용자를 만든다. 없으면 로그인 직후 403 `user_not_provisioned`. ⓪ 이 확인한다.
 
 ## 흐름
@@ -50,6 +55,7 @@
 (5) 토큰 교환은 파드가 서버끼리 · (9) DB 사용자는 gateway-cli login 이 만든다
 ```
 
+- 사내 IdP 연동 배포면 (3) 의 화면이 그 IdP 다 — 나머지 단계는 같다.
 - `code` = Cognito 가 로그인 성공 뒤 콜백 주소에 붙여 주는 **일회용 인가 코드**다. 그 자체로는 권한이 없고, 파드가 PKCE verifier 와 함께 제시해 `id_token` 으로 바꾼다.
 
 ## 절차
@@ -88,7 +94,7 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 19-admin-login.sh
 ```
 
-①~④ 상태와 DB 의 관리자 등록 여부를 보여 주고 `Next` 에 다음 명령을 적는다(약 1.5분 — DB 조회용 임시 파드). 관리자 줄이 `OK … in auth.users, active` 가 아니면 그 사람이 `gateway-cli login` 을 한 번 한 뒤 다시 돌린다.
+①~④ 상태와 DB 의 관리자 등록 여부를 보여 주고 `Next` 에 다음 명령을 적는다(약 1.5분 — DB 조회용 임시 파드). 관리자 줄이 `OK … in auth.users, active` 가 아니면 그 사람이 `gateway-cli login` 을 한 번 한 뒤 다시 돌린다. 관리자 확인은 Cognito 그룹 멤버로 먼저 보고, 멤버가 없으면 DB 의 활성 ADMIN 사용자로 판정한다.
 
 ### ① Cognito 에 콜백 주소 등록
 
@@ -167,7 +173,7 @@ bash 19-admin-login.sh dev-login-off --apply
 cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 ```
 
-admin-api · admin-ui **둘 다** `DEV_LOGIN_ENABLED: "false"` 로 바꾼다(한쪽만 끄면 화면과 API 가 어긋난다). `19` 는 Cognito 로그인이 배포돼 있고 DB 에 관리자가 있을 때만 진행한다 — 아니면 모두가 잠긴다. 이번엔 admin-api·admin-ui 파드가 교체된다(추론 무중단).
+admin-api · admin-ui **둘 다** `DEV_LOGIN_ENABLED: "false"` 로 바꾼다(한쪽만 끄면 화면과 API 가 어긋난다). `19` 는 Cognito 로그인이 배포돼 있고 DB 에 관리자가 있을 때만 진행한다 — 아니면 모두가 잠긴다. 관리자 확인이 0 명으로 나오면 [사내 IdP 절](#사내-idp-연동-배포-adfs-등)의 「그 밖에」를 본다. 이번엔 admin-api·admin-ui 파드가 교체된다(추론 무중단).
 
 ▶ **실행** · 배포 EC2 — 끝 확인
 
@@ -187,23 +193,22 @@ dev 에서 ④ 까지 끝낸 뒤, **prod 계정의 배포 EC2** 에서 같은 �
 - **사람 확인은 VPN PC 에서** — prod admin 은 internal 이라 배포 EC2 에서도 브라우저로 닿지 않는다. `verify` 는 클러스터 안에서 도니 그대로 되지만, ③ 의 브라우저 확인은 생략하지 말고 Client VPN 에 연결된 PC 에서 한다. Cognito 로그인 화면은 인터넷으로, admin 주소는 VPN 으로 간다(split tunnel).
 - **적용 시각** — ② ④ 모두 관리 화면(④ 는 VK 발급 API 도)의 파드가 교체된다. 추론은 그대로지만 사용자가 적은 시간에.
 
-## 고객사처럼 ADFS 를 Cognito 에 붙인 배포
+## 사내 IdP 연동 배포 (ADFS 등)
 
-> 이 절은 **사내 IdP(ADFS 등)를 Cognito 사용자 풀에 연동해 쓰는 배포**를 위한 것이다. 우리 US dev·prod 는 Cognito 단독이라 해당 없다 — 위 ⓪~④ 로 끝난다.
+> 이 절은 **사내 IdP(ADFS 등)를 Cognito 사용자 풀에 연동한 배포**를 위한 것이다. Cognito 단독 배포는 위 ⓪~④ 로 끝난다.
 
-**무엇이 달라지나** — 사람이 보는 로그인 화면만 ADFS 가 된다. admin-ui 가 부르는 주소(Cognito Hosted UI), 토큰을 발행·검증하는 주체(Cognito), `19` 가 넣는 값 4줄은 그대로다.
+**무엇이 달라지나** — 사람이 보는 로그인 화면만 사내 IdP 가 된다. admin-ui 가 부르는 주소(Cognito Hosted UI), 토큰을 발행·검증하는 주체(Cognito), `19` 가 넣는 값 4줄은 그대로다.
+
+**연동 형태부터 가른다 — 그룹이 어디서 오는지가 다르다.**
+
+- **링크형** — 사용자를 Cognito 에 미리 만들어 두고(`admin-create-user`), 외부 로그인이 들어오면 PreSignUp 트리거가 같은 사람을 찾아 연결한다(`admin_link_provider_for_user`). 로그인 주체가 그 네이티브 사용자이므로 **그룹은 Cognito 그룹 그대로**다 — 이 배포의 US-12 는 Cognito 단독과 다르지 않다. 사전 등록되지 않은 사람을 PreSignUp 에서 거부하면 그 자체가 화이트리스트가 된다.
+- **JIT 형** — 링크 없이 외부 로그인마다 federated 사용자가 만들어진다. 이때는 **그룹이 IdP 클레임으로 와야** 하고, 클레임 이름이 `adminApi.oidc.groupsClaim` 과, 값이 `adminApi.adminBootstrap.groups`·팀 그룹 규칙과 맞아야 한다.
 
 ```text
-admin-ui -> Cognito Hosted UI -> ADFS 로그인 화면 -> Cognito -> /api/auth/callback
-```
-
-**관리자에게는 그룹이 두 개 필요하다.** Cognito 에서 "그룹" 은 사용자 묶음이고, 한 사람이 여러 개에 속할 수 있다. 이 게이트웨이는 그룹을 두 용도로 나눠 쓴다.
-
-```text
-┌─ ADFS  (corporate IdP) ────────┐            ┌─ Amazon Cognito user pool ──────────┐
-│ user: kim@corp.example         │            │ SAML IdP = ADFS                     │
-│ AD groups -> SAML attribute    ├─SAML──────▶│ attribute -> groups claim           │
-└────────────────────────────────┘            │ issues id_token                     │
+┌─ Corporate IdP  (ADFS, SAML) ──┐            ┌─ Amazon Cognito user pool ──────────┐
+│ signs in: kim@corp.example     │            │ PreSignUp: link to pre-created user │
+│ no per-app AD group needed     ├─SAML──────▶│ (not pre-created -> denied)         │
+└────────────────────────────────┘            │ issues id_token for that user       │
                                               └───────────────┬─────────────────────┘
                                                               │ id_token
                                                               ▼
@@ -219,40 +224,40 @@ admin-ui -> Cognito Hosted UI -> ADFS 로그인 화면 -> Cognito -> /api/auth/c
 │ auto-created at $0                   │     │ admin-api: ADMIN                     │
 └──────────────────────────────────────┘     └──────────────────────────────────────┘
 
-ADFS 가 보낸 그룹이 Cognito 의 groups 클레임으로 실려 온다
-Claude_<team> = 팀(예산·한도) · ClaudeAdmin = 관리 화면 권한
-관리자는 보통 두 그룹에 함께 속한다 · 이름 규칙이 다르므로 서로 간섭하지 않는다
+링크형 — 외부 로그인이 사전 등록된 Cognito 사용자에 연결된다
+  그래서 groups 는 그 사용자의 Cognito 그룹 그대로다
+Claude_<team> = 팀(예산·한도) · ClaudeAdmin = 관리 화면 권한 · 관리자는 둘 다
+JIT 형(링크 없이 federated 사용자 생성)이면 groups 가 IdP 클레임으로 와야 한다
 ```
 
-- **팀 그룹** — 접두사 `Claude_` 로 시작한다(`Claude_팀` · `Claude_부서_팀`, 접두사는 values `adminApi.oidc.groupPrefix`). 그 사람의 팀, 곧 예산·한도를 정한다. VK 발급에 필수이고, DB 에 없는 팀이면 예산 $0 으로 자동 생성된다. 팀 그룹이 하나도 없으면 발급이 거부된다(기본값 `adminApi.oidc.rejectUnmatchedGroups: true`).
+- **팀 그룹** — 접두사 `Claude_`(`Claude_팀` · `Claude_부서_팀`, values `adminApi.oidc.groupPrefix`). 팀, 곧 예산·한도를 정한다. VK 발급에 필수이고, DB 에 없는 팀이면 예산 $0 으로 자동 생성된다. 팀 그룹이 하나도 없으면 발급이 거부된다(`adminApi.oidc.rejectUnmatchedGroups` 기본 `true`).
 - **관리자 그룹** — `ClaudeAdmin`(values `adminApi.adminBootstrap.groups`). 관리 화면 권한만 정한다. 밑줄이 없어 팀 이름 규칙에 걸리지 않으므로 팀 판정에서는 무시된다.
 - **관리자는 둘 다 필요하다** — 예: `Claude_platform`(팀) + `ClaudeAdmin`(권한).
-- ADFS 배포에서는 이 그룹 값이 **ADFS 가 보낸 그룹 클레임**으로 들어온다 — Cognito 자체 그룹은 페더레이션 사용자에게 자동으로 붙지 않는 것이 보통이다. 그래서 확인할 것은 하나다: **관리자 그룹 이름이 로그인 토큰에 실려 오는가.**
 
-**왜 그 하나가 성패인가**
+**왜 관리자 그룹 하나가 성패인가**
 
 - admin-api(서버)는 관대하다 — 그룹(`ADMIN_GROUPS`) · 이메일(`ADMIN_EMAILS`) · DB 역할 중 하나만 ADMIN 이면 통과시킨다.
 - admin-ui(화면)는 **그룹만** 본다 — `OIDC_GROUPS_CLAIM` 안의 값이 `ADMIN_GROUPS` 와 정확히 일치해야 한다. 못 찾으면 모든 페이지가 `/403` 이다.
 - 그래서 **이메일만 등록하면 API 는 되는데 화면이 안 열린다.** 두 값은 차트가 admin-api·admin-ui 에 같이 주입하므로 한쪽만 어긋날 일은 없다.
 
-**시작 전 판정 — 직원의 `gateway-cli login` 이 알려 준다.** VK 발급은 관리 화면과 **같은 그룹 클레임**을 읽어 팀을 정한다. 그러니 팀이 제대로 붙는 배포면 관리자 그룹도 같은 길로 온다.
+**시작 전 판정 — 직원의 `gateway-cli login` 이 알려 준다.** VK 발급은 관리 화면과 같은 그룹 클레임을 읽어 팀을 정한다. 팀이 제대로 붙는 배포면 관리자 그룹도 같은 길로 온다.
 
-- **직원이 VK 를 받아 쓰고 있고 팀도 그룹대로 붙어 있다** → 그대로 진행해도 된다.
+- **VK 를 받아 쓰고 있고 팀도 그룹대로 붙어 있다** → 그대로 진행해도 된다.
 - **로그인은 되는데 VK 발급이 `no_matching_team_group` 으로 막힌다** → 그룹이 안 오거나 이름 규칙이 다르다. 그것부터 고친다.
-- **모두 `Default Team` 으로 떨어진다** → `rejectUnmatchedGroups` 를 `false` 로 둔 배포라 그룹이 비어도 통과한 것이다. 증거가 못 되니 클레임부터 확인한다.
-
-관리 화면의 **사용자 목록**에서 팀 이름으로 눈으로도 확인된다.
+- **모두 `Default Team` 으로 떨어진다** → `rejectUnmatchedGroups` 가 `false` 인 배포라 그룹이 비어도 통과한 것이다. 증거가 못 되니 클레임부터 확인한다.
 
 **그 밖에**
 
-- Cognito 에 IdP 가 둘 이상이면 로그인 전에 선택 화면이 먼저 뜬다. 바로 ADFS 로 보내려면 `19` 가 넣은 `OIDC_AUTHORIZE_URL` 끝에 `?identity_provider=<IdP 이름>` 을 붙인다(admin-ui 는 그 쿼리를 보존한다).
+- 팀 그룹 없는 사용자의 VK 발급 거부를 **접근 통제로 쓰는 배포**는 `rejectUnmatchedGroups` 를 `true`(기본값)로 유지한다. `false` 면 그룹 없는 사용자도 Default Team 으로 통과해 그 통제가 사라진다.
+- Cognito 에 IdP 가 둘 이상이면 로그인 전에 선택 화면이 먼저 뜬다. 바로 사내 IdP 로 보내려면 `19` 가 넣은 `OIDC_AUTHORIZE_URL` 끝에 `?identity_provider=<IdP 이름>` 을 붙인다(admin-ui 는 그 쿼리를 보존한다).
+- **④ 의 관리자 확인** — `19` 는 Cognito 그룹 멤버를 먼저 보고, 멤버가 없으면 `auth.users` 의 활성 ADMIN 행으로 판정한다(JIT 형이 이 경로다). 둘 다 0 이면 ④ 를 거부한다 — 관리자가 `gateway-cli login` 을 한 번 해 DB 에 등록되게 한 뒤 다시 한다.
 - ③ 에서 `/403` 이면 그룹이 안 온 것이다. **④ 로 가지 말 것**(전원 잠김). dev-login 이 아직 열려 있으니 `https://<admin-ui host>/api/auth/dev-login` 으로 들어가 매핑을 고치고 ③ 을 다시 한다.
 
 ## 문제 해결
 
 - **Cognito 화면에 `redirect_mismatch`** — ① 의 `terraform apply` 가 안 됐다. ⓪ 의 ① 이 `OK registered` 인지 본다.
 - **로그인 뒤 403 `user_not_provisioned`** — 그 관리자가 DB 에 없다. 본인이 `gateway-cli login` 한 번 → 다시 로그인.
-- **로그인 뒤 `/403` 화면** — 그 계정이 `ClaudeAdmin` 그룹이 아니다([8-Y](8-Y-onboarding.md)). 사내 IdP 배포면 그룹이 토큰에 안 실린 것일 수 있다 — [ADFS 절](#고객사처럼-adfs-를-cognito-에-붙인-배포).
+- **로그인 뒤 `/403` 화면** — 그 계정이 `ClaudeAdmin` 그룹이 아니다([8-Y](8-Y-onboarding.md)). 사내 IdP 연동 배포면 그룹이 토큰에 안 실린 것일 수 있다 — [사내 IdP 절](#사내-idp-연동-배포-adfs-등).
 
 ## 되돌리기
 

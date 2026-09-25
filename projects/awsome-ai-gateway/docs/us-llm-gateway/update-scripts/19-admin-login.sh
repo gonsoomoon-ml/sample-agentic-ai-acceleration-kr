@@ -238,13 +238,17 @@ apply_values_edit() {
   return 0
 }
 
-# ClaudeAdmin (ADMIN_GROUPS) members and whether each is in auth.users.
-# Sets DB_ADMINS_OK (count of active, provisioned admins). Prints rows.
+# Who can sign in as ADMIN once dev-login is off. Two sources, in order:
+#   1. members of the Cognito group(s) in ADMIN_GROUPS, checked against auth.users
+#   2. active ADMIN rows in auth.users — the path for a deployment federated to a
+#      corporate IdP where the admin group arrives as a token claim and the
+#      Cognito group itself has no members.
+# Sets DB_ADMINS_OK (> 0 means someone can get in). Prints a line per admin.
 check_admin_db() {
   DB_ADMINS_OK=0
   local groups="${LV[admin-api/ADMIN_GROUPS]:-}"
   if [ -z "$groups" ]; then
-    bad "admin-api ADMIN_GROUPS is empty — nobody gets ADMIN from a Cognito login"
+    bad "admin-api ADMIN_GROUPS is empty — nobody gets ADMIN from the group claim"
     return
   fi
   local g users=""
@@ -257,30 +261,41 @@ check_admin_db() {
     users+="$out"$'\n'
   done
   users=$(sed '/^$/d' <<<"$users" | sort -u)
-  if [ -z "$users" ]; then
-    bad "Cognito group(s) $groups have no members — add an admin (ops/8-Y-onboarding.md)"
-    return
+
+  local subs="" sub email sql
+  if [ -n "$users" ]; then
+    while IFS=$'\t' read -r sub email; do
+      [[ "$sub" =~ ^[0-9a-fA-F-]{36}$ ]] || { warn "skipping $email — unexpected sub '$sub'"; continue; }
+      subs+="${subs:+,}'$sub'"
+    done <<<"$users"
   fi
-  local subs="" sub email
-  while IFS=$'\t' read -r sub email; do
-    [[ "$sub" =~ ^[0-9a-fA-F-]{36}$ ]] || { warn "skipping $email — unexpected sub '$sub'"; continue; }
-    subs+="${subs:+,}'$sub'"
-  done <<<"$users"
-  note "reading auth.users for $(wc -l <<<"$users") admin(s) — psql pod, ~1.5 min"
+  sql="SELECT 'ADM|' || count(*)::text FROM auth.users WHERE role::text = 'ADMIN' AND is_active;"
+  [ -n "$subs" ] && sql="SELECT 'ROW|' || sso_subject || '|' || is_active::text || '|' || role::text FROM auth.users WHERE sso_subject IN ($subs); $sql"
+
+  note "reading auth.users — psql pod, ~1.5 min"
   local rows
-  rows=$(run_sql "SELECT 'ROW|' || sso_subject || '|' || is_active::text || '|' || role::text FROM auth.users WHERE sso_subject IN ($subs);") \
-    || { bad "DB query failed:"; sed 's/^/       /' <<<"$rows"; return; }
-  while IFS=$'\t' read -r sub email; do
-    local r; r=$(command grep -m1 -F "ROW|$sub|" <<<"$rows")
-    if [ -z "$r" ]; then
-      warn "$email — not in auth.users: Cognito login gives 403 user_not_provisioned"
-      note "   fix: that person runs gateway-cli login once (VK exchange provisions the user)"
-    elif [[ "$r" == *"|true|"* ]]; then
-      ok "$email — in auth.users, active (role ${r##*|}, ADMIN via group)"; DB_ADMINS_OK=$((DB_ADMINS_OK + 1))
-    else
-      warn "$email — in auth.users but deactivated: login gives 403 user_deactivated"
-    fi
-  done <<<"$users"
+  rows=$(run_sql "$sql") || { bad "DB query failed:"; sed 's/^/       /' <<<"$rows"; return; }
+
+  if [ -n "$users" ]; then
+    while IFS=$'\t' read -r sub email; do
+      local r; r=$(command grep -m1 -F "ROW|$sub|" <<<"$rows")
+      if [ -z "$r" ]; then
+        warn "$email — in the Cognito group but not in auth.users: sign-in gives 403 user_not_provisioned"
+        note "   fix: that person runs gateway-cli login once (VK exchange provisions the user)"
+      elif [[ "$r" == *"|true|"* ]]; then
+        ok "$email — in auth.users, active (role ${r##*|})"; DB_ADMINS_OK=$((DB_ADMINS_OK + 1))
+      else
+        warn "$email — in auth.users but deactivated: sign-in gives 403 user_deactivated"
+      fi
+    done <<<"$users"
+  fi
+
+  local adm; adm=$(command grep -m1 -F 'ADM|' <<<"$rows" | tr -dc '0-9')
+  if [ "$DB_ADMINS_OK" -eq 0 ] && [ -n "$adm" ] && [ "$adm" -gt 0 ]; then
+    ok "$adm active ADMIN user(s) in auth.users (the Cognito group has no members — normal when a corporate IdP carries the group claim)"
+    DB_ADMINS_OK="$adm"
+  fi
+  [ "$DB_ADMINS_OK" -gt 0 ] || bad "no active ADMIN in auth.users and no provisioned member of $groups — a sign-in would end in 403"
 }
 
 show_header() {
