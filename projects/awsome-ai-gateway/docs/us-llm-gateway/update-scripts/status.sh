@@ -2,9 +2,11 @@
 # ---------------------------------------------------------------------------
 # status.sh — which updates this gateway has applied
 #
-# WHAT: probe the live system and report US-02 … US-07 and US-12 as
-#       applied, partially applied, or not applied. Prints the next command
-#       for each.
+# WHAT: probe the live system and report US-02 … US-07, US-12 and US-13 as
+#       applied, partially applied, or not applied, and print the next command
+#       for each. Every other US-NN gets a `--` line that says where it is
+#       checked instead (another account, the employee PC, 14-postdeploy-check.sh),
+#       so the list is complete and "all applied" never hides an unchecked item.
 # WHY:  what an update produces lives OUTSIDE git — a routing_profiles row, a
 #       CloudFront distribution, VPC endpoints. Pulling the latest code does
 #       not apply them, so "not applied" is a normal state for a checkout that
@@ -79,7 +81,12 @@ probe_us02() {
 \\pset format unaligned
 SELECT 'ROUTING=' || backend FROM model.routing_profiles WHERE client='$COWORK_CLIENT';
 SELECT 'ALIAS='   || count(*) FROM model.model_aliases
- WHERE alias='$MODEL_ALIAS' AND status='ACTIVE';" 2>&1)
+ WHERE alias='$MODEL_ALIAS' AND status='ACTIVE';
+SELECT 'O55=' || status || '|' || coalesce(provider_model_id, '') FROM model.model_aliases
+ WHERE alias='claude-opus-5-5';
+SELECT 'O55P=' || count(*) FROM model.model_pricings
+ WHERE model_alias='claude-opus-5-5' AND effective_until IS NULL;" 2>&1)
+  US02_OUT="$out"   # probe_us13 reads its markers from the same query (one psql pod)
 
   routing=$(grep -o 'ROUTING=[a-z]*' <<<"$out" | head -1 | cut -d= -f2)
   alias_n=$(grep -o 'ALIAS=[0-9]*'   <<<"$out" | head -1 | cut -d= -f2)
@@ -386,6 +393,52 @@ probe_us12() {
   raw "admin-ui OIDC_CLIENT_ID=${cid:-<none>} OIDC_REDIRECT_URI=${redir:-<none>} DEV_LOGIN_ENABLED=${ui_dev:-<unset>}"$'\n'"admin-api DEV_LOGIN_ENABLED=${api_dev:-<unset>} pool=${pool:-<none>} callback registered=$cb_ok"
 }
 
+# ── US-13 — Opus 5.5 (recommended; part of a fresh install) ─────────────────
+# Read from the query probe_us02 already ran (no second psql pod). Applied =
+# alias ACTIVE on the US geo profile with an open price row. A global. profile
+# still answers but bills at the global rate (ops/8-R-pricing.md).
+probe_us13() {
+  local o55 o55p st pid
+  if ! grep -q 'O55P=' <<<"${US02_OUT:-}"; then
+    row warn "US-13" "Opus 5.5 등록 — 판정 불가"
+    detail "DB 조회 결과가 없습니다 (US-02 줄 참조)"
+    return
+  fi
+  o55=$(grep -o 'O55=[^[:space:]]*' <<<"$US02_OUT" | head -1 | cut -d= -f2-)
+  o55p=$(grep -o 'O55P=[0-9]*' <<<"$US02_OUT" | head -1 | cut -d= -f2)
+  st=${o55%%|*}; pid=${o55#*|}
+  if [ -z "$o55" ] || [ "$st" != ACTIVE ]; then
+    row warn "US-13" "Opus 5.5 등록 — 미적용 (권장)"
+    detail "claude-opus-5-5 ${o55:+($st) }— 절차는 ops/8-M-models.md"
+    TODO+=("(수동) docs/us-llm-gateway/ops/8-M-models.md — Opus 5.5 등록")
+  elif [ "${o55p:-0}" -lt 1 ]; then
+    row bad "US-13" "Opus 5.5 등록 — 단가 없음 (호출 비용이 0 으로 기록됨)"
+    detail "claude-opus-5-5 ACTIVE · $pid · 열린 단가 행 0"
+    TODO+=("bash 08-set-model-pricing.sh --apply   # pricing.tsv 의 claude-opus-5-5")
+  elif [[ "$pid" != us.* ]]; then
+    row warn "US-13" "Opus 5.5 등록 — 미국 리전 프로파일 아님"
+    detail "provider_model_id=$pid — us.anthropic.claude-opus-5-5 로 (ops/8-M-models.md)"
+  else
+    row ok "US-13" "Opus 5.5 등록"
+    detail "claude-opus-5-5 ACTIVE · $pid · 단가 있음"
+  fi
+}
+
+# ── Items this script does not judge — listed so nothing reads as "applied" by
+#    omission. Each line says where the real check is.
+info_us08() {
+  if [ "$DEPLOY_ENV" = prod ]; then
+    row ok "US-08" "운영(prod) 스택 — 이 배포가 그것"
+  else
+    row skip "US-08" "운영(prod) 스택 — 별도 계정 (선택 · 이 클러스터에서는 판정 안 함)"
+    detail "prod 계정의 배포 EC2 에서 status.sh 를 돌린다 — ops/8-P-prod.md"
+  fi
+}
+info_rows() {   # <id> <title> <where>
+  row skip "$1" "$2"
+  detail "$3"
+}
+
 # ── Report ──────────────────────────────────────────────────────────────────
 echo
 printf '%s AWSome AI Gateway 해외 배포판 — 업데이트 적용 상태%s\n' "$c_bold" "$c_reset"
@@ -401,11 +454,21 @@ probe_us04
 probe_us05
 probe_us06
 probe_us07
+info_us08
+info_rows "US-09" "Cowork Windows 설치 파일 — 직원 PC 쪽 (이 스크립트는 판정 안 함)" \
+  "설치 여부는 직원 PC 에서 — cowork/installer/cowork-installer-admin-e2e-windows.md"
+info_rows "US-10" "최신 코드 동기화 — 14-postdeploy-check.sh 가 판정" \
+  "bash 14-postdeploy-check.sh   # DB 스키마 번호 · 서비스 버전"
+info_rows "US-11" "모델 단가 = AWS 청구 — 14-postdeploy-check.sh 가 판정" \
+  "bash 14-postdeploy-check.sh   # 단가 일치"
 probe_us12
+probe_us13
+info_rows "US-14" "Claude Code Windows 설치 파일 — 직원 PC 쪽 (이 스크립트는 판정 안 함)" \
+  "설치 여부는 직원 PC 에서 — claude-code/installer/cc-installer-admin-e2e-windows.md"
 
 echo
 if [ "${#TODO[@]}" -eq 0 ]; then
-  ok "모든 업데이트가 적용돼 있습니다"
+  ok "판정한 항목은 모두 적용돼 있습니다 (-- 줄은 선택이거나 다른 곳에서 확인하는 항목)"
 else
   hdr "다음 작업 (update-scripts 디렉터리에서 실행)"
   for t in "${TODO[@]}"; do printf '  %s\n' "$t"; done

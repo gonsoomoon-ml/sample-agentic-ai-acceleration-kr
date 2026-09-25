@@ -9,7 +9,7 @@ What sets this edition apart: a region outside Korea · direct to Bedrock (not M
 
 **What you want to do**
 - **Install for the first time** — POC: [install-overview.md](install-overview.md) (scope · flow, 10 min) → [install-guide.md](install-guide.md) (run §1–§6-0) · production (separate prod account): [ops/8-P-prod.md](ops/8-P-prod.md) drives [install-guide.md](install-guide.md) §1–§6 in the prod account — decide which in [1. New-install scope](#1-new-install-scope--what-you-use--poc-or-production) first
-- **Already installed — see the update state** — `bash status.sh` on the deployment EC2 → apply only the missing rows of [2. Latest updates](#2-latest-updates) below · `US-10`·`US-11` are not judged by `status.sh` — check them with `bash 14-postdeploy-check.sh` (DB schema number · prices match)
+- **Already installed — see the update state** — `bash status.sh` on the deployment EC2 → apply only the missing rows of [2. Latest updates](#2-latest-updates) below · `status.sh` lists every `US-NN` on its own line; the ones it does not judge (`US-08`·`09`·`10`·`11`·`14`) get a `--` line saying where to check · check `US-10`·`US-11` with `bash 14-postdeploy-check.sh` (DB schema number · prices match)
 - **Set up employee PCs only** — [client-install.md](client-install.md) (Claude Code) · [cowork/…windows.md](cowork/manual/cowork-client-install-windows.md) · [cowork/…windows-auto.md](cowork/manual/cowork-client-install-windows-auto.md) (installer) · [cowork/…macos.md](cowork/cowork-client-install-macos.md) · [cowork/installer/…e2e-windows.md](cowork/installer/cowork-installer-admin-e2e-windows.md) (Windows installer, US-09)
 
 **This deployment**
@@ -65,7 +65,7 @@ Earlier (`US-01` initial install) and the why · pitfalls per item → [updates.
 
 ## 3. Applying updates (on the deployment EC2)
 
-**① Bring the repository up to date** — a rebased branch, so not `git pull` but the block below. `values-*.yaml` exists only on this EC2, so the backup · restore is the point (confirm `values restored OK`). `origin` in `git remote -v` must be `gonsoomoon-ml/…` (if it is aws-samples, `set-url`). The prod stack (`US-08`) follows the same steps on the **prod account's deployment EC2** with `V=…/values-eks-fargate-prod.yaml` — `status.sh` does not judge US-08~11 (US-08 is a separate stack, US-09 is PC-side, US-10·11 are judged by `14-postdeploy-check.sh`).
+**① Bring the repository up to date** — a rebased branch, so not `git pull` but the block below. `values-*.yaml` exists only on this EC2, so the backup · restore is the point (confirm `values restored OK`). `origin` in `git remote -v` must be `gonsoomoon-ml/…` (if it is aws-samples, `set-url`). The prod stack (`US-08`) follows the same steps on the **prod account's deployment EC2** with `V=…/values-eks-fargate-prod.yaml` — `status.sh` does not judge US-08~11·14 and instead shows a `--` line saying where to check (US-08 is a separate stack, US-09·14 are PC-side, US-10·11 are judged by `14-postdeploy-check.sh`).
 
 ```bash
 cd ~/awsome-ai-gateway && git remote -v

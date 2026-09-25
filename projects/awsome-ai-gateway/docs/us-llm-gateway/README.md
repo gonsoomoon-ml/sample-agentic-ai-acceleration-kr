@@ -7,7 +7,7 @@
 
 **지금 하려는 것**
 - **처음 설치한다** — POC: [install-overview.md](install-overview.md)(범위·흐름 10분) → [install-guide.md](install-guide.md)(§1~§6-0 실행) · 운영(별도 계정 prod): [ops/8-P-prod.md](ops/8-P-prod.md) 순서로 [install-guide.md](install-guide.md) §1~§6 을 prod 계정에서 — 어느 쪽인지는 [1. 신규 설치 범위](#1-신규-설치-범위--무엇을-쓰느냐--poc-인가-운영인가)에서 먼저
-- **이미 설치했다 — 업데이트 상태를 보겠다** — 배포 EC2 에서 `bash status.sh` → 아래 [2. 최신 업데이트](#2-최신-업데이트) 표에서 미적용 항목만 · `US-10`·`US-11` 은 `status.sh` 가 판정하지 않는다 — `bash 14-postdeploy-check.sh`(DB 스키마 번호 · 단가 일치)로 확인
+- **이미 설치했다 — 업데이트 상태를 보겠다** — 배포 EC2 에서 `bash status.sh` → 아래 [2. 최신 업데이트](#2-최신-업데이트) 표에서 미적용 항목만 · `status.sh` 는 모든 `US-NN` 을 한 줄씩 보여 주고, 판정하지 않는 항목(`US-08`·`09`·`10`·`11`·`14`)은 `--` 줄에 확인할 곳을 적는다 · `US-10`·`US-11` 은 `bash 14-postdeploy-check.sh`(DB 스키마 번호 · 단가 일치)로 확인
 - **직원 PC 만 설정한다** — [client-install.md](client-install.md)(Claude Code) · [cowork/…windows.md](cowork/manual/cowork-client-install-windows.md) · [cowork/…macos.md](cowork/cowork-client-install-macos.md) · [cowork/installer/…e2e-windows.md](cowork/installer/cowork-installer-admin-e2e-windows.md)(Windows 설치기, US-09)
 
 **이 배포**
@@ -65,7 +65,7 @@
 
 ## 3. 적용하기 (배포 EC2 에서)
 
-**① 저장소 최신화** — 리베이스 브랜치라 `git pull` 이 아니라 아래. `values-*.yaml` 은 이 EC2 유일본이라 백업·복원이 핵심(`values restored OK` 확인). `git remote -v` 의 origin 이 `gonsoomoon-ml/…` 이어야 한다(aws-samples 면 `set-url`). prod 스택(`US-08`)은 **prod 계정의 배포 EC2** 에서 `V=…/values-eks-fargate-prod.yaml` 로 같은 절차 — `status.sh` 는 US-08~11 을 판정하지 않는다(US-08 은 별도 스택, US-09 는 PC 쪽, US-10·11 은 `14-postdeploy-check.sh` 가 판정).
+**① 저장소 최신화** — 리베이스 브랜치라 `git pull` 이 아니라 아래. `values-*.yaml` 은 이 EC2 유일본이라 백업·복원이 핵심(`values restored OK` 확인). `git remote -v` 의 origin 이 `gonsoomoon-ml/…` 이어야 한다(aws-samples 면 `set-url`). prod 스택(`US-08`)은 **prod 계정의 배포 EC2** 에서 `V=…/values-eks-fargate-prod.yaml` 로 같은 절차 — `status.sh` 는 US-08~11·14 를 판정하지 않고 `--` 줄로 확인할 곳을 알려 준다(US-08 은 별도 스택, US-09·14 는 PC 쪽, US-10·11 은 `14-postdeploy-check.sh` 가 판정).
 
 ```bash
 cd ~/awsome-ai-gateway && git remote -v
