@@ -551,7 +551,7 @@ adminApi:
 
   image:
     repository: "llm-gateway/admin-api"
-    tag: "1.0.68-invlogaudit"  # = 라이브(dev·prod)
+    tag: "1.0.69-idpjwks"  # = 라이브(dev·prod)
     pullPolicy: "IfNotPresent"
 
   serviceAccount:
@@ -823,7 +823,7 @@ scheduler:
   image:
     # admin-api 이미지 재사용 (command만 다름) — 태그도 admin-api 와 항상 같이 움직인다
     repository: "llm-gateway/admin-api"
-    tag: "1.0.68-invlogaudit"  # = 라이브(dev·prod)
+    tag: "1.0.69-idpjwks"  # = 라이브(dev·prod)
     pullPolicy: "IfNotPresent"
 
   command: ["python", "-m", "app.scheduler.main"]

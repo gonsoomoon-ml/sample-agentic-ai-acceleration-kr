@@ -338,7 +338,11 @@ adminApi:
     #   비어 있으면 감사 엔드포인트는 404 가 아니라 **503**(미설정)을 준다 — 지금 dev 의 상태다
     #   (terraform 의 enable_bedrock_invocation_logging 이 false 라 log group 이 없다).
     #   285 통과. ⚠️ scheduler.image.tag 를 같은 값으로 유지(아래 주석 참조).
-    tag: "1.0.68-invlogaudit"
+    # 1.0.69-idpjwks: 관리 화면 Cognito(IdP) 로그인 토큰을 IdP JWKS 로 검증(US-12).
+    #   예전엔 admin_jwt_configs 의 정적 키로만 검증해, 시드 자리표시 키뿐인 설치에서
+    #   로그인 후 모든 API 가 500(JWKError). 정적 키가 깨져 있어도 이제 401.
+    #   ⚠️ scheduler.image.tag 를 같은 값으로 유지.
+    tag: "1.0.69-idpjwks"
   serviceAccount:
     annotations:
       # CHANGE_ME (terraform output): IRSA role ARN. terraform output -raw admin_api_role_arn
@@ -441,7 +445,7 @@ scheduler:
     # roi_aggregator 가 KST 비닝 수정(A-2/E-1)의 대상이라 어긋나면 스케줄러만 옛 로직으로 집계.
     # ⚠️ 이 값이 특히 중요하다: 1.0.67-roifix 가 고친 NameError 는 **스케줄러에서만** 터진다
     # (API 경로는 그 함수를 안 탄다). adminApi 만 올리고 여기를 두면 ROI 집계는 계속 실패한다.
-    tag: "1.0.68-invlogaudit"
+    tag: "1.0.69-idpjwks"
   resources:
     requests:
       cpu: "250m"  # Fargate 하한

@@ -8,8 +8,10 @@ from dataclasses import dataclass
 import structlog
 from fastapi import Depends, HTTPException, Request
 from jose import JWTError, jwt
+from jose.exceptions import JWKError
 
 from app.core.db import AsyncSessionLocal
+from app.core.oidc_verifier import OIDCConfigError, OIDCVerifier, OIDCVerifyError
 from app.models.auth import UserRole
 from app.services.service_token_service import (
     SERVICE_TOKEN_PREFIX,
@@ -70,6 +72,12 @@ class JWTVerifier:
                 return payload
             except JWTError as e:
                 last_error = e
+                continue
+            except JWKError as e:
+                # 이 설정의 키 자체를 만들 수 없다(예: 시드 자리표시 PEM
+                # ``REPLACE_WITH_ACTUAL_RS256_PUBLIC_KEY``). 그 키로는 아무것도 검증할 수
+                # 없으니 다음 키로 넘어간다 — 잡지 않으면 인증 실패가 500 으로 보인다.
+                last_error = JWTError(f"unusable public key: {e}")
                 continue
 
         raise last_error  # type: ignore[misc]
@@ -147,6 +155,25 @@ async def get_current_user(request: Request) -> CurrentUser:
             service_token_id=svc_tok.id,
         )
 
+    # ── IdP 가 발급한 토큰은 IdP 의 JWKS 로 검증한다 ──
+    #
+    # admin-ui 의 OIDC 로그인은 IdP id_token 을 그대로 admin_jwt 쿠키에 굽는다. 그 토큰을
+    # 아래 정적 키(auth.admin_jwt_configs — 우리가 발급하는 내부 admin JWT 용)로 검증하면
+    # 설치 직후엔 시드 자리표시 키뿐이라 모든 API 호출이 실패했다(2026-09-25 US dev 실측:
+    # JWKError → 500). VK 발급(/v1/auth/exchange)이 이미 쓰는 OIDCVerifier 는 JWKS 를
+    # 자동으로 받고 kid 로 골라 키 교체에도 안전하다. iss 로 경로만 고른다 — 서명·iss 는
+    # verify_async 가 다시 엄격히 검증하므로 iss 를 위조해도 401 로 끝난다.
+    oidc_verifier = _idp_verifier_for(request, token)
+    if oidc_verifier is not None:
+        try:
+            claims = await oidc_verifier.verify_async(token, request.app.state.oidc_http)
+        except OIDCVerifyError:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        except OIDCConfigError as e:
+            logger.error("auth.idp_jwks_unavailable", error=str(e))
+            raise HTTPException(status_code=503, detail="Identity provider unavailable")
+        return await _resolve_idp_identity(claims)
+
     verifier: JWTVerifier = request.app.state.jwt_verifier
 
     try:
@@ -186,6 +213,20 @@ async def get_current_user(request: Request) -> CurrentUser:
         role=UserRole(payload["role"]),
         team_id=uuid.UUID(team_id_raw) if team_id_raw else None,
     )
+
+
+def _idp_verifier_for(request: Request, token: str) -> OIDCVerifier | None:
+    """토큰의 (검증 전) ``iss`` 가 설정된 OIDC issuer 면 그 검증기를, 아니면 None."""
+    verifier = getattr(request.app.state, "oidc_verifier", None)
+    if not isinstance(verifier, OIDCVerifier):
+        return None
+    try:
+        iss = jwt.get_unverified_claims(token).get("iss")
+    except JWTError:
+        return None
+    if not isinstance(iss, str) or iss.rstrip("/") != verifier.issuer_url:
+        return None
+    return verifier
 
 
 async def _resolve_idp_identity(claims: dict) -> CurrentUser:

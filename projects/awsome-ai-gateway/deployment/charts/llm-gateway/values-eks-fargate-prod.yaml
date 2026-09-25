@@ -286,7 +286,11 @@ adminApi:
     #   prod 는 BEDROCK_INVOCATION_LOG_GROUP 을 주지 않으므로 /config 는 200+configured:false,
     #   데이터 엔드포인트는 503 이다(라우터는 항상 등록되므로 404 아님).
     #   ⚠️ scheduler.image.tag 와 반드시 동일하게 — enum 미러 누락은 READ 에서 죽는다.
-    tag: "1.0.68-invlogaudit"
+    # 1.0.69-idpjwks: 관리 화면 Cognito(IdP) 로그인 토큰을 IdP JWKS 로 검증(US-12).
+    #   예전엔 admin_jwt_configs 의 정적 키로만 검증해, 시드 자리표시 키뿐인 설치에서
+    #   로그인 후 모든 API 가 500(JWKError). 정적 키가 깨져 있어도 이제 401.
+    #   ⚠️ scheduler.image.tag 를 같은 값으로 유지.
+    tag: "1.0.69-idpjwks"
   serviceAccount:
     annotations:
       # CHANGE_ME (terraform output): IRSA role ARN. terraform output -raw admin_api_role_arn
@@ -400,7 +404,7 @@ scheduler:
     # 1.0.68-invlogaudit: adminApi 와 동일 이미지. 이 값만 뒤처지면 스케줄러의 SQLAlchemy
     # provider enum 미러가 4라벨로 남아 0032 가 심은 BEDROCK_RUNTIME_OPENAI 행을 읽는 순간
     # LookupError 로 모델 카탈로그 조회 전체가 깨진다(조용히 실패하지 않고 크게 죽는다).
-    tag: "1.0.68-invlogaudit"
+    tag: "1.0.69-idpjwks"
   resources:
     requests:
       cpu: "250m"

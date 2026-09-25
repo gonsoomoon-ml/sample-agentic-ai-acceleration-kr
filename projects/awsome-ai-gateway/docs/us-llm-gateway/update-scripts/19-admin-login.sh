@@ -20,8 +20,11 @@
 # UNDO: restore the backup --apply prints (snapshots/), then install-eks.sh
 #       <env> for values, or terraform apply for tfvars.
 #
-# Order: callback → terraform apply → login → install-eks.sh → verify + browser
-#        → dev-login-off → install-eks.sh → verify.
+# Order: callback → terraform apply → (admin-api image bump + rebuild) → login
+#        → install-eks.sh → verify + browser → dev-login-off → install-eks.sh → verify.
+# admin-api must be 1.0.69-idpjwks or later: older images verify the console token
+# only against auth.admin_jwt_configs (a seeded placeholder key), so after sign-in
+# every admin API call fails with 500. `login --apply` refuses an older tag.
 # dev-login stays on through the first rollout: it is the way back in if the
 # Cognito login fails. dev-login-off refuses until the login is live and an
 # admin exists in the DB.
@@ -89,6 +92,23 @@ LOGIN_KEYS=(OIDC_CLIENT_ID OIDC_AUTHORIZE_URL OIDC_TOKEN_URL OIDC_REDIRECT_URI)
 declare -A WANT=( [OIDC_CLIENT_ID]="$CLIENT_ID" [OIDC_AUTHORIZE_URL]="$AUTHORIZE_URL"
                   [OIDC_TOKEN_URL]="$TOKEN_URL" [OIDC_REDIRECT_URI]="$CALLBACK" )
 
+# admin-api that verifies IdP (console) tokens with the IdP's JWKS.
+MIN_API_PATCH=69; MIN_API_TAG="1.0.69-idpjwks"
+api_tag_state() {   # <image> → ok | old | unknown   (tags look like 1.0.<n>-<slug>)
+  local tag="${1##*:}"
+  if [[ "$tag" =~ ^1\.0\.([0-9]+)(-|$) ]]; then
+    [ "${BASH_REMATCH[1]}" -ge "$MIN_API_PATCH" ] && echo ok || echo old
+  else
+    echo unknown
+  fi
+}
+ecr_has_image() {   # <registry/repo:tag> → 0 when that tag is in ECR
+  local img="$1" repo tag
+  tag="${img##*:}"; repo="${img%:*}"; repo="${repo#*/}"
+  aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$tag" >/dev/null 2>&1
+}
+API_BUMP_HINT="bash 13-bump-image-tags.sh $DEPLOY_ENV --apply, then bash deployment/scripts/rebuild-image.sh admin-api $DEPLOY_ENV (from the repo root)"
+
 # A failed read must stop the script, never look like "no callbacks".
 CB_JSON=$(aws cognito-idp describe-user-pool-client --user-pool-id "$POOL_ID" --client-id "$CLIENT_ID" \
           --query 'UserPoolClient.CallbackURLs' --output json 2>&1) \
@@ -122,6 +142,19 @@ for d in yaml.safe_load_all(sys.stdin):
             for e in d["spec"]["template"]["spec"]["containers"][0].get("env") or []:
                 if "value" in e:
                     print(dep + "\t" + e["name"] + "\t" + str(e["value"]))
+' <<<"$out"
+}
+
+# admin-api container image the chart renders from <values>.
+render_api_image() {
+  local out
+  out=$(helm template "$HELM_RELEASE" "$CHART" -f "$1" 2>&1) \
+    || { printf 'helm template failed for %s:\n%s\n' "$1" "$(tail -5 <<<"$out")" >&2; return 1; }
+  python3 -c '
+import sys, yaml
+for d in yaml.safe_load_all(sys.stdin):
+    if d and d.get("kind") == "Deployment" and d["metadata"]["name"].endswith("-admin-api"):
+        print(d["spec"]["template"]["spec"]["containers"][0]["image"]); break
 ' <<<"$out"
 }
 
@@ -310,6 +343,22 @@ show_header() {
 load_env LV live_env
 LIVE_LOGIN=1
 for k in "${LOGIN_KEYS[@]}"; do [ "${LV[admin-ui/$k]:-}" = "${WANT[$k]}" ] || LIVE_LOGIN=0; done
+API_LIVE=$(kubectl get deploy "$DEP_API" -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null)
+API_VALUES=$(render_api_image "$V") || die "could not render the admin-api image from $V"
+[ -n "$API_LIVE" ] && [ -n "$API_VALUES" ] || die "could not read the admin-api image (live='${API_LIVE}', values='${API_VALUES}')"
+
+show_api_version() {
+  local lv rv
+  lv=$(api_tag_state "$API_LIVE"); rv=$(api_tag_state "$API_VALUES")
+  printf '  live    %s\n  values  %s\n' "${API_LIVE##*/}" "${API_VALUES##*/}"
+  case "$rv" in
+    ok)  if [ "$lv" = ok ]; then ok "admin-api verifies IdP tokens with the IdP JWKS"
+         else warn "values carry a new enough admin-api, not deployed yet — install-eks.sh $DEPLOY_ENV"; fi ;;
+    old) bad "admin-api older than $MIN_API_TAG — after sign-in every admin API call fails (500)"
+         note "   fix: $API_BUMP_HINT" ;;
+    *)   warn "cannot read a version from '${API_VALUES##*:}' — make sure it is $MIN_API_TAG or later" ;;
+  esac
+}
 
 # ── Steps ───────────────────────────────────────────────────────────────────
 step_status() {
@@ -331,6 +380,10 @@ step_status() {
       bad "not registered"; next="bash $(basename "$0") callback"
     fi
   fi
+
+  hdr "admin-api version (needs $MIN_API_TAG or later)"
+  show_api_version
+  [ "$(api_tag_state "$API_VALUES")" = old ] && : "${next:=$API_BUMP_HINT}"
 
   hdr "② Cognito login (admin-ui OIDC_*)"
   if [ "$rl" = 1 ]; then ok "values: 4 keys render"; else bad "values: not set (or different)"; fi
@@ -421,13 +474,24 @@ EOT
 step_login() {
   [ "$CB_LIVE" = 1 ] || die "the callback is not registered on Cognito client $CLIENT_ID yet.
      Run: bash $(basename "$0") callback --apply, then terraform plan / apply in $TF_DIR"
+  hdr "admin-api version (needs $MIN_API_TAG or later)"
+  show_api_version
+  case "$(api_tag_state "$API_VALUES")" in
+    old) [ "$APPLY" = 1 ] && die "admin-api in $V is older than $MIN_API_TAG.
+     Sign-in would work but every admin API call would fail with 500. First:
+     $API_BUMP_HINT" ;;
+    ok)  if [ "$APPLY" = 1 ] && ! ecr_has_image "$API_VALUES"; then
+           die "${API_VALUES##*/} is not in ECR yet — build it first:
+     bash deployment/scripts/rebuild-image.sh admin-api $DEPLOY_ENV   (from the repo root)"
+         fi ;;
+  esac
   local -a t=()
   local k
   for k in "${LOGIN_KEYS[@]}"; do t+=(adminUi "$k" "${WANT[$k]}"); done
   apply_values_edit "Writing 4 OIDC_* keys under adminUi.env in $V (backup kept in $SNAP_DIR)." "${t[@]}" || { echo; exit 0; }
   hdr "Next"
   cat <<EOT
-  cd $ROOT && ./deployment/scripts/install-eks.sh $DEPLOY_ENV   # admin-ui rolls
+  cd $ROOT && ./deployment/scripts/install-eks.sh $DEPLOY_ENV   # admin-ui rolls (admin-api + scheduler too if bumped)
   then: bash $(basename "$0") verify   → browser: https://$UI_HOST
   dev-login stays on until you run dev-login-off — it is the way back in.
 
@@ -438,6 +502,8 @@ step_devoff() {
   [ "$LIVE_LOGIN" = 1 ] || die "the Cognito login is not live on $DEP_UI yet.
      Turning dev-login off now would lock everyone out of the admin console.
      First: bash $(basename "$0") login --apply → install-eks.sh $DEPLOY_ENV → verify → browser login"
+  [ "$(api_tag_state "$API_LIVE")" != old ] || die "the running admin-api (${API_LIVE##*/}) is older than $MIN_API_TAG — the console
+     cannot load data after a Cognito sign-in. Deploy the new admin-api first ($API_BUMP_HINT, install-eks.sh)."
   hdr "Admins in the DB"
   check_admin_db
   [ "$DB_ADMINS_OK" -gt 0 ] || die "no active admin in auth.users — a Cognito login would end in 403. Fix that first."
@@ -548,8 +614,9 @@ else:
         say("bad", f"/api/auth/dev-login → {dv.get('status')} — expected 503 with dev-login off")
 PY
 )
+  [ "$(api_tag_state "$API_LIVE")" = old ] && bad "running admin-api ${API_LIVE##*/} < $MIN_API_TAG — sign-in works but the console's data calls will fail (500)"
   echo
-  note "The last check is a person: open https://$UI_HOST in a private window → Cognito → dashboard."
+  note "The last check is a person: open https://$UI_HOST in a private window → Cognito → dashboard with figures."
   note "An internal admin ALB (US-07/US-08) is reachable only from a VPN-connected PC."
   echo
 }

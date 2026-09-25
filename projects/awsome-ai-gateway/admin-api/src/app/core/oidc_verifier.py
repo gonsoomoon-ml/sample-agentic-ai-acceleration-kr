@@ -90,6 +90,11 @@ class OIDCVerifier:
         # event loop 자체가 멈추고, JWKS 응답을 읽을 수도 없어 복구 불가.
         self._lock = asyncio.Lock()
 
+    @property
+    def issuer_url(self) -> str:
+        """토큰의 ``iss`` 와 비교하는 issuer (끝 슬래시 제거)."""
+        return self._issuer_url
+
     # ------------------------------------------------------------------
     # Discovery + JWKS
     # ------------------------------------------------------------------
