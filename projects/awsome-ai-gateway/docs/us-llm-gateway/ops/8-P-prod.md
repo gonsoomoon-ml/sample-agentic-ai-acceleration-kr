@@ -654,7 +654,7 @@ admin-ui·admin-api 는 이 시점엔 **접속 불가가 정상**(internal) — 
 > **한 줄**: [§3-8](../install-guide.md#3-8-cognito-온보딩--스모크)(관리자 1명) → [§4](../install-guide.md#4-claude-code--bedrock-runtime--us-geo-프로파일-배선-us-핵심)
 > (모델 alias·라우팅 SQL) → [§5](../install-guide.md#5-서버측-web-search-us-east-1)(web search) → US-02 `01`(Cowork 라우팅)을 prod 계정에서
 > 반복한다. DB 는 새로 시드됐으므로 §4 를 **다시** 해야 한다. **admin-ui 가 필요한 것**(팀 예산 · 앱별 웹서치 토글 확인)은 admin 이
-> internal 이라 **2-9 VPN 이후 3 절**에서 한다.
+> internal 이라 **2-9 VPN 이후 3 절**에서 한다. 그 전에 관리 화면 로그인을 [8-L](8-L-admin-login.md)(US-12)로 켠다 — prod values 는 개발용 로그인이 꺼진 채로 나와, 켜기 전에는 관리 화면에 들어갈 수 없다.
 
 **① Cognito 관리자 1명** (§3-8) — 이메일은 2-6 ① 에서 values 에 넣은 것을 자동으로 읽는다. **직접 정해서 넣는 값 2개**:
 
