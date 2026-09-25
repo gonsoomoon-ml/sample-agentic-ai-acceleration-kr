@@ -70,17 +70,10 @@ git reset --hard origin/us/deploy-fixes && cp ~/values.bak $V
 cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
 ```
 
-**② 상태 점검** — 라이브 시스템(DB 행·엔드포인트·이미지·ALB)을 조회해 판정, 구성 변경 없음, 1~2분(일회용 psql 파드). 근거 원문은 `--verbose`.
+**② 상태 점검** — 라이브 시스템(DB 행·엔드포인트·이미지·ALB)을 조회해 판정, 구성 변경 없음, 1~2분(일회용 psql 파드). `US-01` 부터 모든 항목이 한 줄씩 나온다 — `OK` 적용 · `!!`/`XX` 일부·미적용 · `--` 선택이거나 다른 곳에서 확인(판정하지 않는 항목은 어디서 보는지 적어 준다). 근거 원문은 `--verbose`.
 
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && bash status.sh
-```
-```
-   OK   US-01  최초 설치 (기준선)
-   !!   US-02  Cowork 연결 + Opus 5 등록 — 일부 적용   routing OK · opus-5 OK · CloudFront 없음
-   XX   US-04  Bedrock·STS VPC Endpoint — 미적용 (필수)
-   --   US-06  ALB HTTPS (커스텀 도메인) — 미적용 (선택 · 운영이면 권장)
- 다음 작업: bash 03-create-cloudfront.sh … / (수동) ops/8-N-vpc-endpoint.md …
 ```
 
 **③ 미적용 항목만** 위 §2 표의 문서로. 상세 절차·함정·롤백은 [ops/8-U-update.md](ops/8-U-update.md). **`US-10`·`US-11`**(upstream 대량 동기화 — 코드·스키마·단가 일괄)은 [ops/8-D-upstream-sync.md](ops/8-D-upstream-sync.md) 한 절차로 함께 적용한다 — prod 는 같은 문서 ⑩.

@@ -72,17 +72,10 @@ git reset --hard origin/us/deploy-fixes && cp ~/values.bak $V
 cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
 ```
 
-**② Check the state** — queries the live system (DB rows · endpoints · image · ALB), changes nothing, 1–2 min (throwaway psql pod). Output is Korean; markers `OK` applied · `!!` partial · `XX` missing · `--` optional. Raw evidence: `--verbose`.
+**② Check the state** — queries the live system (DB rows · endpoints · image · ALB), changes nothing, 1–2 min (throwaway psql pod). Every item from `US-01` gets its own line (output is Korean) — `OK` applied · `!!`/`XX` partial·missing · `--` optional or checked elsewhere (items it does not judge say where to look). Raw evidence: `--verbose`.
 
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && bash status.sh
-```
-```
-   OK   US-01  최초 설치 (기준선)
-   !!   US-02  Cowork 연결 + Opus 5 등록 — 일부 적용   routing OK · opus-5 OK · CloudFront 없음
-   XX   US-04  Bedrock·STS VPC Endpoint — 미적용 (필수)
-   --   US-06  ALB HTTPS (커스텀 도메인) — 미적용 (선택 · 운영이면 권장)
- 다음 작업: bash 03-create-cloudfront.sh … / (수동) ops/8-N-vpc-endpoint.md …
 ```
 
 **③ Only the missing rows**, via the doc column of the table in §2. Detailed procedure · pitfalls · rollback: [ops/8-U-update.md](ops/8-U-update.md). **`US-10`·`US-11`** (bulk upstream sync — code · schema · prices together) are applied in one procedure, [ops/8-D-upstream-sync.md](ops/8-D-upstream-sync.md) — prod: section ⑩ of the same doc.
