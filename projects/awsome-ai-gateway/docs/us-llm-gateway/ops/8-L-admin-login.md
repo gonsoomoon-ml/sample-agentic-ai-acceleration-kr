@@ -9,6 +9,8 @@
 - **Cognito 단독** — 사용자 계정이 Cognito 사용자 풀에 있다. 이 문서를 위에서 아래로 그대로 따라 한다.
 - **사내 IdP(ADFS 등) + Cognito** — 사용자는 사내 IdP 로 로그인하고 그 뒤에 Cognito 가 있다. 같은 절차를 따르되 [사내 IdP 연동 배포](#사내-idp-연동-배포-adfs-등)를 먼저 읽는다.
 
+**함께 보기** — [8-Y 직원 온보딩](8-Y-onboarding.md): Cognito 사용자 추가와 그룹 배정(`ClaudeAdmin` 부여 · 관리자 팀 분리 · 새 팀 추가) · [8-S 보안 하드닝](8-S-hardening.md): admin 콘솔을 네트워크로 좁히기 · [8-Z 토큰 TTL](8-Z-token-ttl.md): 로그인·VK 수명.
+
 ## 언제
 
 - admin 콘솔을 IP·VPN 이 아니라 **계정**으로 막을 때. 네트워크로만 막는 방법은 [8-S](8-S-hardening.md) — admin 이 internal 인 배포(prod)는 둘이 겹쳐 이중 보호가 된다.
