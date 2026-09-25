@@ -231,8 +231,8 @@ JIT 형(링크 없이 federated 사용자 생성)이면 groups 가 IdP 클레임
 ```
 
 - **팀 그룹** — 접두사 `Claude_`(`Claude_팀` · `Claude_부서_팀`, values `adminApi.oidc.groupPrefix`). 팀, 곧 예산·한도를 정한다. VK 발급에 필수이고, DB 에 없는 팀이면 예산 $0 으로 자동 생성된다. 팀 그룹이 하나도 없으면 발급이 거부된다(`adminApi.oidc.rejectUnmatchedGroups` 기본 `true`).
-- **관리자 그룹** — `ClaudeAdmin`(values `adminApi.adminBootstrap.groups`). 관리 화면 권한만 정한다. 밑줄이 없어 팀 이름 규칙에 걸리지 않으므로 팀 판정에서는 무시된다.
-- **관리자는 둘 다 필요하다** — 예: `Claude_platform`(팀) + `ClaudeAdmin`(권한).
+- **관리자 그룹** — `ClaudeAdmin`(values `adminApi.adminBootstrap.groups`). 관리 화면 권한만 정한다. 밑줄이 없어 팀 이름 규칙에 걸리지 않으므로 팀 판정에서는 무시된다. 반대로 이름에 밑줄을 넣으면(`Claude_Admin`) 팀으로 해석돼 권한을 주지 않는다.
+- **관리자는 둘 다 필요하다** — 예: `Claude_platform`(팀) + `ClaudeAdmin`(권한). 관리자 사용량·예산을 따로 떼려면 관리자 팀 그룹을 만들어 `ClaudeAdmin` 과 함께 넣는다 — 절차는 [8-Y](8-Y-onboarding.md).
 
 **왜 관리자 그룹 하나가 성패인가**
 
