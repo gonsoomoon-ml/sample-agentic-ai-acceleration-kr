@@ -50,11 +50,25 @@
 (5) 토큰 교환은 파드가 서버끼리 · (9) DB 사용자는 gateway-cli login 이 만든다
 ```
 
+- `code` = Cognito 가 로그인 성공 뒤 콜백 주소에 붙여 주는 **일회용 인가 코드**다. 그 자체로는 권한이 없고, 파드가 PKCE verifier 와 함께 제시해 `id_token` 으로 바꾼다.
+
 ## 절차
 
-⓪ 점검 → ① 콜백 → ② 로그인 켜기 → ③ 확인 → ④ dev-login 끄기. **dev-login 은 ③ 까지 켜 둔다** — Cognito 로그인이 안 되면 그 길로 다시 들어간다. 명령은 dev·prod 가 같다(환경 = `config.env` 의 `DEPLOY_ENV`, 값 = terraform output · Ingress). 아래는 dev 기준 — prod 는 [아래](#prod-에-적용).
+⓪ 최신화·점검 → ① 콜백 → ② 로그인 켜기 → ③ 확인 → ④ dev-login 끄기. **dev-login 은 ③ 까지 켜 둔다** — Cognito 로그인이 안 되면 그 길로 다시 들어간다. 명령은 dev·prod 가 같다(환경 = `config.env` 의 `DEPLOY_ENV`, 값 = terraform output · Ingress). 아래는 dev 기준 — prod 는 [아래](#prod-에-적용).
 
-### ⓪ 점검
+### ⓪ 저장소 최신화와 점검
+
+`19-admin-login.sh` 가 들어 있는 코드여야 한다. 리베이스 브랜치라 `git pull` 이 아니고, values 는 이 EC2 유일본이라 백업·복원이 핵심이다 — `values restored OK` 를 확인한다.
+
+▶ **실행** · 배포 EC2
+
+```bash
+cd ~/awsome-ai-gateway && git remote -v
+V=deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cp $V ~/values.bak && git fetch origin
+git reset --hard origin/us/deploy-fixes && cp ~/values.bak $V
+cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
+```
 
 ▶ **실행** · 배포 EC2
 
@@ -158,7 +172,7 @@ bash status.sh
 
 dev 에서 ④ 까지 끝낸 뒤, **prod 계정의 배포 EC2** 에서 같은 순서(⓪→④)로 한다. 명령의 `dev` 는 `prod` 로(`llm-gateway-prod` · `install-eks.sh prod`). 다른 점 3가지:
 
-- **저장소부터 최신화** — `19` 가 들어 있는 코드여야 한다. [README §3 ①](../README.md#3-적용하기-배포-ec2-에서) 대로(values 백업·복원 확인).
+- **저장소 최신화는 prod values 로** — ⓪ 의 최신화 블록에서 `V` 를 `values-eks-fargate-prod.yaml` 로 바꿔 실행한다(`values restored OK` 확인).
 - **사람 확인은 VPN PC 에서** — prod admin 은 internal 이라 배포 EC2 에서도 브라우저로 닿지 않는다. `verify` 는 클러스터 안에서 도니 그대로 되지만, ③ 의 브라우저 확인은 생략하지 말고 Client VPN 에 연결된 PC 에서 한다. Cognito 로그인 화면은 인터넷으로, admin 주소는 VPN 으로 간다(split tunnel).
 - **적용 시각** — ② ④ 모두 관리 화면(④ 는 VK 발급 API 도)의 파드가 교체된다. 추론은 그대로지만 사용자가 적은 시간에.
 
