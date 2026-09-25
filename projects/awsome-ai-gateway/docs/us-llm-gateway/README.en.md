@@ -36,17 +36,12 @@ What sets this edition apart: a region outside Korea · direct to Bedrock (not M
 | Claude Code only (Opus 5 · Opus 4.8 · Sonnet 5 · Haiku 4.5) | `US-01` | `US-08` (the same install as `US-01`, in the prod account per 8-P — https · admin internal · VPN included) |
 | Claude Code + **Cowork** | `US-01` + one https entry (`US-06` with a domain, otherwise `03` CloudFront from `US-02`) | `US-08` (same; https included, so no entry choice) |
 
-- **Production (`US-08`)** — the same install as `US-01` with https (US-06) · admin internal (US-07) · VPN · prod sizing added from the start.
-- **Already included in every new install (POC and production) — nothing to apply separately**:
-  - **`US-03·04·05`** — admin UI KO/EN toggle · Bedrock VPC endpoints · EKS 1.34 are part of the install steps.
-  - **`US-10`** — the code you install is US-10: latest DB schema · stability fixes · web-search cost caps and improvements work by default.
-  - **`US-11`** — install-guide §4-2 (C) seeds the prices from `update-scripts/pricing.tsv` (default = `us.` Standard tier). **If you are billed at another region or tier**, edit that file to your billed prices before §4-2 (how: see the note in install-guide §4-2 (C)).
-- **Done separately after installation**:
-  - **`US-12` (admin screen Cognito sign-in)** — not part of the install procedure. Once installation is done, turn it on with [ops/8-L-admin-login.md](ops/8-L-admin-login.md) (needs an https address = `US-06`). The code requirement (admin-api `1.0.69-idpjwks`) is already met when you install from the current code. **Effectively required for production (`US-08`)** — prod values ship with the development login off, so before US-12 there is no way into the admin screen.
-- **POC (`US-01`) only:**
-  - **`US-06` (ALB HTTPS)** — Cowork requires https: CloudFront (`03`) without a domain, US-06 with one — never both. If a domain arrives later, follow the [switch runbook](ops/8-H-alb-https.md).
-  - **`US-07` (admin ALBs internal)** — the final posture for production with a site-to-site VPN; usually not needed in a POC. To apply it, follow the [switch runbook](ops/8-I-admin-internal.md) — internal without a VPN blocks VK issuance. Production assumes the VPN ([8-P §0](ops/8-P-prod.md)).
-  - **`US-02` is for existing deployments only** — a new install already gets the same content from §4-2 (Opus 5) and §4-3 (Cowork routing). The only piece left for a new install is `03` CloudFront, when Cowork is used without a domain.
+**How each `US-NN` is handled in a new install** — details in [install-overview.md §1](install-overview.md#1-신규-설치와-us-nn) (Korean)
+
+- **Already included (nothing to apply)**: `US-03`·`04`·`05`·`10`·`11`·`13`
+- **Done separately after installation**: `US-12` (admin screen Cognito sign-in) — effectively required for production (`US-08`)
+- **Pick one of two**: set up employee PCs by hand ↔ installer file (`US-14` Claude Code · `US-09` Cowork)
+- **Optional for a POC**: `US-06` (https) · `US-07` (admin internal) · `US-02` is for existing deployments only
 
 ---
 
