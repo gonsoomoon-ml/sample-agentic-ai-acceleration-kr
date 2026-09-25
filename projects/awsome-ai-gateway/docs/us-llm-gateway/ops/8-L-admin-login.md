@@ -99,6 +99,8 @@ bash 19-admin-login.sh
 
 ①~④ 상태 · admin-api 버전 · DB 의 관리자 등록 여부를 보여 주고 `Next` 에 다음 명령을 적는다(약 1.5분 — DB 조회용 임시 파드). 관리자 줄이 `OK … in auth.users, active` 가 아니면 그 사람이 `gateway-cli login` 을 한 번 한 뒤 다시 돌린다. 관리자 확인은 Cognito 그룹 멤버로 먼저 보고, 멤버가 없으면 DB 의 활성 ADMIN 사용자로 판정한다.
 
+**중간부터 이어서 할 때** — 이미 끝낸 단계는 `OK` 로 나온다. `Next` 가 가리키는 단계부터 이어서 한다(예: ① 을 끝냈으면 ② 부터, admin-api 버전이 `XX` 면 ② 의 admin-api 갱신부터).
+
 ### ① Cognito 에 콜백 주소 등록
 
 ▶ **실행** · 배포 EC2 — 먼저 `--apply` 없이 돌려 붙일 내용을 본다
@@ -145,7 +147,7 @@ bash 13-bump-image-tags.sh dev --apply
 cd ~/awsome-ai-gateway && bash deployment/scripts/rebuild-image.sh admin-api dev
 ```
 
-`13` 은 admin-api·scheduler(같은 이미지) 태그만 바꿔야 한다 — 표에 다른 서비스가 바뀜으로 나오면 멈춘다. 빌드는 수 분.
+`13` 은 쓰기 전에 서비스별 표를 보여 주고 `yes` 를 묻는다. **admin-api 만** `→ 1.0.69-idpjwks` 로 바뀌는지 본다(scheduler 는 같은 이미지라 따라간다). 다른 서비스가 바뀜으로 나오면 `yes` 하지 않는다. 빌드는 수 분.
 
 ▶ **실행** · 배포 EC2
 
@@ -155,7 +157,7 @@ bash 19-admin-login.sh login --apply
 cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 ```
 
-`19` 가 values 의 `adminUi.env` 에 4줄(`OIDC_CLIENT_ID` · `OIDC_AUTHORIZE_URL` · `OIDC_TOKEN_URL` · `OIDC_REDIRECT_URI`)을 넣고, helm 렌더로 확인한 뒤 쓴다(백업 = `snapshots/`). 설치 스크립트는 admin-ui 파드(admin-api 를 올렸다면 admin-api·scheduler 도)를 교체한다 — 추론은 무중단. `19` 는 다음 배포에 나갈 admin-api 태그가 `1.0.69-idpjwks` 미만이거나 그 이미지가 ECR 에 없으면 `--apply` 를 거부한다.
+`19` 가 values 의 `adminUi.env` 에 4줄(`OIDC_CLIENT_ID` · `OIDC_AUTHORIZE_URL` · `OIDC_TOKEN_URL` · `OIDC_REDIRECT_URI`)을 넣고, helm 렌더로 확인한 뒤 쓴다(백업 = `snapshots/`). 설치 스크립트는 admin-ui 파드(admin-api 를 올렸다면 admin-api·scheduler 도)를 교체한다 — 추론은 무중단. `19` 는 다음 배포에 나갈 admin-api 태그가 `1.0.69-idpjwks` 미만이거나 그 이미지가 ECR 에 없으면 `--apply` 를 거부한다. ② 를 이미 한 번 했다면(4줄이 이미 있음) `19` 는 `nothing to write` 로 끝난다 — 정상이니 이어서 설치 스크립트를 돌린다.
 
 > ⚠️ 이 배포부터 admin 주소(`/`)는 Cognito 로 간다. dev-login 은 아직 켜져 있지만 **주소를 직접 쳐야** 열린다: `https://<admin-ui host>/api/auth/dev-login` — ③ 에서 막히면 이 길로 들어간다.
 
