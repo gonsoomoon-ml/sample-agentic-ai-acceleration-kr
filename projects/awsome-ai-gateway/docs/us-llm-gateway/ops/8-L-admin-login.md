@@ -70,6 +70,17 @@ git reset --hard origin/us/deploy-fixes && cp ~/values.bak $V
 cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
 ```
 
+> ⚠️ `reset --hard` 는 저장소판 `.terraform.lock.hcl` 도 되돌린다. 그 lock 은 OpenTofu 레지스트리 주소라 EC2 의 terraform 이 받아 둔 플러그인과 맞지 않아, 바로 아래 점검이 `ABORTED: terraform output failed …` 로 멈춘다(2026-09-25 dev 실측). 그때만 아래를 한 번 실행한다 — 플러그인만 다시 받고 **state 는 건드리지 않는다**(`terraform apply` 금지). 이후 lock 파일이 `git status` 에 `M` 으로 남는 것은 정상이고 커밋하지 않는다.
+
+▶ **실행 (해당할 때만)** · 배포 EC2 — prod 는 `llm-gateway-prod`
+
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
+terraform init
+```
+
+`Terraform has been successfully initialized!` 를 확인하고 점검으로 돌아온다.
+
 ▶ **실행** · 배포 EC2
 
 ```bash
