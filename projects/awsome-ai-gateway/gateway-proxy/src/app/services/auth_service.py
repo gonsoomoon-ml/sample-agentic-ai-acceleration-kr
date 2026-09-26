@@ -290,6 +290,7 @@ def resolve_auth_strategy(path: str) -> AuthStrategy | None:
         "/v1/chat/completions",
         "/v1/completions",
         "/v1/responses",  # Codex (OpenAI Responses API) — same VK/DUAL inference path
+        "/v1/policy",  # policy-helper fetches Claude Code policy with the user's VK
     ):
         return _DUAL_STRATEGY
     # /v1/models/{id} 같은 단일 모델 상세 엔드포인트 — Claude Code 가 세션 시작 시 호출.

@@ -18,3 +18,13 @@ def test_gateway_app_exposes_get_policy():
 
 def test_policy_route_requires_a_vk():
     assert "/v1/policy" not in EXEMPT_PATHS
+
+
+def test_policy_route_accepts_a_vk_like_the_other_client_paths():
+    # policy-helper authenticates with the user's VK. Paths missing from the
+    # explicit list fall through to JWT-only and reject every VK with 401
+    # (caught on US dev: the helper got 401 while the same VK served /v1/messages).
+    from app.services.auth_service import _DUAL_STRATEGY, resolve_auth_strategy
+
+    assert resolve_auth_strategy("/v1/policy") is _DUAL_STRATEGY
+    assert resolve_auth_strategy("/v1/policy") is resolve_auth_strategy("/v1/models")
