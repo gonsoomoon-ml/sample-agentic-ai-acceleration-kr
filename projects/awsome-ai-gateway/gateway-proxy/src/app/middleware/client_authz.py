@@ -9,6 +9,11 @@ from app.services.router_service import check_client_scope
 
 logger = structlog.get_logger(__name__)
 
+# policy-helper fetches Claude Code policy with its own User-Agent, so the
+# identified client is not "claude-code"; the endpoint answers for claude-code
+# itself and is not model usage, so the per-user app whitelist does not apply.
+CLIENT_AUTHZ_EXEMPT_PATHS = frozenset({"/v1/policy"})
+
 
 class ClientAuthorizationMiddleware:
     """Deny (403) when the identified client is not in the user's allowed_clients.
@@ -27,6 +32,9 @@ class ClientAuthorizationMiddleware:
             await self.app(scope, receive, send)
             return
 
+        if scope.get("path", "") in CLIENT_AUTHZ_EXEMPT_PATHS:
+            await self.app(scope, receive, send)
+            return
         state = scope.setdefault("state", {})
         auth_context = state.get("auth_context")
         client = state.get("client")
