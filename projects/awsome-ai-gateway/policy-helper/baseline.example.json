@@ -1,0 +1,28 @@
+{
+  "apiKeyHelper": "\"C:\\Program Files\\GatewayCLI\\api-key-helper.exe\"",
+  "statusLine": {
+    "type": "command",
+    "command": "\"C:\\Program Files\\GatewayCLI\\statusline.exe\""
+  },
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://gateway.example.com",
+    "GATEWAY_CLI_GATEWAY_URL": "https://admin-api.example.com",
+    "ENABLE_TOOL_SEARCH": "true",
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_TRACES_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://gateway.example.com:80",
+    "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://gateway.example.com:80/v1/logs",
+    "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "http://gateway.example.com:80/v1/metrics",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://gateway.example.com:80/v1/traces",
+    "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+    "OTEL_LOG_USER_PROMPTS": "0",
+    "OTEL_LOG_TOOL_DETAILS": "0",
+    "OTEL_LOG_TOOL_CONTENT": "0",
+    "OTEL_METRICS_INCLUDE_VERSION": "true",
+    "OTEL_METRICS_INCLUDE_ENTRYPOINT": "true"
+  }
+}

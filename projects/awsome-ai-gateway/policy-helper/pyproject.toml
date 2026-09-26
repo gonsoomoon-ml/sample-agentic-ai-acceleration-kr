@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "policy-helper"
+version = "0.1.0"
+description = "Claude Code policyHelper for the LLM Gateway (PoC)"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "pyinstaller>=6.11",
+]
+
+[project.scripts]
+policy-helper = "policy_helper.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/policy_helper"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

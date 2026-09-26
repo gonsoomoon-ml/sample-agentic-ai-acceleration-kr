@@ -1,0 +1,6 @@
+# site-specific baseline (gateway URLs etc.) — build input only, never commit
+baseline.json
+.build-venv/
+build/
+dist/
+*.spec
