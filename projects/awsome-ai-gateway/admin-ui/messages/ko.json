@@ -155,7 +155,11 @@
       "10": "10",
       "11": "11",
       "12": "12"
-    }
+    },
+    "teamBudgetApplied": "팀 예산 적용",
+    "costSeriesTotal": "합계",
+    "costSeriesOther": "기타",
+    "callCount": "호출 {count, number}회"
   },
   "keys": {
     "title": "API Keys 관리",
@@ -294,7 +298,10 @@
     "colUsage": "사용량",
     "noMembers": "팀원이 없습니다.",
     "unallocated": "미배분 잔액",
-    "allocationExceeds": "배분 금액의 합계(${allocated})가 팀 예산(${budget})을 초과합니다."
+    "allocationExceeds": "배분 금액의 합계(${allocated})가 팀 예산(${budget})을 초과합니다.",
+    "currentUsage": "현재 사용",
+    "existingLimit": "기존 한도",
+    "teamBudgetTotal": "팀 총 예산 (USD)"
   },
   "models": {
     "title": "모델 관리",
@@ -443,7 +450,11 @@
       "GLOBAL": "전역",
       "TEAM": "팀",
       "USER": "사용자"
-    }
+    },
+    "usageTrend": "사용량 트렌드",
+    "usageTrendDesc": "버킷 평균을 분당·시간당 비율로 환산 — 설정 한도와 같은 단위",
+    "trendEmpty": "기간 내 사용 기록이 없습니다",
+    "trendLimit": "설정 한도"
   },
   "users": {
     "title": "사용자/팀 관리",
@@ -485,14 +496,22 @@
       "description": "전부 선택(또는 전체 해제) = 모든 앱 허용. 일부만 선택하면 화이트리스트로 제한됩니다.",
       "groupLabel": "앱 접근 권한 선택",
       "all": "전체",
-      "loading": "로딩 중…"
+      "loading": "로딩 중…",
+      "unrestricted": "제한 없음",
+      "restricted": "목록: {count}개 앱",
+      "inheritTeam": "현재 팀 정책을 상속 중입니다 — 변경하면 이 사용자만의 개별 설정으로 저장됩니다.",
+      "inheritOrg": "현재 조직 정책을 상속 중입니다 — 변경하면 이 사용자만의 개별 설정으로 저장됩니다."
     },
     "budgetInput": {
       "claudeCode": "Claude Code 예산 (USD/월)",
       "cowork": "Cowork 예산 (USD/월)",
       "generic": "{app} 예산 (USD/월)",
       "placeholder": "미설정",
-      "invalid": "유효하지 않은 예산 값입니다 ({client}). 0 이상 숫자를 입력하세요."
+      "invalid": "유효하지 않은 예산 값입니다 ({client}). 0 이상 숫자를 입력하세요.",
+      "title": "앱별 예산 (USD/월)",
+      "editInBudgets": "예산 관리에서 설정 →",
+      "teamTotal": "팀 총예산",
+      "userTotal": "사용자 총예산"
     },
     "userModels": {
       "title": "사용자별 허용 모델 (팀 정책 override)",
@@ -541,6 +560,72 @@
       "userCountShort": "{count}명",
       "unassigned": "미배정",
       "hint": "↑↓ 이동 · Enter 선택 · Esc 닫기"
+    },
+    "leaderAction": {
+      "currentLeaders": "현재 팀 리더",
+      "noLeaders": "지정된 팀 리더가 없습니다.",
+      "selectPlaceholder": "팀원 선택…",
+      "assignButton": "팀 리더로 지정",
+      "unassignButton": "해제",
+      "assignSuccess": "팀 리더로 지정되었습니다.",
+      "unassignSuccess": "팀 리더 지정이 해제되었습니다.",
+      "removeModalTitle": "팀 리더 해제",
+      "removeModalBody": "{name} 님의 팀 리더 지정을 해제할까요?",
+      "removeModalNote": "role 이 개발자로 되돌아갑니다(관리자 그룹 소속이면 다음 로그인 때 자동 복원). 팀에 다른 리더가 있으면 그대로 유지됩니다.",
+      "noMembers": "지정 가능한 팀원이 없습니다."
+    },
+    "unsavedChanges": "저장되지 않은 변경 사항",
+    "effectivePolicy": {
+      "title": "유효 정책",
+      "hint": "모든 정책 축을 합성한 실제 판정 결과입니다. ✗에 마우스를 올리면 어느 축에서 막혔는지 보입니다.",
+      "loading": "정책 불러오는 중…",
+      "loadFailed": "정책을 불러오지 못했습니다",
+      "app": "앱",
+      "model": "모델",
+      "webSearch": "웹서치",
+      "allowed": "허용",
+      "denied": "거부",
+      "axis": {
+        "user_app": "앱 접근 권한 없음",
+        "user_model": "허용 모델 목록 밖",
+        "model_app": "이 모델은 이 앱에서 사용 불가"
+      },
+      "modelsSource": {
+        "label": "모델 정책 출처",
+        "user": "사용자 개별 설정",
+        "team": "팀 정책",
+        "none": "제한 없음 (전체 허용)"
+      },
+      "budgets": "예산",
+      "used": "사용",
+      "rateLimits": "Rate Limit",
+      "downgrade": "자동 다운그레이드",
+      "downgradeNone": "설정된 규칙 없음",
+      "readonly": "읽기 전용",
+      "scopeTeam": "팀",
+      "scopeUser": "사용자",
+      "deniedTitle": "거부 사유",
+      "clientsSource": {
+        "label": "앱 정책 출처",
+        "user": "사용자 개별 설정",
+        "team": "팀 정책",
+        "organization": "조직 정책",
+        "none": "제한 없음 (전체 허용)"
+      }
+    },
+    "userModelsInheritTeam": "개인 설정 없음 — 체크 상태는 팀 정책 상속분입니다. 변경하면 이 사용자만의 정책으로 저장됩니다.",
+    "userModelsInheritNone": "개인 설정 없음 — 모든 모델 허용 상태입니다(팀 정책도 없음).",
+    "scopeAppAccess": {
+      "title": "앱 접근 정책",
+      "descriptionTeam": "개별 설정이 없는 팀 멤버에게 적용됩니다. 전부 선택 = 팀 정책 없음(조직 정책을 따름).",
+      "descriptionOrg": "팀/개별 설정이 없는 전체 사용자에게 적용되는 기본값입니다. 전부 선택 = 조직 정책 없음(제한 없음).",
+      "groupLabel": "허용 앱 선택",
+      "unrestricted": "제한 없음",
+      "restricted": "목록: {count}개 앱",
+      "loading": "로딩 중…",
+      "apply": "적용",
+      "saveSuccess": "앱 접근 정책이 저장되었습니다",
+      "loadError": "앱 접근 정책을 불러오지 못했습니다"
     }
   },
   "analytics": {
@@ -574,7 +659,34 @@
       "model": "모델별",
       "team": "팀별",
       "user": "사용자별"
-    }
+    },
+    "refresh": "새로고침",
+    "refreshLabel": "페이지 새로고침",
+    "thisMonth": "이번 달",
+    "lastMonth": "지난 달",
+    "selectPeriod": "기간 선택",
+    "customInput": "직접 입력",
+    "loadFailed": "분석 데이터를 불러오지 못했습니다.",
+    "noData": "데이터가 없습니다.",
+    "totalRequests": "총 요청 수",
+    "totalRequestsDescription": "기간 내 총 API 요청 수",
+    "totalTokens": "총 토큰 수",
+    "totalTokensDescription": "기간 내 소비된 총 토큰 수",
+    "tokenAnalysis": "토큰 분석",
+    "tokenInput": "입력",
+    "tokenOutput": "출력",
+    "tokenCacheRead": "캐시 읽기",
+    "tokenCacheWrite": "캐시 쓰기",
+    "tokenTotal": "합계 {total}",
+    "totalCostDescription": "기간 내 총 USD 비용",
+    "averageCostPerUser": "사용자당 평균 비용",
+    "activeUsersDescription": "활성 사용자 {count}명 기준",
+    "costByUser": "사용자별 비용 분석",
+    "costUsd": "비용 (USD)",
+    "costSeriesTotal": "합계",
+    "costSeriesOther": "기타",
+    "item": "항목",
+    "date": "날짜"
   },
   "cli": {
     "title": "CLI 다운로드",
@@ -584,7 +696,39 @@
     "fileSize": "파일 크기",
     "checksum": "SHA256 체크섬",
     "download": "다운로드",
-    "copyChecksum": "체크섬 복사"
+    "copyChecksum": "체크섬 복사",
+    "subtitle": "AWSome AI Gateway CLI를 설치하고 Cognito(OIDC) 로그인으로 Claude Code를 사내 게이트웨이에 연결합니다. 최초 로그인 시 사용자·팀이 자동으로 프로비저닝됩니다.",
+    "prereqTitle": "사전 준비",
+    "prereqDesc": "사내 관리자에게 아래 3개 값을 받아 쉘 환경에 export 해두세요. Cognito User Pool에서 발급되는 OIDC 설정값입니다.",
+    "prereqEnv": "export OIDC_ISSUER_URL=\"https://cognito-idp.ap-south-1.amazonaws.com/'<POOL_ID>'\"\nexport OIDC_CLIENT_ID=\"'<COGNITO_APP_CLIENT_ID>'\"\nexport OIDC_AUDIENCE=\"'<COGNITO_APP_CLIENT_ID>'\"\nexport GATEWAY_URL=\"http://'<gateway-host>':8000\"\nexport GATEWAY_ADMIN_URL=\"http://'<admin-api-host>':8080\"",
+    "installTitle": "설치 및 활성화",
+    "installLinuxLabel": "Linux / macOS",
+    "installWindowsLabel": "Windows (PowerShell 관리자 권한)",
+    "installLinux": "# 1. 다운로드 후 압축 해제\ntar -xzf gateway-cli-*.tar.gz\ncd gateway-cli-*/\n\n# 2. 설치 (sudo 필요 — managed-settings.d 쓰기)\n./install.sh\n\n# 3. Cognito 로그인 (브라우저 PKCE 플로우 자동 실행)\ngateway-cli login\n#   → 브라우저가 열리고 Cognito 로그인 창 표시\n#   → 인증 성공 시 토큰이 ~/.gateway-cli/oidc-tokens.json (0600) 에 저장\n#   → 최초 로그인이면 admin-api가 자동으로 사용자·팀 프로비저닝\n\n# 4. 게이트웨이 활성화\ngateway-cli setup --gateway-url \"$GATEWAY_URL\"\n\n# 5. 상태 확인\ngateway-cli status\n\n# 6. 로그아웃 / 비활성화\ngateway-cli logout         # OIDC 토큰 + VK 캐시 삭제\ngateway-cli disable        # managed-settings 제거 (sudo)",
+    "installWindows": "# 1. ZIP 압축 해제 후 폴더 진입\n\n# 2. 설치\n.\\install.ps1\n\n# 3. 새 PowerShell 세션에서 Cognito 로그인\ngateway-cli login\n\n# 4. 게이트웨이 활성화\ngateway-cli setup --gateway-url $env:GATEWAY_URL\n\n# 5. 상태 확인\ngateway-cli status\n\n# 6. 로그아웃 / 비활성화\ngateway-cli logout\ngateway-cli disable",
+    "cmdRefTitle": "CLI 커맨드 레퍼런스",
+    "cmdColumn": "커맨드",
+    "descColumn": "설명",
+    "cmdLogin": "Cognito(OIDC) PKCE 플로우로 브라우저 로그인. 토큰은 <code>~/.gateway-cli/oidc-tokens.json</code> (0600).",
+    "cmdLoginOpts": "옵션: --issuer-url, --client-id, --audience, --redirect-port (기본 8090), --timeout (기본 300s)",
+    "cmdLogout": "OIDC 토큰 + Virtual Key 캐시 삭제.",
+    "cmdSetup": "Claude Code의 <code>managed-settings.d</code>에 게이트웨이 설정 기록. sudo 필요.",
+    "cmdSetupOpts": "옵션: --gateway-url, --admin-api-url (기본은 gateway-url 호스트의 :8080), --api-key-helper, --otel-endpoint",
+    "cmdStatus": "현재 managed-settings 상태 확인 (ON/OFF + 경로 + 설정값).",
+    "cmdDisable": "managed-settings 파일 제거 (게이트웨이 비활성화). sudo 필요.",
+    "cmdVersion": "설치된 CLI 버전 출력.",
+    "autoProvTitle": "자동 프로비저닝",
+    "autoProvDesc": "처음 <code>gateway-cli login</code>에 성공하면 admin-api가 Cognito 클레임을 기반으로 사용자와 팀을 자동 생성합니다.",
+    "autoProvUser": "사용자: Cognito <code>sub</code> 클레임으로 식별. 이메일·이름은 ID 토큰 클레임에서 동기화.",
+    "autoProvTeam": "팀: Cognito 그룹 중 <code>Claude_&lt;TEAM&gt;</code> 패턴 매칭 시 해당 팀에 배치. 신규 팀은 예산 $0 + HARD_BLOCK으로 자동 생성 → 관리자가 예산 설정 전까지 호출 차단.",
+    "autoProvRole": "역할: <code>ADMIN_EMAILS</code> 또는 <code>ADMIN_GROUPS</code> 매칭 시 ADMIN, 그 외 DEVELOPER.",
+    "legacySts": "<strong>STS 기반 인증 (레거시)</strong>: Cognito 이전 AWS SSO 자격증명으로 직접 Virtual Key를 발급받던 경로는 호환을 위해 유지됩니다. 신규 사용자는 <code>gateway-cli login</code>(OIDC) 경로를 사용하세요.",
+    "binaryTitle": "바이너리 다운로드",
+    "emptyDownloads": "다운로드 가능한 패키지가 없습니다. 관리자가 <code>gateway-cli/package.sh</code> 로 빌드한 뒤 admin-api 의 <code>CLI_DIST_DIR</code> 에 마운트해야 합니다. 그동안은 위의 소스 설치 절차를 사용하세요.",
+    "installCli": "CLI로 설치",
+    "copy": "복사",
+    "copied": "복사됨",
+    "copyCommand": "명령어 복사"
   },
   "docker": {
     "title": "Docker 상태",
@@ -616,7 +760,12 @@
     "spent": "사용액",
     "limit": "한도: ${amount}",
     "remaining": "잔여",
-    "overagePolicy": "초과 정책"
+    "overagePolicy": "초과 정책",
+    "policyLabel": {
+      "HARD_BLOCK": "하드 차단",
+      "SOFT_WARNING": "경고만",
+      "THROTTLE": "쓰로틀링"
+    }
   },
   "chat": {
     "biInsight": "BI Insight",
@@ -849,6 +998,16 @@
     "confirmLastMessage": "이 앱은 {alias} 의 마지막 허용 앱입니다. 해제하면 허용 앱이 하나도 남지 않아 모든 앱에서 거부됩니다(모델은 목록에 남습니다). 계속할까요?",
     "confirmLastTitle": "마지막 허용 앱 해제",
     "noneBadge": "전면 거부",
-    "noneHint": "허용 앱 없음(전면 거부) — 어떤 앱도 이 모델을 쓸 수 없습니다."
+    "noneHint": "허용 앱 없음(전면 거부) — 어떤 앱도 이 모델을 쓸 수 없습니다.",
+    "defaultModelHint": "폴백 전용 — 클라이언트 요청이 해석 가능한 모델을 담지 않았을 때만 사용됩니다. Claude Code, Cowork, Codex는 매 요청마다 모델을 내므로 이 값을 바꿔도 보이는 변화가 거의 없습니다. 'mantle' 백엔드 프로필에서는 라우팅 모델을 강제합니다.",
+    "webSearchTitle": "웹서치",
+    "webSearchHint": "이 앱의 요청에 서버사이드 web_search 도구를 주입합니다.",
+    "webSearchOn": "켜짐",
+    "webSearchOff": "꺼짐",
+    "webSearchSaved": "웹서치 설정이 저장되었습니다.",
+    "colAccess": "구분",
+    "accessExplicit": "명시 허용",
+    "accessUnrestricted": "제한 없음",
+    "appStatusUnrestrictedHint": "제한 없음 — 향후 추가되는 앱도 자동 포함"
   }
 }

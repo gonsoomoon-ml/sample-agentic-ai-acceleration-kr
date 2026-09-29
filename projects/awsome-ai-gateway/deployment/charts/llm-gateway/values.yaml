@@ -950,9 +950,9 @@ notificationWorker:
     OTEL_SERVICE_NAME: "notification-worker"
     # REPORTING_TIMEZONE(이메일 발송시각 표시)은 공통 ConfigMap에서 주입됨.
 
-  # 이메일 발송 설정 — 고객 내부 메일 API / SMTP / mock
+  # 이메일 발송 설정 — 고객 내부 메일 API / SMTP / SES / mock
   email:
-    provider: "internal_api"  # "internal_api" | "smtp" | "mock"
+    provider: "internal_api"  # "internal_api" | "smtp" | "ses" | "mock"
     internalApi:
       url: ""                 # 고객 내부 메일 API URL (예: http://mail-api.internal/send)
       fromAddress: "no-reply@llm-gateway.local"
@@ -963,6 +963,10 @@ notificationWorker:
       startTls: true
       fromAddress: ""
       credentialsSecretName: ""
+    ses:
+      region: ""              # 예: us-east-1. 비워두면 worker 내부에서 us-east-1로 폴백
+      fromAddress: "no-reply@llm-gateway.local"
+      fromName: "LLM Gateway"
 
 # ----------------------------------------------------------------------------
 # Cost Recorder Worker — Redis Stream → DB batch flusher (FR-3.3 critical path)

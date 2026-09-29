@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -284,6 +285,31 @@ class Settings(BaseSettings):
     #: an affected user fail, "hi" included. A new Anthropic-only tool type is a config change
     #: here, not a release. Blank = pass everything through. See services/upstream_compat.py.
     bedrock_unsupported_tool_type_prefixes: str = "advisor_"
+
+    # ── Reporting timezone (§59) ──
+    # 비용/사용량 집계의 "월/일 경계" 기준 타임존. admin-api·cost-recorder-worker·
+    # notification-worker 와 같은 env(REPORTING_TIMEZONE)를 읽는다 — 네 서비스가
+    # 같은 budget_usages.period 행과 budget:* Redis 키를 쓰므로 값이 갈리면 월 경계
+    # 몇 시간 동안 서로 다른 행/키를 본다. **정규 IANA 이름만**(예: "Asia/Seoul",
+    # "UTC", "America/Los_Angeles") — "KST"/"US/Pacific" 같은 약어·레거시 alias 는
+    # 배포 이미지의 tzdata 에 없을 수 있어 거부.
+    reporting_timezone: str = "Asia/Seoul"
+
+    @field_validator("reporting_timezone")
+    @classmethod
+    def _validate_reporting_timezone(cls, v: str) -> str:
+        """기동 시점에 잘못된 IANA 이름을 거부한다 — 쿼리 시점의 500 보다 부팅
+        실패가 낫다(admin-api core/config.py 의 동명 검증과 같은 규약)."""
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError(
+                f"Invalid REPORTING_TIMEZONE {v!r}: not a valid IANA timezone name. "
+                "Use a canonical IANA name, e.g. 'Asia/Seoul', 'UTC', 'America/Los_Angeles'."
+            ) from e
+        return v
 
 
 @lru_cache

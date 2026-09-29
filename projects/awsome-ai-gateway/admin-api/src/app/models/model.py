@@ -92,6 +92,9 @@ class ModelAlias(Base):
     #:
     #: ``auth.user_allowed_clients``(사용자 × 앱)와는 **다른 축**이고 AND 로 걸린다.
     allowed_clients: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    #: 스펙 정보(옵션) — 모델 등록/수정 시 운영자가 입력한다(NULL = 미상).
+    context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("auth.users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

@@ -155,13 +155,15 @@ async def test_vk_auth_db_fallback_loads_team_allowed_models(monkeypatch):
     tam_scalars.all.return_value = ["claude-sonnet", "claude-haiku"]
     tam_result.scalars.return_value = tam_scalars
 
-    # 3rd call: user_allowed_clients query → empty (no client restriction)
+    # 3rd call: user_allowed_clients query → empty → team/org 폴백 조회도 빈 결과
     uac_result = MagicMock()
     uac_scalars = MagicMock()
     uac_scalars.all.return_value = []
     uac_result.scalars.return_value = uac_scalars
 
-    db.execute = AsyncMock(side_effect=[user_result, tam_result, uac_result])
+    db.execute = AsyncMock(
+        side_effect=[user_result, tam_result, uac_result, uac_result, uac_result]
+    )
 
     strategy = auth_mod.VKAuthStrategy()
     auth = await strategy.authenticate("Bearer vk-xyz", redis, db)
@@ -194,17 +196,99 @@ async def test_vk_auth_db_fallback_empty_team_means_allow_all():
     tam_scalars.all.return_value = []
     tam_result.scalars.return_value = tam_scalars
 
-    # 3rd call: user_allowed_clients query → empty
+    # 3rd call: user_allowed_clients query → empty → team/org 폴백 조회도 빈 결과
     uac_result = MagicMock()
     uac_scalars = MagicMock()
     uac_scalars.all.return_value = []
     uac_result.scalars.return_value = uac_scalars
 
     db = AsyncMock()
-    db.execute = AsyncMock(side_effect=[user_result, tam_result, uac_result])
+    db.execute = AsyncMock(
+        side_effect=[user_result, tam_result, uac_result, uac_result, uac_result]
+    )
 
     strategy = auth_mod.VKAuthStrategy()
     auth = await strategy.authenticate("Bearer vk-xyz", redis, db)
 
     assert auth.allowed_models is None
+    assert auth.allowed_clients is None
+
+
+# ── allowed_clients user > team > org 폴백 (alembic 0038) ─────────────────────
+
+
+def _vk_user_and_db(*, client_rows_sequence):
+    """캐시 miss → DB 경로. client_rows_sequence 는 user→team→org 조회의
+    scalars().all() 결과를 순서대로 — 조회가 멈추면 뒤 항목은 소비되지 않는다."""
+    redis = AsyncMock()
+    redis.get = AsyncMock(side_effect=[None, b"user-123"])
+    redis.setex = AsyncMock()
+
+    user = MagicMock()
+    user.id = "user-123"
+    user.team_id = "team-abc"
+    user.is_active = True
+    user.sso_subject = "sub-fallback"
+
+    def _scalars(rows):
+        r = MagicMock()
+        s = MagicMock()
+        s.all.return_value = rows
+        r.scalars.return_value = s
+        return r
+
+    user_result = MagicMock()
+    user_result.scalar_one_or_none.return_value = user
+    uam_result = _scalars(["any-model"])  # user override 있음 → team_models 생략
+
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[user_result, uam_result]
+        + [_scalars(rows) for rows in client_rows_sequence]
+    )
+    return redis, db
+
+
+@pytest.mark.asyncio
+async def test_vk_auth_clients_user_rows_win():
+    """user_allowed_clients 행이 있으면 team/org 조회 없이 그것만 쓴다."""
+    from app.services import auth_service as auth_mod
+
+    redis, db = _vk_user_and_db(client_rows_sequence=[["claude-code"]])
+    auth = await auth_mod.VKAuthStrategy().authenticate("Bearer vk-1", redis, db)
+
+    assert auth.allowed_clients == ["claude-code"]
+    assert db.execute.await_count == 3  # user + uam + uac 만
+
+
+@pytest.mark.asyncio
+async def test_vk_auth_clients_team_fallback():
+    """user 행 0개 → team_allowed_clients 로 폴백."""
+    from app.services import auth_service as auth_mod
+
+    redis, db = _vk_user_and_db(client_rows_sequence=[[], ["cowork"]])
+    auth = await auth_mod.VKAuthStrategy().authenticate("Bearer vk-2", redis, db)
+
+    assert auth.allowed_clients == ["cowork"]
+
+
+@pytest.mark.asyncio
+async def test_vk_auth_clients_org_fallback():
+    """user·team 모두 0개 → org_allowed_clients 로 폴백."""
+    from app.services import auth_service as auth_mod
+
+    redis, db = _vk_user_and_db(client_rows_sequence=[[], [], ["codex", "cowork"]])
+    auth = await auth_mod.VKAuthStrategy().authenticate("Bearer vk-3", redis, db)
+
+    assert sorted(auth.allowed_clients) == ["codex", "cowork"]
+
+
+@pytest.mark.asyncio
+async def test_vk_auth_clients_all_empty_means_unrestricted():
+    """user/team/org 전부 0개 → None(전체 허용)."""
+    from app.services import auth_service as auth_mod
+
+    redis, db = _vk_user_and_db(client_rows_sequence=[[], [], []])
+    auth = await auth_mod.VKAuthStrategy().authenticate("Bearer vk-4", redis, db)
+
     assert auth.allowed_clients is None

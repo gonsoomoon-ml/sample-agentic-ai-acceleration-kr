@@ -13,6 +13,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
+import { useTranslations } from 'next-intl';
 import type { ModelBreakdown, TeamBreakdown } from '@/types/entities';
 import { CATEGORICAL_PALETTE, useChartTheme } from '@/lib/utils/chartTheme';
 
@@ -25,12 +26,13 @@ interface BreakdownChartClientProps {
 }
 
 export function BreakdownChartClient({ labels, values, title }: BreakdownChartClientProps) {
-  const t = useChartTheme();
+  const t = useTranslations('analytics');
+  const theme = useChartTheme();
   const data = {
     labels,
     datasets: [
       {
-        label: '비용 (USD)',
+        label: t('costUsd'),
         data: values,
         // 막대마다 카테고리 색 — 항목 구분 또렷.
         backgroundColor: values.map((_, i) => CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length]),
@@ -44,7 +46,7 @@ export function BreakdownChartClient({ labels, values, title }: BreakdownChartCl
     responsive: true,
     plugins: {
       legend: { display: false },
-      title: { display: true, text: title, color: t.text },
+      title: { display: true, text: title, color: theme.text },
       tooltip: {
         callbacks: {
           label: (ctx: import('chart.js').TooltipItem<'bar'>) =>
@@ -54,17 +56,17 @@ export function BreakdownChartClient({ labels, values, title }: BreakdownChartCl
     },
     scales: {
       x: {
-        title: { display: true, text: '항목', color: t.textMuted },
-        ticks: { color: t.textMuted },
-        grid: { color: t.grid },
+        title: { display: true, text: t('item'), color: theme.textMuted },
+        ticks: { color: theme.textMuted },
+        grid: { color: theme.grid },
       },
       y: {
-        title: { display: true, text: 'USD', color: t.textMuted },
+        title: { display: true, text: 'USD', color: theme.textMuted },
         ticks: {
-          color: t.textMuted,
+          color: theme.textMuted,
           callback: (value: string | number) => `$${Number(value).toFixed(2)}`,
         },
-        grid: { color: t.grid },
+        grid: { color: theme.grid },
       },
     },
   };
@@ -72,7 +74,7 @@ export function BreakdownChartClient({ labels, values, title }: BreakdownChartCl
   if (labels.length === 0) {
     return (
       <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-        데이터가 없습니다.
+        {t('noData')}
       </div>
     );
   }

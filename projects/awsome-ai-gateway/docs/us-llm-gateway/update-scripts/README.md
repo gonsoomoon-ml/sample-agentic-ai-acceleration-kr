@@ -134,6 +134,9 @@ vi config.env            # AWS_ACCOUNT_ID 만 채우면 됩니다
 | `18-websearch-client-sim.py` | **없음** — Cowork·Claude Code 흉내 회귀 테스트: 실제 게이트웨이에 검색·도구 호출 시나리오를 돌려 프롬프트별 합격/불합격 판정(스트리밍 기본, `--no-stream` 으로 비스트리밍) · 클라이언트·모델 업데이트 후, web search 코드 변경 후 실행 | 낮음. 읽기 전용이지만 실제 모델·검색 비용 발생 |
 | `19-admin-login.sh` | **terraform.tfvars**(`cognito_callback_urls`) · **helm values 파일**(`adminUi.env` OIDC 4줄 · 양쪽 `DEV_LOGIN_ENABLED`) — US-12 admin 콘솔 Cognito 로그인. 단계별(`callback`·`login`·`dev-login-off`) dry-run 기본, `verify` 는 클러스터 안 임시 파드로 로그인 흐름 확인 · admin-api 가 1.0.69-idpjwks 미만이면 `login --apply` 거부 | 낮음. terraform·helm 을 돌리지 않음 · dev-login 은 로그인이 배포된 뒤에만 끔 |
 | `16-usage-recent.sh`        | **없음** — 최근 N시간 요청별 토큰(in/out/cache/thinking)·web search 수·비용 + 합계 (`--hours` `--client` `--limit`) | 없음 |
+| `20-enable-body-logging.sh` | **terraform.tfvars**(`enable_body_logging`) · **helm values 파일**(`gatewayProxy.env` 본문 로깅 키 2개) — US-15 본문 로깅 인프라 게이트. 단계별(`tfvars`·`env`·`disable`) dry-run 기본, `verify` 는 버킷·스트림·파드 env 확인 | 낮음. terraform·helm 을 돌리지 않음 — terraform plan/apply 와 install-eks.sh 는 사용자가 실행 |
+| `21-set-notification-provider.sh` | **helm values 파일** `notificationWorker.email.*` — 이메일 provider 전환(mock/internal-api/smtp/ses). **yq** 구조화 편집, dry-run은 임시 복사본 렌더, `--apply`는 백업+helm 렌더 검증 | 낮음. helm 을 돌리지 않음(install-eks.sh 가) |
+| `22-setup-notification-ses-irsa.sh` | **IAM role**(SES IRSA trust+inline policy) + **helm values 파일**(SA annotation·`NOTIFICATION_LOCALE`) — yq 편집. SES 사용 시에만 필요 | 낮음. install-eks.sh 는 별도 실행 |
 | `99-rollback.sh`            | 위 변경 되돌리기                                              | —                          |
 | `_lib.sh`                   | 공통 함수 (직접 실행하지 않음)                                     | —                          |
 | `config.env`                | 설정값 (부작용 없음)                                           | —                          |

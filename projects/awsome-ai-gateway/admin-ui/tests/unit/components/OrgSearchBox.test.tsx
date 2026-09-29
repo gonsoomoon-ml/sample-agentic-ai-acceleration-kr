@@ -21,6 +21,7 @@ const meta = (memberCount: number | null = null) => ({
   member_count: memberCount,
   team_count: null,
   leader_name: null,
+  leader_user_id: null,
   email: null,
   role: null,
   team_name: null,

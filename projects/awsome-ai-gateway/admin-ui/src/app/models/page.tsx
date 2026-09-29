@@ -25,12 +25,15 @@ interface APIModelItem {
     cache_creation_1h_price_per_1k_tokens?: string;
     cache_read_price_per_1k_tokens?: string;
   } | null;
+  context_window: number | null;
+  max_output_tokens: number | null;
 }
 
 interface APITeamItem {
   id: string;
   name: string;
   member_count?: number;
+  department_name: string | null;
 }
 
 function mapToModelListItem(item: APIModelItem): ModelListItem {
@@ -52,8 +55,8 @@ function mapToModelListItem(item: APIModelItem): ModelListItem {
     cache_read_price_per_1k: p?.cache_read_price_per_1k_tokens
       ? parseFloat(p.cache_read_price_per_1k_tokens)
       : 0,
-    max_tokens: 0,
-    context_window: 0,
+    max_tokens: item.max_output_tokens ?? 0,
+    context_window: item.context_window ?? 0,
     description: item.description,
     display_name: item.display_name,
   };
@@ -73,7 +76,7 @@ export default async function ModelsPage() {
   const routingProfiles = routingRes.status === 'fulfilled' && routingRes.value?.items ? routingRes.value.items : [];
   const teams = allTeams
     .filter(t => (t.member_count ?? 0) > 0)
-    .map(t => ({ id: t.id, name: t.name }));
+    .map(t => ({ id: t.id, name: t.name, department_name: t.department_name }));
 
   return (
     <div className="space-y-8">
@@ -92,7 +95,7 @@ export default async function ModelsPage() {
         <h2 className="text-lg font-semibold mb-4">{t('teamModelAccess')}</h2>
         <TeamModelPermissionPanel
           teams={teams}
-          allTeams={allTeams.map(t => ({ id: t.id, name: t.name }))}
+          allTeams={allTeams.map(t => ({ id: t.id, name: t.name, department_name: t.department_name }))}
           models={models}
         />
       </div>

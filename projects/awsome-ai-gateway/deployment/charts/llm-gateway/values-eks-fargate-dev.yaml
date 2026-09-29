@@ -14,6 +14,7 @@
 global:
   environment: dev
   deploymentMode: eks-fargate
+
   # CHANGE_ME (org): 리포팅 타임존 — 대시보드·일별 집계(daily_aggregates)·이메일 발송시각의
   # 달력 경계. **정규 IANA 이름만**(예: America/Los_Angeles · Asia/Seoul · UTC — "KST"/"PST"/
   # "US/Pacific" 은 배포 이미지에서 거부). fill-org-values.sh 가 프롬프트로 채운다.
@@ -458,6 +459,9 @@ notificationWorker:
   image:
     tag: "1.0.44-phase2"
   serviceAccount:
+    # provider "ses" 사용 시 SES 발신용 IRSA role ARN 필요 (terraform output).
+    # annotations:
+    #   eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/llm-gateway-dev-notification-worker-ses"
     annotations: {}
   resources:
     requests:
@@ -466,10 +470,15 @@ notificationWorker:
   autoscaling:
     enabled: false
   email:
-    provider: "mock"          # 고객 내부 메일 API 연동 시 "internal_api"로 전환
+    provider: "mock"          # 고객 내부 메일 API 연동 시 "internal_api", AWS SES 사용 시 "ses"로 전환
     internalApi:
       url: ""                 # 고객 내부 메일 API URL
       fromAddress: "no-reply-dev@llm-gateway.local"
+      fromName: "LLM Gateway"
+    ses:
+      region: "ap-northeast-2"
+      # sandbox 모드: 발신·수신 모두 SES 검증 신원이어야 함 — 검증된 주소로 교체할 것.
+      fromAddress: "no-reply-dev@example.com"
       fromName: "LLM Gateway"
 
 # DB migration hook — 태그 명시(비우면 Chart.appVersion=1.0.43-rebrand 로 리셋되는데,

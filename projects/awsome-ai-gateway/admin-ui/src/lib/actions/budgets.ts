@@ -58,7 +58,7 @@ export async function deleteUserBudgetAction(userId: string): Promise<ActionResu
 
 export async function allocateTeamBudgetAction(
   teamId: string,
-  allocations: AllocationEntry[]
+  allocations: Pick<AllocationEntry, 'target_id' | 'target_type' | 'allocated_usd'>[]
 ): Promise<ActionResult<void>> {
   if (!teamId) {
     return { success: false, error: 'Team ID is required' };
@@ -116,7 +116,8 @@ export async function setDowngradeConfigAction(
         { enabled: config.enabled, rules: config.rules }
       )
     );
-    revalidatePath('/budgets');
+    // 다운그레이드 설정은 요약 테이블 데이터와 무관 — revalidatePath 하면
+    // RSC 리페치가 테이블을 리마운트시켜 펼침/패널 상태가 날아간다.
     return { success: true, data };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };
@@ -131,7 +132,6 @@ export async function deleteDowngradeConfigAction(
     await withRetry(() =>
       adminAPI.delete(`/admin/budgets/${scope}/${scopeId}/downgrade`)
     );
-    revalidatePath('/budgets');
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };

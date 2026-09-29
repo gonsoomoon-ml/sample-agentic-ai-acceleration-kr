@@ -110,7 +110,7 @@ export function KeysTable({ keys }: KeysTableProps) {
                         })
                       }
                       disabled={
-                        key.status === KeyStatus.REVOKED || revokingId === key.key_id
+                        key.status !== KeyStatus.ACTIVE || revokingId === key.key_id
                       }
                       className="inline-flex items-center rounded-md border border-destructive/50 bg-background px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
                     >

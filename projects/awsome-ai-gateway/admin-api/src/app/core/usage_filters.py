@@ -238,6 +238,21 @@ def kst_day_range_filter(start_day: str, end_day: str) -> ColumnElement:
     return and_(UsageLog.requested_at >= start_utc, UsageLog.requested_at < end_utc)
 
 
+def cost_date_range_filter(
+    start_day: str, end_day: str, *, success_only: bool = True
+) -> ColumnElement:
+    """`cost_period_filter` 의 임의 일자 구간 버전 — [start_day, end_day](리포팅 tz, end 포함) + SUCCESS.
+
+    Analytics '직접 입력(custom)' 기간에 쓴다. 경계는 `kst_day_range_filter` 와 동일하게
+    파라미터 쪽 UTC 반개구간이라 `requested_at` 인덱스를 탄다. `end_day` 는 그 날
+    하루 전체를 포함한다.
+    """
+    conds: list[ColumnElement] = [kst_day_range_filter(start_day, end_day)]
+    if success_only:
+        conds.append(UsageLog.status == UsageStatus.SUCCESS)
+    return and_(*conds)
+
+
 def cost_period_filter(period: str, *, success_only: bool = True) -> ColumnElement:
     """비용 집계 표준 WHERE — KST 월 경계 + (기본) SUCCESS 만.
 

@@ -212,7 +212,7 @@ variable "cognito_logout_urls" {
 }
 
 variable "cognito_groups" {
-  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩. prod는 dev 검증에서 결정된 깨끗한 셋만 — 빈 팀 잔재(aws-test, S/W-Culture-Office) 미포함."
+  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩. team_leader 는 Cognito 그룹이 아니라 admin-ui 에서 지정(PUT /admin/teams/{id}/leader). prod는 dev 검증에서 결정된 깨끗한 셋만 — 빈 팀 잔재(aws-test, S/W-Culture-Office) 미포함."
   type        = list(string)
   default     = ["Claude_AWS-AI-Specialist", "ClaudeAdmin"]
 }
@@ -289,8 +289,6 @@ variable "tags" {
 }
 
 # ─── admin-chat-agent (Phase 1 부트스트랩 — 활성 시 ECR/S3/IAM 만 생성) ───
-# AgentCore Runtime 자체 (CreateAgentRuntime) 는 image push 후 별도 단계.
-# 처음엔 false 로 두고, image 가 빌드/push 가능한 상태가 되면 true 로 enable.
 variable "enable_chat_agent" {
   description = "admin-chat-agent 인프라 (ECR + S3 staging + IAM + KMS) 생성 여부"
   type        = bool

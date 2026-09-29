@@ -47,10 +47,10 @@ export async function ROIMetricsCards({ filter, latestMonth }: ROIMetricsCardsPr
     .get<AnalyticsAPIResponse>('/admin/analytics', buildAnalyticsQuery(filter, latestMonth))
     .catch(() => null);
 
-  if (!data) {
+  if (!data?.cost_summary) {
     return (
       <div className="glass rounded-apple p-4 text-sm text-muted-foreground">
-        분석 데이터를 불러오지 못했습니다.
+        {t('loadFailed')}
       </div>
     );
   }
@@ -61,24 +61,24 @@ export async function ROIMetricsCards({ filter, latestMonth }: ROIMetricsCardsPr
 
   const metrics: MetricCardProps[] = [
     {
-      label: '총 요청 수',
+      label: t('totalRequests'),
       value: summary.total_requests.toLocaleString(),
-      description: '기간 내 총 API 요청 수',
+      description: t('totalRequestsDescription'),
     },
     {
-      label: '총 토큰 수',
+      label: t('totalTokens'),
       value: summary.total_tokens.toLocaleString(),
-      description: '기간 내 소비된 총 토큰 수',
+      description: t('totalTokensDescription'),
     },
     {
       label: t('totalCost'),
       value: `$${totalCost.toFixed(4)}`,
-      description: '기간 내 총 USD 비용',
+      description: t('totalCostDescription'),
     },
     {
-      label: '사용자당 평균 비용',
+      label: t('averageCostPerUser'),
       value: `$${avgCostPerUser.toFixed(4)}`,
-      description: `활성 사용자 ${summary.active_users}명 기준`,
+      description: t('activeUsersDescription', { count: summary.active_users }),
     },
   ];
 

@@ -14,6 +14,8 @@ import type { ActionResult } from './types';
 
 export interface AppUserRef {
   user_id: string;
+  /** false = 명시 행이 없는 사용자 — 앱 제한 없음(fail-open)으로 허용에 포함. */
+  explicit: boolean;
   email?: string | null;
 }
 
@@ -32,6 +34,7 @@ export interface AppPolicy {
   default_model: string | null;
   allowed_users: AppUserRef[];
   all_models: AppModelRef[];
+  web_search_enabled: boolean;
 }
 
 // ─── getAppPolicyAction ───────────────────────────────────────────────────────
@@ -61,7 +64,9 @@ export async function setAppDefaultModelAction(
     await withRetry(() =>
       adminAPI.patch(`/admin/apps/${encodeURIComponent(client)}/default-model`, { default_model })
     );
-    revalidatePath('/apps');
+    // revalidatePath('/apps') 는 의도적으로 하지 않는다 — /apps 페이지는 서버 fetch 데이터가
+    // 없고(정책은 클라이언트가 action 으로 읽음), 현재 라우트 RSC 리페치만 일으켜
+    // 패널 리마운트(선택 앱 유실)의 원인이 됐다.
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };
@@ -84,7 +89,8 @@ export async function toggleAppModelAction(
         { alias, allowed }
       )
     );
-    revalidatePath('/apps');
+    // '/apps' 는 무효화하지 않는다(위 setAppDefaultModelAction 주석 참조 — 서버 데이터 없음,
+    // 리페치→리마운트로 선택 앱이 날아가는 버그의 원인이었다).
     // 이 PATCH 는 `model_aliases.allowed_clients`(MODEL 축) 를 바꾼다 — 즉 /models 의 "허용 앱"
     // 열과 편집 다이얼로그의 prefill 도 함께 낡는다. '/apps' 만 무효화하면 다른 탭의 /models
     // 스냅샷이 옛 정책을 계속 보여주고, 운영자는 그 화면을 보고 쓰기 판단을 한다.

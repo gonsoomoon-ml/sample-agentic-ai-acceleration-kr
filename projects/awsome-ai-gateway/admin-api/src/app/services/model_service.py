@@ -268,12 +268,11 @@ class ModelService:
             ])
             if is_changed:
                 changed += 1
-            note = "캐시 단가 일부 파생(AWS 미게시 → input 기반 추정)" if np.cache_derived else None
             diffs.append(PriceSyncDiff(
                 alias=m.alias,
                 provider_model_id=m.provider_model_id,
                 matched=True,
-                note=note,
+                note="캐시 단가 일부 파생(AWS 미게시 → input 기반 추정)" if np.cache_derived else None,
                 current=cur_resp,
                 proposed_input_per_1k=p_in,
                 proposed_output_per_1k=p_out,
@@ -403,7 +402,11 @@ class ModelService:
             # 전면 거부를 화면에서 볼 수 없다.
             allowed_clients=model.allowed_clients,
             description=model.description,
-            display_name=model.display_name,
+            # display_name 은 표시 전용 — 비어 있으면 alias 로 대체해 모든 API
+            # 소비자(목록·피커·정책 표시)가 같은 이름을 보게 한다. DB 는 NULL 유지.
+            display_name=model.display_name or model.alias,
+            context_window=model.context_window,
+            max_output_tokens=model.max_output_tokens,
             current_pricing=pricing_resp,
             created_at=model.created_at,
             updated_at=model.updated_at,

@@ -165,6 +165,15 @@
   * {
     @apply border-border;
   }
+  /* recharts 는 차트 요소에 tabindex 를 붙여(v3: accessibilityLayer 의 svg)
+     마우스 클릭 시에도 포커스를 받고 브라우저 기본 outline(파란 박스)이
+     그려진다. 클릭 포커스가 :focus-visible 로 판정되는 브라우저도 있어
+     outline 자체를 제거한다. */
+  .recharts-wrapper:focus,
+  .recharts-responsive-container:focus,
+  .recharts-surface:focus {
+    outline: none;
+  }
   body {
     @apply bg-background text-foreground font-sans;
     font-feature-settings: 'rlig' 1, 'calt' 1, 'liga' 1;

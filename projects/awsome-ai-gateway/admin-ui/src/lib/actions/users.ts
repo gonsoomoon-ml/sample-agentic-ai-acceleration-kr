@@ -123,6 +123,28 @@ export async function setTeamLeaderAction(
   }
 }
 
+// ─── unsetTeamLeaderAction ────────────────────────────────────────────────────
+
+export async function unsetTeamLeaderAction(
+  teamId: string,
+  userId: string
+): Promise<ActionResult<void>> {
+  if (!teamId) {
+    return { success: false, error: 'Team ID is required' };
+  }
+  if (!userId) {
+    return { success: false, error: 'User ID is required' };
+  }
+
+  try {
+    await withRetry(() => adminAPI.delete(`/admin/teams/${teamId}/leaders/${userId}`));
+    revalidatePath('/users');
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: toErrorMessage(err) };
+  }
+}
+
 // ─── forceReauthTeamAction ────────────────────────────────────────────────────
 // 팀 멤버 전원의 ACTIVE VK 일괄 revoke. 오프보딩/보안 사고/즉시 정책 반영 용도.
 // 사용자는 다음 호출 시 401 → Claude Code 재실행 필요 (UI 에서 명시).
@@ -140,7 +162,6 @@ export async function forceReauthTeamAction(
         {}
       )
     );
-    revalidatePath('/users');
     return { success: true, data: res };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };
@@ -205,7 +226,6 @@ export async function setUserAllowedClientsAction(
   try {
     if (clients.length === 0) {
       await withRetry(() => adminAPI.delete(`/admin/users/${userId}/allowed-clients`));
-      revalidatePath('/users');
       return { success: true, data: { clients: [] } };
     }
     const res = await withRetry(() =>
@@ -214,7 +234,58 @@ export async function setUserAllowedClientsAction(
         { clients },
       ),
     );
-    revalidatePath('/users');
+    return { success: true, data: { clients: res.clients ?? clients } };
+  } catch (err) {
+    return { success: false, error: toErrorMessage(err) };
+  }
+}
+
+// ─── getScopeAllowedClientsAction / setScopeAllowedClientsAction ──────────────
+// 팀/조직 단위 앱 접근 정책 (alembic 0038). 우선순위 user > team > org > 제한없음.
+// [] = 정책 없음(하위 폴백) — 전면 거부가 아님. 개인 override 와 같은 의미 체계.
+
+type ClientPolicyScope = 'team' | 'organization';
+
+function scopeClientsPath(scope: ClientPolicyScope, scopeId: string): string {
+  return scope === 'team'
+    ? `/admin/teams/${scopeId}/allowed-clients`
+    : `/admin/organizations/${scopeId}/allowed-clients`;
+}
+
+export async function getScopeAllowedClientsAction(
+  scope: ClientPolicyScope,
+  scopeId: string,
+): Promise<ActionResult<{ clients: string[] }>> {
+  if (!scopeId) return { success: false, error: 'Scope ID is required' };
+  try {
+    const res = await withRetry(() =>
+      adminAPI.get<{ scope_id: string; clients: string[] }>(
+        scopeClientsPath(scope, scopeId),
+      ),
+    );
+    return { success: true, data: { clients: res.clients ?? [] } };
+  } catch (err) {
+    return { success: false, error: toErrorMessage(err) };
+  }
+}
+
+export async function setScopeAllowedClientsAction(
+  scope: ClientPolicyScope,
+  scopeId: string,
+  clients: string[],
+): Promise<ActionResult<{ clients: string[] }>> {
+  if (!scopeId) return { success: false, error: 'Scope ID is required' };
+  try {
+    if (clients.length === 0) {
+      await withRetry(() => adminAPI.delete(scopeClientsPath(scope, scopeId)));
+      return { success: true, data: { clients: [] } };
+    }
+    const res = await withRetry(() =>
+      adminAPI.put<{ scope_id: string; clients: string[] }>(
+        scopeClientsPath(scope, scopeId),
+        { clients },
+      ),
+    );
     return { success: true, data: { clients: res.clients ?? clients } };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };
@@ -252,7 +323,6 @@ export async function setUserAllowedModelsAction(
   try {
     if (modelAliases.length === 0) {
       await withRetry(() => adminAPI.delete(`/admin/users/${userId}/allowed-models`));
-      revalidatePath('/users');
       return { success: true, data: { modelAliases: [] } };
     }
     const res = await withRetry(() =>
@@ -261,7 +331,6 @@ export async function setUserAllowedModelsAction(
         { model_aliases: modelAliases },
       ),
     );
-    revalidatePath('/users');
     return { success: true, data: { modelAliases: res.model_aliases ?? modelAliases } };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };
@@ -297,7 +366,6 @@ export async function setUserClientBudgetAction(
   if (!userId) return { success: false, error: 'User ID is required' };
   try {
     await withRetry(() => adminAPI.put(`/admin/budgets/user/${userId}/app/${client}`, body));
-    revalidatePath('/users');
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };
@@ -313,7 +381,6 @@ export async function clearUserClientBudgetAction(
   if (!userId) return { success: false, error: 'User ID is required' };
   try {
     await withRetry(() => adminAPI.delete(`/admin/budgets/user/${userId}/app/${client}`));
-    revalidatePath('/users');
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: toErrorMessage(err) };
@@ -365,4 +432,22 @@ function toErrorMessage(err: unknown): string {
     return err.message;
   }
   return 'An unexpected error occurred';
+}
+// ─── getEffectivePolicyAction ────────────────────────────────────────────────
+// 사용자에게 적용되는 정책의 합성 읽기 전용 뷰 (effective-policy).
+
+import type { EffectivePolicy } from '@/types/entities';
+
+export async function getEffectivePolicyAction(
+  userId: string,
+): Promise<ActionResult<EffectivePolicy>> {
+  if (!userId) return { success: false, error: 'User ID is required' };
+  try {
+    const res = await withRetry(() =>
+      adminAPI.get<EffectivePolicy>(`/admin/users/${userId}/effective-policy`),
+    );
+    return { success: true, data: res };
+  } catch (err) {
+    return { success: false, error: toErrorMessage(err) };
+  }
 }

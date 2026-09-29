@@ -3,10 +3,10 @@
 // Copyright 2026 © Amazon.com and Affiliates: This deliverable is considered Developed Content as defined in the AWS Service Terms.
 
 import { useRouter, usePathname } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import type { AnalyticsFilterForm } from '@/types/api';
 import type { GroupByType } from '@/types/enums';
-import { currentCalendarMonth, monthsAgo, toKoreanMonthLabel } from '@/lib/utils/period';
+import { currentCalendarMonth, monthsAgo } from '@/lib/utils/period';
 
 interface AnalyticsFilterProps {
   defaultValue: AnalyticsFilterForm;
@@ -18,6 +18,7 @@ interface AnalyticsFilterProps {
 
 export function AnalyticsFilter({ defaultValue, periods, currentMonth }: AnalyticsFilterProps) {
   const t = useTranslations('analytics');
+  const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -68,6 +69,12 @@ export function AnalyticsFilter({ defaultValue, periods, currentMonth }: Analyti
   // 드롭다운 = 이번/지난 달 제외한 과거 데이터 월.
   const dropdownMonths = periods.filter((p) => p !== thisMonth && p !== lastMonth);
   const dropdownActive = !isCustom && currentMonth !== thisMonth && currentMonth !== lastMonth;
+  const monthLabel = (period: string) => {
+    const [year, month] = period.split('-').map(Number);
+    return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', timeZone: 'UTC' }).format(
+      new Date(Date.UTC(year, month - 1, 1)),
+    );
+  };
 
   const btn = (active: boolean) =>
     [
@@ -89,7 +96,7 @@ export function AnalyticsFilter({ defaultValue, periods, currentMonth }: Analyti
             aria-pressed={!isCustom && currentMonth === thisMonth}
             className={btn(!isCustom && currentMonth === thisMonth)}
           >
-            이번 달
+            {t('thisMonth')}
           </button>
           <button
             type="button"
@@ -97,11 +104,11 @@ export function AnalyticsFilter({ defaultValue, periods, currentMonth }: Analyti
             aria-pressed={!isCustom && currentMonth === lastMonth}
             className={btn(!isCustom && currentMonth === lastMonth)}
           >
-            지난 달
+            {t('lastMonth')}
           </button>
           {dropdownMonths.length > 0 && (
             <select
-              aria-label="기간 선택 (월)"
+              aria-label={t('selectPeriod')}
               value={dropdownActive ? currentMonth : ''}
               onChange={(e) => {
                 if (e.target.value) handleMonthChange(e.target.value);
@@ -113,11 +120,11 @@ export function AnalyticsFilter({ defaultValue, periods, currentMonth }: Analyti
               }}
             >
               <option value="" disabled>
-                기간 선택
+                {t('selectPeriod')}
               </option>
               {dropdownMonths.map((p) => (
                 <option key={p} value={p}>
-                  {toKoreanMonthLabel(p)}
+                  {monthLabel(p)}
                 </option>
               ))}
             </select>
@@ -128,7 +135,7 @@ export function AnalyticsFilter({ defaultValue, periods, currentMonth }: Analyti
             aria-pressed={isCustom}
             className={btn(isCustom)}
           >
-            직접 입력
+            {t('customInput')}
           </button>
         </div>
       </div>

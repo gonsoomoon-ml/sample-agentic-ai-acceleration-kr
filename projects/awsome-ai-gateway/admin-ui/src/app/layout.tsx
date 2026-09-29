@@ -16,7 +16,8 @@ const pretendard = localFont({
   display: 'swap',
   weight: '45 920', // variable axis 범위
 });
-import { parseJWT } from '@/lib/auth';
+import { parseJWT, isSessionExpired } from '@/lib/auth';
+import { resolveLocale } from '@/i18n/locale';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { ToastProvider } from '@/components/common/ToastProvider';
@@ -41,14 +42,21 @@ export default async function RootLayout({
   let session: AdminSession | null = null;
   if (token) {
     try {
-      session = parseJWT(token);
+      const parsed = parseJWT(token);
+      // 만료된 쿠키도 파싱은 성공한다. '/login'·'/403' 은 public 이라 middleware 가
+      // 만료 검사 없이 통과시키므로, 여기서 만료를 세션 무효로 처리하지 않으면
+      // 만료된 쿠키 위에 Sidebar+Header 가 그려진다.
+      if (!isSessionExpired(parsed)) {
+        session = parsed;
+      }
     } catch {
       // Malformed token — middleware will redirect to login
     }
   }
 
   const messages = await getMessages();
-  const locale = cookieStore.get('locale')?.value || 'ko';
+  // request.ts 와 같은 규칙 — 쿠키 원시값을 그대로 쓰면 lang="fr" + ko 메시지 조합이 된다.
+  const locale = resolveLocale(cookieStore.get('locale')?.value);
 
   return (
     <html

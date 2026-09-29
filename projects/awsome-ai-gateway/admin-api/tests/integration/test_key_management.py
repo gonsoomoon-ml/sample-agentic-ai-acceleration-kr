@@ -26,10 +26,18 @@ class TestKeyRevokeFlow:
 
         vk = MagicMock(spec=VirtualKey)
         vk.key_value_encrypted = encrypted
+        vk.status = KeyStatus.ACTIVE
+        vk.id = uuid.UUID(key_id)
+        vk.user_id = uuid.uuid4()
+        vk.key_prefix = "vk-abc1234"
 
         with patch("app.services.key_service.KeyRepository") as MockRepo, \
+             patch("app.services.key_service.UserRepository") as MockUserRepo, \
              patch("app.services.key_service.audit_logger") as mock_audit:
+            # revoke_key 는 get_by_id 로 ACTIVE 여부를 먼저 확인한 뒤 revoke 한다.
+            MockRepo.return_value.get_by_id = AsyncMock(return_value=vk)
             MockRepo.return_value.revoke = AsyncMock(return_value=vk)
+            MockUserRepo.return_value.get_user = AsyncMock(return_value=None)
             mock_audit.log = AsyncMock()
 
             resp = await client.delete(
@@ -43,7 +51,7 @@ class TestKeyRevokeFlow:
         key_id = str(uuid.uuid4())
 
         with patch("app.services.key_service.KeyRepository") as MockRepo:
-            MockRepo.return_value.revoke = AsyncMock(return_value=None)
+            MockRepo.return_value.get_by_id = AsyncMock(return_value=None)
 
             resp = await client.delete(
                 f"/admin/keys/{key_id}",

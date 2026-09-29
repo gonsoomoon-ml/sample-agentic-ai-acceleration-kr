@@ -338,6 +338,60 @@ probe_us07() {
   raw "${ev%$'\n'}"
 }
 
+# ── notification worker email / SES IRSA ────────────────────────────────────
+# 메일 provider 판정 — mock 이면 실제 발송이 없다는 걸 먼저 알리고, ses 면 IRSA
+# role·ServiceAccount annotation 정합까지 본다. 스크립트 번호(21/22)는 US 번호가
+# 아니라 이 디렉터리의 실행 순서 번호다.
+probe_notif_ses() {
+  local role arn sa_arn role_state sa_state sender
+  role="llm-gateway-${DEPLOY_ENV}-notification-worker-ses"
+  sa_name="notification-worker"
+  role_state="ok"
+  sa_state="ok"
+
+  sender=$(kubectl get deploy "${HELM_RELEASE}-notification-worker" -n "$NS" \
+    -o jsonpath='{.spec.template.spec.containers[?(@.name=="notification-worker")].env[?(@.name=="EMAIL_SENDER_TYPE")].value}' 2>/dev/null)
+  raw "sender=$sender"
+
+  # mock 이면 이메일이 실제 발송되지 않는다. IRSA 상태와 무관하게 먼저 알린다.
+  if [ -z "$sender" ] || [ "$sender" = "mock" ]; then
+    row warn "SES" "Notification email — 발송하지 않음 (provider=${sender:-unknown})"
+    detail "21-set-notification-provider.sh 로 internal_api / smtp / ses 를 선택해야 실제 메일이 나간다"
+    TODO+=("bash 21-set-notification-provider.sh <mock|internal-api|smtp|ses> --apply   # provider 선택")
+    return
+  fi
+
+  # smtp/internal_api 는 IRSA 가 필요 없다
+  if [ "$sender" != "ses" ]; then
+    row ok "SES" "Notification worker ($sender)"
+    detail "provider=$sender"
+    return
+  fi
+
+  if ! aws iam get-role --role-name "$role" >/dev/null 2>&1; then
+    role_state="missing"
+    sa_state="unknown"
+    arn=""
+    sa_arn=""
+  else
+    arn=$(aws iam get-role --role-name "$role" --query 'Role.Arn' --output text 2>/dev/null)
+    sa_arn=$(kubectl get sa "$sa_name" -n "$NS" -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' 2>/dev/null)
+    [ "$sa_arn" = "$arn" ] || sa_state="mismatch"
+  fi
+
+  if [ "$role_state" = "ok" ] && [ "$sa_state" = "ok" ]; then
+    row ok "SES" "Notification worker (ses) + IRSA"
+    detail "role=$role  SA=$sa_name"
+  else
+    row warn "SES" "Notification worker (ses) + IRSA — 미적용"
+    [ "$role_state" = "missing" ] && detail "IAM role $role not found"
+    [ "$sa_state" = "mismatch" ] && detail "ServiceAccount annotation($sa_arn) != role($arn)"
+    [ "$sa_state" = "unknown" ]  && detail "ServiceAccount $sa_name not annotated"
+    TODO+=("bash 22-setup-notification-ses-irsa.sh --apply   # SES 사용 시 IRSA")
+  fi
+  raw "role=$role arn=$arn sa=$sa_name sa_arn=$sa_arn"
+}
+
 # ── US-12 — admin console Cognito login (optional) ──────────────────────────
 # The evidence is the running Deployments' env, not the values file (values can
 # be edited and not yet rolled out). Cognito login is live when admin-ui carries
@@ -465,6 +519,9 @@ probe_us12
 probe_us13
 info_rows "US-14" "Claude Code Windows 설치 파일 — 직원 PC 쪽 (이 스크립트는 판정 안 함)" \
   "설치 여부는 직원 PC 에서 — claude-code/installer/cc-installer-admin-e2e-windows.md"
+
+# ── notification-worker SES 발송 설정·IRSA 판정 (스크립트 21/22 — US 번호 아님)
+probe_notif_ses
 
 echo
 if [ "${#TODO[@]}" -eq 0 ]; then

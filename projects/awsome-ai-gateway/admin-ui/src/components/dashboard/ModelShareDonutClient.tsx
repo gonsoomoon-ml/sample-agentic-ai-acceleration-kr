@@ -11,6 +11,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import type { ActiveElement, ChartEvent } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
 import type { ModelShareResponse, TeamOption } from '@/lib/actions/dashboard';
 import { CATEGORICAL_PALETTE } from '@/lib/utils/chartTheme';
@@ -35,6 +36,7 @@ export function ModelShareDonutClient({ initialData, teams, period, client }: Pr
   const [data, setData] = useState<ModelShareResponse>(initialData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const isFirstRender = useRef(true);
 
   useEffect(() => {
@@ -100,17 +102,15 @@ export function ModelShareDonutClient({ initialData, teams, period, client }: Pr
       cutout: '62%',
       // hover 시 부드럽게 튀어나오는 애니메이션.
       animation: { animateRotate: true, animateScale: false },
+      // 호버한 조각의 우측 목록 행도 함께 강조한다.
+      onHover: (_event: ChartEvent, elements: ActiveElement[]) => {
+        setHoverIndex(elements.length ? elements[0].index : null);
+      },
       plugins: {
         legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (ctx: import('chart.js').TooltipItem<'doughnut'>) => {
-              const item = data.models[ctx.dataIndex];
-              if (!item) return '';
-              return `${modelDisplay(item.model_alias, item.display_name)}: $${item.cost_usd.toFixed(4)} (${item.share_pct.toFixed(1)}%)`;
-            },
-          },
-        },
+        // 캔버스 툴팁은 어디에 놓아도 도넛 중앙 오버레이를 물리적으로 가린다.
+        // 호버 상세는 중앙 표시 자체가 담당(조각 호버 시 중앙 내용이 바뀐다).
+        tooltip: { enabled: false },
       },
     }),
     [data],
@@ -139,7 +139,7 @@ export function ModelShareDonutClient({ initialData, teams, period, client }: Pr
             <option value="all">{t('scopeAll')}</option>
             {teams.map((team) => (
               <option key={team.id} value={team.id}>
-                {team.name}
+                {team.department_name ? `${team.name} (${team.department_name})` : team.name}
               </option>
             ))}
           </select>
@@ -158,47 +158,60 @@ export function ModelShareDonutClient({ initialData, teams, period, client }: Pr
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
           <div className="relative h-64">
             <Doughnut data={chartData} options={options} />
-            {/* 가운데: 점유율 1위 모델 강조 (models 는 비용 desc 정렬, [0]=1위) */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center pointer-events-none">
-              {data.models[0] && (
-                <span
-                  className="mb-1 h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: COLORS[0] }}
-                  aria-hidden="true"
-                />
-              )}
-              <p className="text-2xl font-bold leading-none tracking-tight">
-                {data.models[0] ? `${data.models[0].share_pct.toFixed(0)}%` : '—'}
-              </p>
-              <p className="mt-1 max-w-full truncate text-xs font-medium text-foreground">
-                {data.models[0] ? modelDisplay(data.models[0].model_alias, data.models[0].display_name) : ''}
-              </p>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">
-                {t('topShare', { total: data.total_cost_usd.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                }) })}
-              </p>
-            </div>
+            {/* 가운데: 기본은 점유율 1위(models 는 비용 desc 정렬, [0]=1위),
+                조각 호버 시에는 그 조각의 수치로 바뀐다 — 툴팁을 대체. */}
+            {(() => {
+              const centerItem = (hoverIndex != null ? data.models[hoverIndex] : null) ?? data.models[0];
+              const centerIdx = hoverIndex ?? 0;
+              return (
+                <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center pointer-events-none">
+                  {centerItem && (
+                    <span
+                      className="mb-1 h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: COLORS[centerIdx % COLORS.length] }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <p className="text-2xl font-bold leading-none tracking-tight">
+                    {centerItem ? `${centerItem.share_pct.toFixed(0)}%` : '—'}
+                  </p>
+                  <p className="mt-1 max-w-full truncate text-xs font-medium text-foreground">
+                    {centerItem ? modelDisplay(centerItem.model_alias, centerItem.display_name) : ''}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground tabular-nums">
+                    {hoverIndex != null && centerItem
+                      ? `$${centerItem.cost_usd.toFixed(4)}`
+                      : t('topShare', { total: data.total_cost_usd.toLocaleString('en-US', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        }) })}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
           <ul className="space-y-2">
             {data.models.map((m, i) => (
-              <li key={m.model_alias} className="flex items-center justify-between text-sm">
+              <li
+                key={m.model_alias}
+                className={`grid grid-cols-[minmax(0,1fr)_5rem_3.5rem] items-center gap-2 text-sm rounded-apple-sm px-2 py-0.5 -mx-2 transition-colors ${i === hoverIndex ? 'bg-accent' : ''}`}
+              >
                 <div className="flex items-center gap-2 min-w-0">
                   <span
                     className="w-3 h-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: COLORS[i % COLORS.length] }}
                   />
-                  <span className="font-medium truncate">{modelDisplay(m.model_alias, m.display_name)}</span>
-                </div>
-                <div className="flex items-center gap-3 text-xs">
-                  <span className="tabular-nums">
-                    ${m.cost_usd.toFixed(2)}
-                  </span>
-                  <span className="text-muted-foreground tabular-nums w-12 text-right">
-                    {m.share_pct.toFixed(1)}%
+                  {/* truncate 금지 — 모델명이 "Claude …" 로 잘려 구분이 안 된다. 줄바꿈 허용. */}
+                  <span className="font-medium break-words leading-snug" title={modelDisplay(m.model_alias, m.display_name)}>
+                    {modelDisplay(m.model_alias, m.display_name)}
                   </span>
                 </div>
+                <span className="tabular-nums text-xs text-right">
+                  ${m.cost_usd.toFixed(2)}
+                </span>
+                <span className="text-muted-foreground tabular-nums text-xs text-right">
+                  {m.share_pct.toFixed(1)}%
+                </span>
               </li>
             ))}
           </ul>

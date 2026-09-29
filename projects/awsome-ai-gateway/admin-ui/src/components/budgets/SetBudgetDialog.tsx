@@ -7,13 +7,17 @@ import { useState, useTransition, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
 import type { BudgetScope } from '@/types/enums';
-import { setBudgetAction, deleteUserBudgetAction } from '@/lib/actions/budgets';
+import {
+  setBudgetAction,
+  deleteUserBudgetAction,
+} from '@/lib/actions/budgets';
 import {
   getUserAllowedClientsAction,
   getUserClientBudgetsAction,
   setUserClientBudgetAction,
   clearUserClientBudgetAction,
 } from '@/lib/actions/users';
+import { CLIENTS, type GatewayClient } from '@/lib/constants/gateway';
 import { FormError } from '@/components/common/FormError';
 import { SpinnerButton } from '@/components/common/SpinnerButton';
 import { useToast } from '@/components/common/ToastProvider';
@@ -26,6 +30,7 @@ interface SetBudgetDialogProps {
     name: string;
     type: (typeof BudgetScope)[keyof typeof BudgetScope];
     currentLimit: number;
+    currentUsed?: number;
     parentLimit?: number;
   } | null;
 }
@@ -39,9 +44,9 @@ const POLICY_OPTIONS = [
 const DEFAULT_THRESHOLDS = [80, 90, 100];
 
 // per-app(client) 예산 게이팅 — /users 화면(OrgDetailPanel UserPanel)과 동일 로직.
-// 빈 allowed_clients = 전체 허용. 새 앱은 ALL_CLIENTS 에만 추가하면 자동 확장.
-const ALL_CLIENTS = ['claude-code', 'cowork', 'codex'] as const;
-type ClientId = (typeof ALL_CLIENTS)[number];
+// 빈 allowed_clients = 전체 허용. 새 앱은 gateway.ts CLIENTS 에만 추가하면 자동 확장.
+const ALL_CLIENTS = CLIENTS;
+type ClientId = GatewayClient;
 const CLIENT_LABELS: Record<ClientId, string> = {
   'claude-code': 'Claude Code',
   cowork: 'Cowork',
@@ -72,8 +77,8 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
   const [allowedClients, setAllowedClients] = useState<ClientId[]>([...ALL_CLIENTS]);
   const [budgets, setBudgets] = useState<Record<string, string>>(emptyBudgets);
   const [loadedBudgets, setLoadedBudgets] = useState<Record<string, string>>(emptyBudgets);
-  // 허용 클라이언트 정책 로드 성공 여부(Codex R2 #6). 실패 시 stale 전체허용 기준으로
-  // per-app 예산을 쓰면 codex 등에 잘못 기록될 수 있어 per-app 저장을 건너뛴다.
+  // 허용 클라이언트 정책 로드 성공 여부. 실패 시 stale 전체허용 기준으로
+  // per-app 예산을 잘못된 앱에 기록할 수 있어 per-app 저장을 건너뛴다.
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [isAppLoadPending, startAppLoadTransition] = useTransition();
 
@@ -86,7 +91,7 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
   const numericValue = parseFloat(value) || 0;
   const maxValue = target?.parentLimit ?? 999999;
   const isUserScope = target?.type === 'USER';
-  const [useTeamBudget, setUseTeamBudget] = useState(false);
+  const isTeamScope = target?.type === 'TEAM';
 
   // 다이얼로그가 USER 대상으로 열릴 때 allowed-clients + per-app 예산을 병렬 로드.
   // TEAM scope 는 앱별 예산 개념이 없으므로 스킵.
@@ -185,9 +190,10 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
 
       // 총 예산 저장 성공. USER scope 에서는 이어서 앱별(per-app) 예산도 저장한다.
       // /users 화면과 동일한 actions·endpoints 를 사용하므로 두 화면이 자동으로 동기화된다.
-      // ★ Codex R2 #6: 허용 클라이언트가 정상 로드된 경우에만 per-app 예산을 건드린다.
-      //   stale 전체허용 기준으로 쓰면 codex 등 잘못된 앱에 예산이 기록될 수 있다.
+      // ★ 허용 클라이언트가 정상 로드된 경우에만 per-app 예산을 건드린다.
+      //   stale 전체허용 기준으로 쓰면 잘못된 앱에 예산이 기록될 수 있다.
       let appError: string | null = null;
+
       if (isUserScope && clientsLoaded) {
         // allowed_clients 로 게이팅: 사용자가 허용된 앱만 set/clear. 허용되지 않은 앱은 손대지 않는다.
         const targets = ALL_CLIENTS.filter((c) => allowedClients.includes(c)).map((c) => ({
@@ -258,7 +264,9 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-background rounded-lg p-6 w-full max-w-md shadow-xl border border-border max-h-[90vh] overflow-y-auto">
+      {/* USER scope 는 per-app 예산 열이 추가돼 세로로 길어진다 — 2컬럼으로
+          넓혀 한 화면에 보이게 한다 (모바일은 1열로 자연스럽게 스택). */}
+      <div className="bg-background rounded-lg p-6 w-full max-w-md sm:max-w-3xl shadow-xl border border-border max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">{t('dialogTitle')}</h2>
           <button
@@ -272,30 +280,42 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
 
         <p className="text-sm text-muted-foreground mb-4">
           {t('dialogTarget')} <span className="font-medium text-foreground">{target.name}</span>
+          {target.currentUsed != null && (
+            <span className="ml-3 text-xs tabular-nums">
+              {t('currentUsage')} ${target.currentUsed.toFixed(2)}
+              {target.currentLimit > 0 && ` · ${t('existingLimit')} $${target.currentLimit.toFixed(2)}`}
+            </span>
+          )}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Use Team Budget option (USER scope only) */}
-          {isUserScope && (
-            <div className="flex items-center justify-between rounded-md border border-border p-3 bg-muted/30">
-              <div>
-                <p className="text-sm font-medium">{t('useTeamBudget')}</p>
-                <p className="text-xs text-muted-foreground">{t('useTeamBudgetDesc')}</p>
-              </div>
-              <SpinnerButton
-                type="button"
-                onClick={handleUseTeamBudget}
-                isLoading={isPending && useTeamBudget}
-                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-xs font-medium"
-              >
-                {t('switchToTeamBudget')}
-              </SpinnerButton>
+        {/* 전폭 섹션 — USER: 팀 예산 전환 / TEAM: 공유·분배 모드 */}
+        {/* Use Team Budget option (USER scope only) */}
+        {isUserScope && (
+          <div className="flex items-center justify-between rounded-md border border-border p-3 bg-muted/30">
+            <div>
+              <p className="text-sm font-medium">{t('useTeamBudget')}</p>
+              <p className="text-xs text-muted-foreground">{t('useTeamBudgetDesc')}</p>
             </div>
-          )}
+            <SpinnerButton
+              type="button"
+              onClick={handleUseTeamBudget}
+              isLoading={isPending}
+              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-xs font-medium"
+            >
+              {t('switchToTeamBudget')}
+            </SpinnerButton>
+          </div>
+        )}
 
+        {/* 본문 — USER: 좌(max/policy/thresholds)·우(per-app) 2컬럼, TEAM: 1컬럼 */}
+        <div className={isUserScope ? 'grid gap-6 sm:grid-cols-2' : ''}>
+        <div className="space-y-4">
           {/* Budget Amount */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('maxBudgetUsd')}</label>
+            <label className="text-sm font-medium">
+              {isTeamScope ? t('teamBudgetTotal') : t('maxBudgetUsd')}
+            </label>
             <div className="space-y-3">
               <input
                 type="range"
@@ -386,10 +406,12 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Per-app budgets (USER scope only, allowed_clients-gated) */}
-          {isUserScope && (
-            <div className="space-y-2 rounded-md border border-border p-3">
+        {/* 오른쪽 컬럼 — Per-app budgets (USER scope only, allowed_clients-gated) */}
+        {isUserScope && (
+        <div className="space-y-4">
+          <div className="space-y-2 rounded-md border border-border p-3">
               <label className="text-sm font-medium">{t('perAppBudget')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('perAppBudgetDesc')}
@@ -425,7 +447,10 @@ export function SetBudgetDialog({ isOpen, onClose, target }: SetBudgetDialogProp
                 </div>
               )}
             </div>
-          )}
+        </div>
+        )}
+
+        </div>
 
           <FormError error={error} />
 

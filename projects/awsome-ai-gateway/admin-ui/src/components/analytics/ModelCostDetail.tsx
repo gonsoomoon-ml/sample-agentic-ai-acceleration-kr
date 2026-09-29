@@ -4,6 +4,7 @@
 
 
 import type { ModelCostAnalyticsResponse } from '@/lib/actions/analytics-models';
+import { fmtPricePerM } from '@/lib/utils/pricing';
 import { Table, THead, TBody, Tr, Th, Td } from '@/components/common/Table';
 
 export function ModelCostDetail({ data }: { data: ModelCostAnalyticsResponse }) {
@@ -97,7 +98,7 @@ export function ModelCostDetail({ data }: { data: ModelCostAnalyticsResponse }) 
                 <Th numeric>비용 (USD)</Th>
                 <Th numeric>Input 토큰</Th>
                 <Th numeric>Output 토큰</Th>
-                <Th numeric>$/1K 토큰</Th>
+                <Th numeric>$/1M 토큰</Th>
                 <Th numeric>평균 지연</Th>
               </Tr>
             </THead>
@@ -109,7 +110,7 @@ export function ModelCostDetail({ data }: { data: ModelCostAnalyticsResponse }) 
                   <Td numeric className="font-semibold">${m.total_cost_usd.toFixed(4)}</Td>
                   <Td numeric>{m.input_tokens.toLocaleString()}</Td>
                   <Td numeric>{m.output_tokens.toLocaleString()}</Td>
-                  <Td numeric>${m.cost_per_1k_tokens.toFixed(4)}</Td>
+                  <Td numeric>{fmtPricePerM(m.cost_per_1k_tokens)}</Td>
                   <Td numeric>{m.avg_latency_ms}ms</Td>
                 </Tr>
               ))}

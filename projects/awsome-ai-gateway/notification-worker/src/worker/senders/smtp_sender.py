@@ -27,6 +27,11 @@ class SMTPEmailSender:
 
         self._host = settings.smtp_host
         self._port = settings.smtp_port or 587
+        self._starttls = settings.smtp_starttls
+        self._username = settings.smtp_username
+        self._password = (
+            settings.smtp_password.get_secret_value() if settings.smtp_password else None
+        )
         self._sender_address = settings.email_sender_address
         self._sender_name = settings.email_sender_name
 
@@ -47,7 +52,10 @@ class SMTPEmailSender:
                 msg,
                 hostname=self._host,
                 port=self._port,
-                use_tls=True,
+                username=self._username,
+                password=self._password,
+                use_tls=False,
+                start_tls=self._starttls,
             )
         except aiosmtplib.SMTPRecipientsRefused as exc:
             raise EmailSendError(str(exc), retryable=False) from exc

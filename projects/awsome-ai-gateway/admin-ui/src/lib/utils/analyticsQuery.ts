@@ -16,9 +16,17 @@ export function buildAnalyticsQuery(
   filter: AnalyticsFilterForm,
   latestMonth?: string,
 ): Record<string, string | number | undefined> {
-  return {
+  const query: Record<string, string | number | undefined> = {
     period: resolveMonth(filter, latestMonth),
     group_by: filter.group_by,
     scope: filter.scope ?? 'all',
   };
+  // custom 직접 입력 — 두 날짜가 다 있을 때만 구간을 실어 보낸다. 백엔드는 둘이
+  // 있으면 period 대신 일자 구간으로 집계한다. start 만 있는 진행 중 상태는
+  // 그 날짜의 월 집계로 미리보기(resolveMonth 가 start 의 월을 뽑는다).
+  if (filter.period === 'custom' && filter.start_date && filter.end_date) {
+    query.start_date = filter.start_date;
+    query.end_date = filter.end_date;
+  }
+  return query;
 }

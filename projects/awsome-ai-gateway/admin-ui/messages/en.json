@@ -155,7 +155,11 @@
       "10": "October",
       "11": "November",
       "12": "December"
-    }
+    },
+    "teamBudgetApplied": "Team budget applied",
+    "costSeriesTotal": "Total",
+    "costSeriesOther": "Other",
+    "callCount": "{count, number} calls"
   },
   "keys": {
     "title": "API Key Management",
@@ -294,7 +298,10 @@
     "colUsage": "Usage",
     "noMembers": "No members.",
     "unallocated": "Unallocated",
-    "allocationExceeds": "Allocated total (${allocated}) exceeds the team budget (${budget})."
+    "allocationExceeds": "Allocated total (${allocated}) exceeds the team budget (${budget}).",
+    "currentUsage": "Current usage",
+    "existingLimit": "Current limit",
+    "teamBudgetTotal": "Team total budget (USD)"
   },
   "models": {
     "title": "Model Management",
@@ -443,7 +450,11 @@
       "GLOBAL": "Global",
       "TEAM": "Team",
       "USER": "User"
-    }
+    },
+    "usageTrend": "Usage trend",
+    "usageTrendDesc": "Bucket averages normalized to per-minute / per-hour rates — same unit as the configured limits",
+    "trendEmpty": "No usage recorded in this window",
+    "trendLimit": "Configured limit"
   },
   "users": {
     "title": "User/Team Management",
@@ -485,14 +496,22 @@
       "description": "Select all (or deselect all) = allow every app. Select a subset to restrict to a whitelist.",
       "groupLabel": "Select app access",
       "all": "All",
-      "loading": "Loading…"
+      "loading": "Loading…",
+      "unrestricted": "No restriction",
+      "restricted": "Allowlist: {count} apps",
+      "inheritTeam": "Currently inheriting the team policy — any change is saved as this user's individual setting.",
+      "inheritOrg": "Currently inheriting the organization policy — any change is saved as this user's individual setting."
     },
     "budgetInput": {
       "claudeCode": "Claude Code budget (USD/month)",
       "cowork": "Cowork budget (USD/month)",
       "generic": "{app} budget (USD/month)",
       "placeholder": "Not set",
-      "invalid": "Invalid budget value ({client}). Enter a number of 0 or greater."
+      "invalid": "Invalid budget value ({client}). Enter a number of 0 or greater.",
+      "title": "Per-app budgets (USD/month)",
+      "editInBudgets": "Edit in Budget Management →",
+      "teamTotal": "Team total",
+      "userTotal": "User total"
     },
     "userModels": {
       "title": "Per-user allowed models (overrides team policy)",
@@ -541,6 +560,72 @@
       "userCountShort": "{count} users",
       "unassigned": "Unassigned",
       "hint": "↑↓ navigate · Enter select · Esc close"
+    },
+    "leaderAction": {
+      "currentLeaders": "Current team leaders",
+      "noLeaders": "No team leader assigned.",
+      "selectPlaceholder": "Select a member…",
+      "assignButton": "Set as team leader",
+      "unassignButton": "Remove",
+      "assignSuccess": "Set as team leader.",
+      "unassignSuccess": "Team leader unassigned.",
+      "removeModalTitle": "Remove team leader",
+      "removeModalBody": "Remove {name} as team leader?",
+      "removeModalNote": "Their role reverts to Developer (auto-restored on next login if they're in an admin group). Other leaders on this team are unaffected.",
+      "noMembers": "No eligible team members."
+    },
+    "unsavedChanges": "Unsaved changes",
+    "effectivePolicy": {
+      "title": "Effective Policy",
+      "hint": "The synthesized result of all policy axes. Hover a ✗ to see which axis blocks it.",
+      "loading": "Loading policy…",
+      "loadFailed": "Failed to load policy",
+      "app": "App",
+      "model": "Model",
+      "webSearch": "Web Search",
+      "allowed": "Allowed",
+      "denied": "Denied",
+      "axis": {
+        "user_app": "No app access",
+        "user_model": "Not in model allowlist",
+        "model_app": "Model not available for this app"
+      },
+      "modelsSource": {
+        "label": "Model policy source",
+        "user": "User override",
+        "team": "Team policy",
+        "none": "No restriction (all allowed)"
+      },
+      "budgets": "Budgets",
+      "used": "used",
+      "rateLimits": "Rate limits",
+      "downgrade": "Auto downgrade",
+      "downgradeNone": "No rules configured",
+      "readonly": "Read-only",
+      "scopeTeam": "Team",
+      "scopeUser": "User",
+      "deniedTitle": "Blocked because",
+      "clientsSource": {
+        "label": "App policy source",
+        "user": "User override",
+        "team": "Team policy",
+        "organization": "Organization policy",
+        "none": "Unrestricted (all apps)"
+      }
+    },
+    "userModelsInheritTeam": "No personal override — checkmarks show the inherited team policy. Changes save as a per-user policy.",
+    "userModelsInheritNone": "No personal override — all models allowed (no team policy either).",
+    "scopeAppAccess": {
+      "title": "App access policy",
+      "descriptionTeam": "Applies to team members without an individual setting. All selected = no team policy (inherits the organization policy).",
+      "descriptionOrg": "Default for every user without a team or individual setting. All selected = no organization policy (unrestricted).",
+      "groupLabel": "Allowed apps",
+      "unrestricted": "Unrestricted",
+      "restricted": "Allowlist: {count} apps",
+      "loading": "Loading…",
+      "apply": "Apply",
+      "saveSuccess": "App access policy saved",
+      "loadError": "Failed to load the app access policy"
     }
   },
   "analytics": {
@@ -574,7 +659,34 @@
       "model": "By Model",
       "team": "By Team",
       "user": "By User"
-    }
+    },
+    "refresh": "Refresh",
+    "refreshLabel": "Refresh page",
+    "thisMonth": "This Month",
+    "lastMonth": "Last Month",
+    "selectPeriod": "Select Period",
+    "customInput": "Custom Range",
+    "loadFailed": "Could not load analytics data.",
+    "noData": "No data available.",
+    "totalRequests": "Total Requests",
+    "totalRequestsDescription": "Total API requests during the period",
+    "totalTokens": "Total Tokens",
+    "totalTokensDescription": "Total tokens consumed during the period",
+    "tokenAnalysis": "Token Analysis",
+    "tokenInput": "Input",
+    "tokenOutput": "Output",
+    "tokenCacheRead": "Cache Read",
+    "tokenCacheWrite": "Cache Write",
+    "tokenTotal": "Total {total}",
+    "totalCostDescription": "Total USD cost during the period",
+    "averageCostPerUser": "Average Cost per User",
+    "activeUsersDescription": "Based on {count} active users",
+    "costByUser": "Cost by User",
+    "costUsd": "Cost (USD)",
+    "costSeriesTotal": "Total",
+    "costSeriesOther": "Other",
+    "item": "Item",
+    "date": "Date"
   },
   "cli": {
     "title": "CLI Download",
@@ -584,7 +696,39 @@
     "fileSize": "File Size",
     "checksum": "SHA256 Checksum",
     "download": "Download",
-    "copyChecksum": "Copy Checksum"
+    "copyChecksum": "Copy Checksum",
+    "subtitle": "Install the AWSome AI Gateway CLI and connect Claude Code to the corporate gateway via Cognito (OIDC) login. The first login automatically provisions your user and team.",
+    "prereqTitle": "Prerequisites",
+    "prereqDesc": "Get the three values below from your administrator and export them in your shell. These are the OIDC settings issued by the Cognito User Pool.",
+    "prereqEnv": "export OIDC_ISSUER_URL=\"https://cognito-idp.ap-south-1.amazonaws.com/'<POOL_ID>'\"\nexport OIDC_CLIENT_ID=\"'<COGNITO_APP_CLIENT_ID>'\"\nexport OIDC_AUDIENCE=\"'<COGNITO_APP_CLIENT_ID>'\"\nexport GATEWAY_URL=\"http://'<gateway-host>':8000\"\nexport GATEWAY_ADMIN_URL=\"http://'<admin-api-host>':8080\"",
+    "installTitle": "Install & Activate",
+    "installLinuxLabel": "Linux / macOS",
+    "installWindowsLabel": "Windows (PowerShell, admin)",
+    "installLinux": "# 1. Extract the downloaded archive\ntar -xzf gateway-cli-*.tar.gz\ncd gateway-cli-*/\n\n# 2. Install (sudo required — writes managed-settings.d)\n./install.sh\n\n# 3. Cognito login (browser PKCE flow starts automatically)\ngateway-cli login\n#   → A browser opens with the Cognito login page\n#   → On success the token is stored at ~/.gateway-cli/oidc-tokens.json (0600)\n#   → On first login admin-api auto-provisions the user and team\n\n# 4. Activate the gateway\ngateway-cli setup --gateway-url \"$GATEWAY_URL\"\n\n# 5. Check status\ngateway-cli status\n\n# 6. Logout / deactivate\ngateway-cli logout         # deletes OIDC token + VK cache\ngateway-cli disable        # removes managed-settings (sudo)",
+    "installWindows": "# 1. Extract the ZIP and enter the folder\n\n# 2. Install\n.\\install.ps1\n\n# 3. Cognito login in a new PowerShell session\ngateway-cli login\n\n# 4. Activate the gateway\ngateway-cli setup --gateway-url $env:GATEWAY_URL\n\n# 5. Check status\ngateway-cli status\n\n# 6. Logout / deactivate\ngateway-cli logout\ngateway-cli disable",
+    "cmdRefTitle": "CLI Command Reference",
+    "cmdColumn": "Command",
+    "descColumn": "Description",
+    "cmdLogin": "Browser login via the Cognito (OIDC) PKCE flow. Token stored at <code>~/.gateway-cli/oidc-tokens.json</code> (0600).",
+    "cmdLoginOpts": "Options: --issuer-url, --client-id, --audience, --redirect-port (default 8090), --timeout (default 300s)",
+    "cmdLogout": "Deletes the OIDC token + Virtual Key cache.",
+    "cmdSetup": "Writes the gateway config to Claude Code's <code>managed-settings.d</code>. Requires sudo.",
+    "cmdSetupOpts": "Options: --gateway-url, --admin-api-url (defaults to :8080 on the gateway-url host), --api-key-helper, --otel-endpoint",
+    "cmdStatus": "Shows current managed-settings state (ON/OFF + path + values).",
+    "cmdDisable": "Removes the managed-settings file (deactivates the gateway). Requires sudo.",
+    "cmdVersion": "Prints the installed CLI version.",
+    "autoProvTitle": "Automatic Provisioning",
+    "autoProvDesc": "On the first successful <code>gateway-cli login</code>, admin-api automatically creates the user and team from Cognito claims.",
+    "autoProvUser": "User: identified by the Cognito <code>sub</code> claim. Email and name are synced from ID token claims.",
+    "autoProvTeam": "Team: a Cognito group matching <code>Claude_&lt;TEAM&gt;</code> places the user in that team. New teams are auto-created with $0 budget + HARD_BLOCK — calls are blocked until an admin sets a budget.",
+    "autoProvRole": "Role: matching <code>ADMIN_EMAILS</code> or <code>ADMIN_GROUPS</code> grants ADMIN, otherwise DEVELOPER.",
+    "legacySts": "<strong>STS-based auth (legacy)</strong>: the pre-Cognito path that issued Virtual Keys directly from AWS SSO credentials is kept for compatibility. New users should use <code>gateway-cli login</code> (OIDC).",
+    "binaryTitle": "Binary Downloads",
+    "emptyDownloads": "No downloadable packages. An administrator must build with <code>gateway-cli/package.sh</code> and mount it into admin-api's <code>CLI_DIST_DIR</code>. Until then, use the source install steps above.",
+    "installCli": "Install via CLI",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyCommand": "Copy command"
   },
   "docker": {
     "title": "Docker Status",
@@ -616,7 +760,12 @@
     "spent": "Spent",
     "limit": "Limit: ${amount}",
     "remaining": "Remaining",
-    "overagePolicy": "Overage policy"
+    "overagePolicy": "Overage policy",
+    "policyLabel": {
+      "HARD_BLOCK": "Hard block",
+      "SOFT_WARNING": "Warn only",
+      "THROTTLE": "Throttle"
+    }
   },
   "chat": {
     "biInsight": "BI Insight",
@@ -849,6 +998,16 @@
     "confirmLastMessage": "This is the last app allowed for {alias}. Removing it leaves no allowed app, so every app is refused (the model stays in the list). Continue?",
     "confirmLastTitle": "Remove the last allowed app",
     "noneBadge": "Deny all",
-    "noneHint": "No app allowed (deny all) — no app can use this model."
+    "noneHint": "No app allowed (deny all) — no app can use this model.",
+    "defaultModelHint": "Fallback only — used when the client request does not carry a resolvable model. Claude Code, Cowork and Codex send a model on every request, so changing this usually has no visible effect. For 'mantle' backend profiles it forces the routing model.",
+    "webSearchTitle": "Web search",
+    "webSearchHint": "Injects the server-side web_search tool into requests from this app.",
+    "webSearchOn": "On",
+    "webSearchOff": "Off",
+    "webSearchSaved": "Web search setting saved.",
+    "colAccess": "Access",
+    "accessExplicit": "explicit",
+    "accessUnrestricted": "unrestricted",
+    "appStatusUnrestrictedHint": "Unrestricted — future apps are included automatically"
   }
 }

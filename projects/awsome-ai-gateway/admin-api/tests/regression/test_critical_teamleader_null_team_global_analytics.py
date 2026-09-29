@@ -196,7 +196,13 @@ async def test_team_leader_with_a_team_is_still_scoped_to_it():
     #
     # ⚠️ 이 목록에 새 문자열을 추가할 때는 그것이 진짜 격리인지 확인할 것. "team" 이
     #    들어간 아무 문자열이나 넣으면(예: GROUP BY teams.name) 가드가 통째로 공허해진다.
-    SCOPE_PREDICATES = ("usage_logs.team_id = ", "users.team_id = ")
+    #    IN 은 scope_ids 리스트(소속 팀 1개 또는 다수)를 받는 경로의 동등한 격리다.
+    SCOPE_PREDICATES = (
+        "usage_logs.team_id = ",
+        "usage_logs.team_id IN ",
+        "users.team_id = ",
+        "users.team_id IN ",
+    )
     unscoped = [s for s in seen if not any(p in s for p in SCOPE_PREDICATES)]
     assert not unscoped, (
         f"team_id 격리가 없는 질의 {len(unscoped)}건 — 전사 데이터가 섞여 나온다. "
@@ -205,7 +211,7 @@ async def test_team_leader_with_a_team_is_still_scoped_to_it():
 
     # 대조군 — 두 경로가 **둘 다 실제로 등장**하는가. 한쪽이 사라지면 위 단정은
     # 남은 한쪽만으로 통과하고, 없어진 질의의 격리 누락을 못 잡는다.
-    assert any("usage_logs.team_id = " in s for s in seen), (
+    assert any(p in s for s in seen for p in SCOPE_PREDICATES[:2]), (
         "usage_logs 격리 질의가 하나도 없다 — 가드의 전제가 깨졌다"
     )
     assert any("budget.budget_usages" in s for s in seen), (
@@ -214,7 +220,7 @@ async def test_team_leader_with_a_team_is_still_scoped_to_it():
     )
     for q in seen:
         if "budget.budget_usages" in q:
-            assert "users.team_id = " in q, (
+            assert "users.team_id = " in q or "users.team_id IN " in q, (
                 "budget_usages 질의에 users.team_id 격리가 없다 — TEAM_LEADER 가 다른 팀 "
                 f"사용자의 이관 금액을 받아 간다: {q[:400]}"
             )
@@ -235,9 +241,10 @@ async def test_admin_without_a_team_still_sees_everything():
     )
     assert res.cost_summary.total_cost_usd == Decimal("0")
     assert seen
-    assert all("usage_logs.team_id = " not in s for s in seen), (
-        "ADMIN 인데 팀 격리가 걸렸다 — 전사 집계가 아니다"
-    )
+    assert all(
+        "usage_logs.team_id = " not in s and "usage_logs.team_id IN " not in s
+        for s in seen
+    ), "ADMIN 인데 팀 격리가 걸렸다 — 전사 집계가 아니다"
 
 
 @pytest.mark.asyncio

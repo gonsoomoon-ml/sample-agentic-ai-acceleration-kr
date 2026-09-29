@@ -3,10 +3,12 @@
 // Copyright 2026 © Amazon.com and Affiliates: This deliverable is considered Developed Content as defined in the AWS Service Terms.
 
 
+import { useTranslations } from 'next-intl';
 import type { MyUsageResponse } from '@/lib/actions/my';
 import { Table, THead, TBody, Tr, Th, Td } from '@/components/common/Table';
 
 export function MyUsageDashboard({ data }: { data: MyUsageResponse }) {
+  const t = useTranslations('my');
   const totalCost = data.daily_usage.reduce((sum, d) => sum + d.cost_usd, 0);
   const totalRequests = data.daily_usage.reduce((sum, d) => sum + d.requests, 0);
   const totalTokens = data.daily_usage.reduce((sum, d) => sum + d.tokens, 0);
@@ -16,15 +18,15 @@ export function MyUsageDashboard({ data }: { data: MyUsageResponse }) {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="glass glass-hover rounded-apple p-4">
-          <p className="text-sm text-muted-foreground">총 비용</p>
+          <p className="text-sm text-muted-foreground">{t('totalCost')}</p>
           <p className="text-2xl font-bold mt-1">${totalCost.toFixed(4)}</p>
         </div>
         <div className="glass glass-hover rounded-apple p-4">
-          <p className="text-sm text-muted-foreground">총 요청 수</p>
+          <p className="text-sm text-muted-foreground">{t('totalRequests')}</p>
           <p className="text-2xl font-bold mt-1">{totalRequests.toLocaleString()}</p>
         </div>
         <div className="glass glass-hover rounded-apple p-4">
-          <p className="text-sm text-muted-foreground">총 토큰</p>
+          <p className="text-sm text-muted-foreground">{t('totalTokens')}</p>
           <p className="text-2xl font-bold mt-1">{totalTokens.toLocaleString()}</p>
         </div>
       </div>
@@ -32,18 +34,18 @@ export function MyUsageDashboard({ data }: { data: MyUsageResponse }) {
       {/* Daily Usage Table */}
       <div className="glass rounded-apple overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold">일별 사용량</h3>
+          <h3 className="text-sm font-semibold">{t('dailyUsage')}</h3>
         </div>
         {data.daily_usage.length === 0 ? (
-          <p className="text-sm text-muted-foreground p-4">이 기간의 사용 기록이 없습니다.</p>
+          <p className="text-sm text-muted-foreground p-4">{t('noDailyRecords')}</p>
         ) : (
           <Table>
             <THead>
               <Tr>
-                <Th>날짜</Th>
-                <Th numeric>비용 (USD)</Th>
-                <Th numeric>요청</Th>
-                <Th numeric>토큰</Th>
+                <Th>{t('colDate')}</Th>
+                <Th numeric>{t('colCostUsd')}</Th>
+                <Th numeric>{t('colRequests')}</Th>
+                <Th numeric>{t('colTokens')}</Th>
               </Tr>
             </THead>
             <TBody>
@@ -63,18 +65,18 @@ export function MyUsageDashboard({ data }: { data: MyUsageResponse }) {
       {/* By Model Table */}
       <div className="glass rounded-apple overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold tracking-tight">모델별 사용량</h3>
+          <h3 className="text-sm font-semibold tracking-tight">{t('modelUsage')}</h3>
         </div>
         {data.by_model.length === 0 ? (
-          <p className="text-sm text-muted-foreground p-4">이 기간의 모델별 기록이 없습니다.</p>
+          <p className="text-sm text-muted-foreground p-4">{t('noModelRecords')}</p>
         ) : (
           <Table>
             <THead>
               <Tr>
-                <Th>모델</Th>
-                <Th numeric>비용 (USD)</Th>
-                <Th numeric>요청</Th>
-                <Th numeric>토큰</Th>
+                <Th>{t('colModel')}</Th>
+                <Th numeric>{t('colCostUsd')}</Th>
+                <Th numeric>{t('colRequests')}</Th>
+                <Th numeric>{t('colTokens')}</Th>
               </Tr>
             </THead>
             <TBody>

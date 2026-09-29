@@ -168,6 +168,9 @@ class ModelResponse(BaseModel):
     #: 구별해 보여줘야 한다 — ``[]`` 를 "제한 없음" 으로 렌더하면 운영자가 자기가 만든
     #: 전면 거부를 보지 못한다.
     allowed_clients: list[str] | None = None
+    #: 스펙 정보 — ``None`` = 미상(수동 커스텀 모델).
+    context_window: int | None = None
+    max_output_tokens: int | None = None
     current_pricing: ModelPricingResponse | None = None
     created_at: datetime
     updated_at: datetime

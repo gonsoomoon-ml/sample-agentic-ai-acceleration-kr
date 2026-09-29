@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { Monitor, Laptop, Terminal, Download, Copy, Check } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { CLIDownloadItem } from '@/types/entities';
 
 interface CLIDownloadCardProps {
@@ -40,6 +41,7 @@ function getCurlCommand(item: CLIDownloadItem): string | null {
 }
 
 export function CLIDownloadCard({ item }: CLIDownloadCardProps) {
+  const t = useTranslations('cli');
   const [copied, setCopied] = useState(false);
   const [cmdCopied, setCmdCopied] = useState(false);
 
@@ -73,20 +75,20 @@ export function CLIDownloadCard({ item }: CLIDownloadCardProps) {
           <p className="font-bold text-sm">
             {getOSDisplayName(item.os)} ({item.arch})
           </p>
-          <p className="text-xs text-muted-foreground">버전: v{item.version}</p>
+          <p className="text-xs text-muted-foreground">{t('version')}: v{item.version}</p>
         </div>
       </div>
 
       {/* 파일 정보 */}
       <div className="flex flex-col gap-1 text-xs text-muted-foreground">
         <div className="flex justify-between">
-          <span>파일 크기</span>
+          <span>{t('fileSize')}</span>
           <span className="font-medium text-foreground">
             {formatFileSize(item.file_size_bytes)}
           </span>
         </div>
         <div className="flex justify-between items-center">
-          <span>SHA-256</span>
+          <span>{t('checksum')}</span>
           <div className="flex items-center gap-1">
             <span
               className="font-mono text-foreground"
@@ -97,7 +99,7 @@ export function CLIDownloadCard({ item }: CLIDownloadCardProps) {
             <button
               onClick={handleCopyChecksum}
               className="rounded-sm p-0.5 hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              aria-label="체크섬 복사"
+              aria-label={t('copyChecksum')}
             >
               {copied ? (
                 <Check size={12} className="text-green-600" aria-hidden="true" />
@@ -120,23 +122,23 @@ export function CLIDownloadCard({ item }: CLIDownloadCardProps) {
         ].join(' ')}
       >
         <Download size={14} aria-hidden="true" />
-        다운로드
+        {t('download')}
       </a>
 
       {/* CLI 설치 명령어 (Linux/macOS only) */}
       {curlCmd && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">CLI로 설치</span>
+            <span className="text-xs text-muted-foreground">{t('installCli')}</span>
             <button
               onClick={handleCopyCurl}
               className="rounded-sm p-0.5 hover:bg-muted transition-colors text-xs text-muted-foreground flex items-center gap-1"
-              aria-label="명령어 복사"
+              aria-label={t('copyCommand')}
             >
               {cmdCopied ? (
-                <><Check size={12} className="text-green-600" /> 복사됨</>
+                <><Check size={12} className="text-green-600" /> {t('copied')}</>
               ) : (
-                <><Copy size={12} /> 복사</>
+                <><Copy size={12} /> {t('copy')}</>
               )}
             </button>
           </div>

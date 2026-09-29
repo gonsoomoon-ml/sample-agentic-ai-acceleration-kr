@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 흔히 쓰는 비-IANA 약어/레거시 alias → 정규 IANA 이름 힌트 (검증은 그대로 엄격하게
@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # SMTP (optional)
     smtp_host: str | None = None
     smtp_port: int | None = None
+    smtp_starttls: bool = False
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
 
     # Internal API (optional)
     email_api_url: str | None = None
@@ -88,6 +91,9 @@ class Settings(BaseSettings):
     # 이메일 본문의 "발송시각" 표시 타임존(§59). IANA TZ 이름.
     # admin-api 의 REPORTING_TIMEZONE 과 동일 값으로 맞추는 것을 권장(운영 기준 통일).
     reporting_timezone: str = "Asia/Seoul"
+
+    # 이메일 템플릿 언어 (ko | en)
+    notification_locale: str = "ko"
 
     @field_validator("reporting_timezone")
     @classmethod

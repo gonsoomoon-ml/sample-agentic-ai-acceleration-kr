@@ -77,6 +77,20 @@ _INSERT_USAGE_LOGS = text(
 #: 아무도 읽지 않는 행이 쌓인다.
 _PER_APP_CLIENTS = ("claude-code", "cowork", "codex")
 
+#: threshold 알림의 "현재 사용액" 조회 — 해당 스코프의 기간 누적 총합(client=NULL 행).
+#: _upsert_budget_usages 가 같은 flush 안에서 이미 커밋됐으므로 이 값은 임계를 넘긴
+#: 요청까지 반영된 누적이다. entry.cost_usd 는 그 요청 1건의 비용이라 사용하면 안 된다.
+_SELECT_CUMULATIVE_USAGE = text(
+    """
+    SELECT used_usd
+    FROM budget.budget_usages
+    WHERE scope = CAST(:scope AS budget.budget_scope)
+      AND scope_id = CAST(:scope_id AS uuid)
+      AND period = :period
+      AND client IS NULL
+    """
+)
+
 _UPSERT_BUDGET_USAGE = text(
     """
     INSERT INTO budget.budget_usages
@@ -423,9 +437,33 @@ class BatchFlusher:
         notification-worker는 이 payload를 받아서 DB에서 user_name/team_name/
         max_budget_usd 를 조회해 이메일 템플릿을 렌더링한다.
         """
-        for e in entries:
-            if e.threshold_triggered is None:
-                continue
+        # 임계를 넘긴 스코프들의 기간 누적을 한 세션에서 읽는다 — 방금 커밋된
+        # budget_usages 가 진실의 원천이다. 조회 실패 시 요청 단건 비용으로 폴백
+        # (이전 동작 — 이메일은 나가되 금액만 부정확).
+        triggered = [e for e in entries if e.threshold_triggered is not None]
+        cumulative: dict[str, Decimal] = {}
+        if triggered:
+            try:
+                async with self._session_factory() as session:
+                    for e in triggered:
+                        scope = (e.threshold_scope or "user").upper()
+                        scope_id = e.team_id if scope == "TEAM" else e.user_id
+                        row = (
+                            await session.execute(
+                                _SELECT_CUMULATIVE_USAGE,
+                                {
+                                    "scope": scope,
+                                    "scope_id": scope_id,
+                                    "period": e.period,
+                                },
+                            )
+                        ).scalar_one_or_none()
+                        if row is not None:
+                            cumulative[e.request_id] = Decimal(str(row))
+            except Exception:
+                logger.warning("threshold_cumulative_lookup_failed")
+
+        for e in triggered:
             try:
                 # ⚠️ 도메인 필드는 반드시 `payload` 봉투 안에 넣는다. notification-worker 의
                 #    NotificationEvent(notification-worker/src/worker/schemas/events.py:39-44)
@@ -442,10 +480,13 @@ class BatchFlusher:
                         "user_id": e.user_id,
                         "team_id": e.team_id,
                         "threshold_pct": e.threshold_triggered,
-                        "current_used_usd": str(e.cost_usd),
+                        "current_usage_usd": str(
+                            cumulative.get(e.request_id, e.cost_usd)
+                        ),
                         "period": e.period,
                         "policy": e.threshold_policy or "hard_block",
-                        "target_type": "user",
+                        "scope": e.threshold_scope or "user",
+                        "target_type": e.threshold_scope or "user",
                     },
                 }
                 await self._redis.publish("notifications:budget", json.dumps(event))

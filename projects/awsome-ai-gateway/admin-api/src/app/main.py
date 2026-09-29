@@ -106,6 +106,7 @@ async def lifespan(app: FastAPI):
     from app.services.key_service import KeyService
     from app.services.model_service import ModelService
     from app.services.rate_limit_service import RateLimitService
+    from app.services.allowed_client_scope_service import ScopedAllowedClientService
     from app.services.service_token_service import ServiceTokenService
     from app.services.team_allowed_model_service import TeamAllowedModelService
     from app.services.user_team_service import UserTeamService
@@ -123,6 +124,7 @@ async def lifespan(app: FastAPI):
     app.state.rate_limit_service = RateLimitService(cache_mgr=cache_mgr)
     app.state.user_team_service = UserTeamService(cache_mgr=cache_mgr, key_service=key_service)
     app.state.team_allowed_model_service = TeamAllowedModelService(cache_mgr=cache_mgr)
+    app.state.allowed_client_scope_service = ScopedAllowedClientService(cache_mgr=cache_mgr)
     app.state.analytics_service = AnalyticsService()
     app.state.service_token_service = ServiceTokenService()
 

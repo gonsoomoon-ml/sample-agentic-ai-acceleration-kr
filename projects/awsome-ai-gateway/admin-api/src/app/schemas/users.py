@@ -113,6 +113,7 @@ class OrgNodeMeta(BaseModel):
     #: 하위 팀 수. DEPARTMENT / ORGANIZATION 에서만 채운다. TEAM·USER 는 None.
     team_count: int | None = None
     leader_name: str | None = None
+    leader_user_id: str | None = None
     email: str | None = None
     role: UserRole | None = None
     team_name: str | None = None
@@ -127,3 +128,13 @@ class OrgTreeNode(BaseModel):
 
 
 OrgTreeNode.model_rebuild()
+
+
+class ScopedAllowedClientsResponse(BaseModel):
+    """팀/조직 단위 앱 접근 정책 (alembic 0038). scope_id = team_id 또는 org_id.
+
+    clients 0개 = 정책 없음(상위로 폴백 / 최종적으로는 제한 없음) — 전면 거부가 아님.
+    """
+
+    scope_id: str
+    clients: list[str]

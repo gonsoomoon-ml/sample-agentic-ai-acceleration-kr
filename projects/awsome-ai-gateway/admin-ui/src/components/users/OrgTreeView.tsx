@@ -84,6 +84,7 @@ export function OrgTreeView({ root }: OrgTreeViewProps) {
         member_count: null,
         team_count: null,
         leader_name: null,
+        leader_user_id: null,
         email: user.email,
         role: user.role,
         team_name: user.team_name,

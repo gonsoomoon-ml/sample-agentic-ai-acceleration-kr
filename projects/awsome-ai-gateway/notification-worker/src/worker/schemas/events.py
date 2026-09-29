@@ -14,9 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 class EventType(str, Enum):
+    # ⚠️ seed(notification.notification_configs, db/init/06_seed_notification_configs.sql)가
+    #    tie-breaker 다 — enum 은 seed 의 event_type 집합과 정확히 일치해야 한다. 여기 없는
+    #    타입으로 발행되면 pydantic 이 거부해 이벤트가 조용히 폐기된다(알림 0건).
+    #    켜고 끄는 스위치는 enum 이 아니라 notification_configs.enabled 다.
     BUDGET_THRESHOLD = "budget_threshold"
+    # api-key-helper가 자동 갱신하므로 현재 key_expiring/expired 발행자는 없다 —
+    # 발행자가 생기면 notification_configs.enabled 로 제어한다.
     KEY_EXPIRING = "key_expiring"
     KEY_EXPIRED = "key_expired"
+    # 관리자/정책에 의한 폐기 시 발행
     KEY_REVOKED = "key_revoked"
     AUTH_FAILURE_SPIKE = "auth_failure_spike"
     PERMISSION_VIOLATION = "permission_violation"

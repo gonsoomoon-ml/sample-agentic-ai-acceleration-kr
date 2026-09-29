@@ -4,10 +4,12 @@
 
 
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { RefreshCw } from 'lucide-react';
 
 export function RefreshButton() {
   const router = useRouter();
+  const t = useTranslations('analytics');
 
   return (
     <button
@@ -17,10 +19,10 @@ export function RefreshButton() {
         'border border-border bg-background hover:bg-muted',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
       ].join(' ')}
-      aria-label="페이지 새로고침"
+      aria-label={t('refreshLabel')}
     >
       <RefreshCw size={14} aria-hidden="true" />
-      새로고침
+      {t('refresh')}
     </button>
   );
 }

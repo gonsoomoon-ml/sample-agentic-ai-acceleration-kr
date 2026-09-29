@@ -148,7 +148,7 @@ def _get_analytics_body() -> ast.AsyncFunctionDef:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("field", ["trends", "by_model", "by_team", "by_user"])
+@pytest.mark.parametrize("field", ["trends", "by_model", "by_team", "by_user", "token_breakdown"])
 def test_analytics_response_fields_are_explicitly_assigned(field: str):
     """스키마 기본값에 의존해 조용히 빈 값이 나가지 못하게 한다."""
     fn = _get_analytics_body()
@@ -208,3 +208,31 @@ def test_requests_by_model_reuses_the_shared_scope_filter():
         body = ast.unparse(fns[name])
         assert "_apply_scope_filter" in body, f"{name} 이 공용 scope 필터를 쓰지 않는다"
         assert "cost_period_filter" in body, f"{name} 이 KST 기간 필터를 쓰지 않는다"
+
+
+@pytest.mark.unit
+def test_token_bucket_totals_covers_all_billed_buckets_and_scope():
+    """토큰 분석 패널의 원천 집계가 4버킷 전부 + 공용 격리/기간 필터를 써야 한다.
+
+    버킷이 빠지면 패널의 합이 KPI 총 토큰보다 작아지고(과소보고),
+    _apply_scope_filter 가 빠지면 TEAM_LEADER 에게 전사 토큰 분포가 나간다.
+    """
+    tree = ast.parse((SRC / "repositories" / "analytics_repository.py").read_text())
+    fns = {
+        n.name: n
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef))
+    }
+    assert "token_bucket_totals" in fns, (
+        "analytics_repository.token_bucket_totals 부재 — analytics_service 가 "
+        "호출하므로 AttributeError 로 /admin/analytics 가 500 이 된다"
+    )
+    body = ast.unparse(fns["token_bucket_totals"])
+    for bucket in BILLED_BUCKETS:
+        assert bucket in body, f"token_bucket_totals 에 {bucket} 누락 — 버킷 과소보고"
+    assert "reasoning_tokens" not in body, (
+        "reasoning_tokens 는 output_tokens 에 이미 포함 — 더하면 이중계상"
+    )
+    assert "_apply_scope_filter" in body, "공용 scope 격리 필터를 쓰지 않는다"
+    assert "cost_period_filter" in body, "KST 기간 필터를 쓰지 않는다"
+    assert "cost_where" in body, "custom 날짜 구간(cost_where) 오버라이드가 없다"

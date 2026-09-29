@@ -12,7 +12,11 @@ Ground truth measured against Tokyo Mantle on 2026-08-06:
 
 import pytest
 
-from app.services.thinking_normalizer import normalize_thinking
+from app.services.thinking_normalizer import (
+    normalize_thinking,
+    sanitize_bedrock_messages,
+    sanitize_output_config,
+)
 
 OPUS_48 = "anthropic.claude-opus-4-8"
 OPUS_47 = "anthropic.claude-opus-4-7"
@@ -154,4 +158,93 @@ def test_other_fields_preserved():
     )
     assert b["system"] == "sys"
     assert b["tools"] == [{"name": "t", "input_schema": {}}]
+    assert b["messages"] == [{"role": "user", "content": "hi"}]
+
+
+# --- sanitize_output_config: legacy keeps format, drops effort ----------------
+
+
+def test_legacy_drops_effort_keeps_format():
+    fmt = {"type": "json_schema", "schema": {"type": "object"}}
+    b = sanitize_output_config(
+        _body(output_config={"effort": "low", "format": fmt}), HAIKU_45
+    )
+    assert b["output_config"] == {"format": fmt}
+
+
+def test_legacy_output_config_only_effort_popped():
+    b = sanitize_output_config(_body(output_config={"effort": "low"}), HAIKU_45)
+    assert "output_config" not in b
+
+
+def test_legacy_format_only_untouched():
+    fmt = {"type": "json_schema", "schema": {"type": "object"}}
+    b = sanitize_output_config(_body(output_config={"format": fmt}), HAIKU_45)
+    assert b["output_config"] == {"format": fmt}
+
+
+# --- sanitize_bedrock_messages -------------------------------------------------
+
+
+def test_message_level_output_config_stripped():
+    b = sanitize_bedrock_messages(
+        _body(messages=[
+            {"role": "user", "content": "a"},
+            {"role": "assistant", "content": "b", "output_config": {"effort": "low"}},
+            {"role": "user", "content": "c"},
+        ]),
+        OPUS_48,
+    )
+    assert all("output_config" not in m for m in b["messages"])
+    assert len(b["messages"]) == 3
+
+
+def test_system_role_hoisted_to_top_level():
+    b = sanitize_bedrock_messages(
+        _body(messages=[
+            {"role": "user", "content": "a"},
+            {"role": "system", "content": "be brief"},
+            {"role": "user", "content": "c"},
+        ]),
+        OPUS_48,
+    )
+    assert [m["role"] for m in b["messages"]] == ["user", "user"]
+    assert "be brief" in str(b["system"])
+
+
+def test_system_role_merged_with_existing_system_string():
+    b = sanitize_bedrock_messages(
+        _body(system="orig sys",
+              messages=[
+                  {"role": "system", "content": [{"type": "text", "text": "extra"}]},
+                  {"role": "user", "content": "c"},
+              ]),
+        OPUS_48,
+    )
+    assert isinstance(b["system"], list)
+    texts = [x.get("text") for x in b["system"]]
+    assert texts == ["orig sys", "extra"]
+
+
+def test_max_tokens_clamped_on_legacy():
+    b = sanitize_bedrock_messages(_body(max_tokens=128000), HAIKU_45)
+    assert b["max_tokens"] == 64000
+
+
+def test_max_tokens_untouched_on_adaptive():
+    b = sanitize_bedrock_messages(_body(max_tokens=128000), OPUS_48)
+    assert b["max_tokens"] == 128000
+
+
+def test_max_tokens_clamped_by_alias_family():
+    b = sanitize_bedrock_messages(
+        _body(max_tokens=128000), None, alias="claude-haiku-4-5-20251001"
+    )
+    assert b["max_tokens"] == 64000
+
+
+def test_bedrock_messages_noop_on_clean_body():
+    b = sanitize_bedrock_messages(_body(system="s", max_tokens=100), OPUS_48)
+    assert b["system"] == "s"
+    assert b["max_tokens"] == 100
     assert b["messages"] == [{"role": "user", "content": "hi"}]

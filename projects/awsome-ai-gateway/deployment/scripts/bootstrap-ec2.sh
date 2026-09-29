@@ -99,6 +99,16 @@ else
   log "helm 이미 설치됨 — 건너뜀"
 fi
 
+# ---- 5.5 yq (mikefarah) — update-scripts 가 values YAML 을 구조화 편집할 때 사용 --
+if ! have yq; then
+  log "yq 설치 (mikefarah 단일 바이너리)"
+  sudo curl -fsSLo /usr/local/bin/yq \
+    "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+  sudo chmod +x /usr/local/bin/yq
+else
+  log "yq 이미 설치됨 — 건너뜀"
+fi
+
 # ---- 6. Claude Code (native installer → ~/.local/bin/claude, Node 불필요) -----
 export PATH="$HOME/.local/bin:$PATH"   # 이 스크립트 안에서만 유효 (아래에서 영속화)
 if ! have claude; then

@@ -85,6 +85,8 @@ class TestCLIVirtualKeyIssuance:
             key_repo = MockKeyRepo.return_value
             # issue_key now expires + inserts in one CTE: expire_and_create(user_id, vk) -> (expired_count, new_id)
             key_repo.expire_and_create = AsyncMock(return_value=(0, uuid.uuid4()))
+            # VK dedup(VK_DEDUP_SECONDS)이 발급 전 최근 ACTIVE 키를 조회한다 — 빈 리스트면 새로 발급.
+            key_repo.list_active_for_user = AsyncMock(return_value=[])
             mock_audit.log = AsyncMock()
 
             resp = await client.post(

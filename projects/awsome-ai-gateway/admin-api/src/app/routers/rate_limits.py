@@ -42,6 +42,25 @@ async def get_rate_limit_usage(
     return await svc.get_live_usage(scope, scope_id)
 
 
+@router.get("/usage-trend/{scope}/{scope_id}")
+async def get_rate_limit_usage_trend(
+    request: Request,
+    scope: str,
+    scope_id: str,
+    window: str = "24h",
+    admin: CurrentUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """USER/TEAM 사용량 트렌드 — usage_logs 시간 버킷 집계.
+    한도 설정의 근거 데이터로 rate-limits 패널이 사용. 창/버킷은 서비스의
+    고정 화이트리스트(1h/6h/24h/7d)만 허용해 집계 비용을 상한 내에 둔다.
+    fail-soft: 실패 시 {available:false}."""
+    from app.services.rate_limit_service import RateLimitService
+
+    svc: RateLimitService = request.app.state.rate_limit_service
+    return await svc.get_usage_trend(session, scope, scope_id, window)
+
+
 @router.put("/user/{user_id}", response_model=RateLimitResponse)
 async def set_user_rate_limit(
     request: Request,

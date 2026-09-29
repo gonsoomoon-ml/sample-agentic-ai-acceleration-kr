@@ -368,3 +368,75 @@ def test_oidc_service_delegates_role_policy_instead_of_duplicating_it():
     assert "ADMIN_GROUPS" in identity.read_text(encoding="utf-8"), (
         "oidc_identity 에 ADMIN_GROUPS 정책이 없다 — 위임 대상이 비었다"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. JWTVerifier 가 IdP id_token 형상을 실제로 검증할 수 있는가
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 위 테스트들은 verifier.verify 를 모킹한다 — 서명 검증은 관심사 밖이라고 선언하고
+# 넘겼다. 그런데 dev 에서 Cognito 로그인이 정확히 그 경계에서 깨졌다: Cognito
+# id_token 은 ``at_hash`` 클레임을 싣는데, jose 는 access_token 없이는 at_hash 를
+# 검증할 수 없어 JWTClaimsError 를 던지고, verify() 는 그걸 JWTError 로 삼켜 401 이
+# 됐다. 모킹된 테스트는 이걸 영원히 못 잡는다 — 실제 RSA 서명·검증을 돌려야 한다.
+
+
+def test_jwt_verifier_accepts_idp_id_token_with_at_hash():
+    """``at_hash`` 를 단 IdP id_token 이 ``JWTVerifier.verify`` 를 통과하는가.
+
+    쿠키에는 id_token 만 실리므로 비교할 access_token 이 없다 — at_hash 검증은
+    꺼져야 한다(core.oidc_verifier 와 동일 정책). 이 테스트는 실제 RSA 키로 서명한
+    토큰을 verify() 에 통과시켜, claims 검증 옵션이 IdP 토큰 형상을 받는지 고정한다.
+    """
+    import time
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from jose import jwt as jose_jwt
+
+    from app.core.auth import JWTVerifier
+
+    issuer = "https://idp.example.com/pool"
+    audience = "app-client-id"
+    priv = rsa.generate_private_key(65537, 2048)
+    priv_pem = priv.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    pub_pem = priv.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+
+    verifier = JWTVerifier()
+    verifier.load_configs([
+        {
+            "id": uuid.uuid4(),
+            "issuer": issuer,
+            "audience": audience,
+            "public_key_pem": pub_pem,
+            "algorithm": "RS256",
+        }
+    ])
+
+    now = int(time.time())
+    token = jose_jwt.encode(
+        {
+            "sub": str(uuid.uuid4()),
+            "iss": issuer,
+            "aud": audience,
+            "exp": now + 3600,
+            "iat": now,
+            "at_hash": "binds-to-access-token-we-do-not-have",
+            "cognito:groups": ["ClaudeAdmin"],
+        },
+        priv_pem,
+        algorithm="RS256",
+        # kid 가 config id(UUID) 와 절대 안 맞는 형태 — all-keys 폴백 경로도 같이 검증
+        headers={"kid": "idpSigningKeyId"},
+    )
+
+    payload = verifier.verify(token)
+    assert payload["iss"] == issuer
+    assert payload["at_hash"] == "binds-to-access-token-we-do-not-have"

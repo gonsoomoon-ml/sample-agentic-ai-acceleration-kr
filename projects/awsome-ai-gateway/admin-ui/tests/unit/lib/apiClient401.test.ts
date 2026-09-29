@@ -154,8 +154,8 @@ describe('AdminAPIClient 401', () => {
     expect(unauth.status).toBe(401);
     expect(unauth.error_code).toBe(UNAUTHORIZED_ERROR_CODE);
     expect(unauth.name).toBe('UnauthorizedError');
-    // 호출부가 경로를 하드코딩하지 않아도 되게 — 계약은 정확히 /api/auth/login 하나다.
-    expect(unauth.loginUrl).toBe('/api/auth/login');
+    // 호출부가 경로를 하드코딩하지 않아도 되게 — 계약은 정확히 /login 하나다.
+    expect(unauth.loginUrl).toBe('/login');
     expect(unauth.loginUrl).toBe(LOGIN_PATH);
     // 상류가 준 사람용 문구는 유지한다(디버깅 정보를 버리지 않는다).
     expect(unauth.message).toBe('Not authenticated');
@@ -218,18 +218,18 @@ describe('AdminAPIClient 401', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2) 클라이언트 헬퍼 — 401 → /api/auth/login 이동
+// 2) 클라이언트 헬퍼 — 401 → /login 이동
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('redirectToLoginIfUnauthorized', () => {
-  it('401 이면 /api/auth/login 으로 이동시키고 true 를 돌려준다', () => {
+  it('401 이면 /login 으로 이동시키고 true 를 돌려준다', () => {
     const assign = stubWindow();
 
     expect(redirectToLoginIfUnauthorized({ status: 401 })).toBe(true);
 
     expect(assign).toHaveBeenCalledTimes(1);
     // 진입점 계약: 쿼리 없이 정확히 이 경로. (다른 에이전트가 만드는 라우트다.)
-    expect(assign).toHaveBeenCalledWith('/api/auth/login');
+    expect(assign).toHaveBeenCalledWith('/login');
   });
 
   it('⚠️ 403 은 이동시키지 않는다 — 권한 부족은 로그인 문제가 아니다', () => {
@@ -271,7 +271,7 @@ describe('프록시 라우트 401 본문', () => {
   it('본문 계약: error_code / login_url', () => {
     expect(unauthorizedBody()).toMatchObject({
       error_code: 'UNAUTHORIZED',
-      login_url: '/api/auth/login',
+      login_url: '/login',
     });
     expect(typeof unauthorizedBody().error).toBe('string');
   });

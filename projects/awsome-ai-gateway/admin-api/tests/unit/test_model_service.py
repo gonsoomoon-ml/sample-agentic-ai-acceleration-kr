@@ -249,3 +249,18 @@ class TestPatchStatus:
 
         assert result.status == "INACTIVE"
         assert mock_redis.delete.call_count >= 1
+
+
+class TestDisplayName:
+    async def test_display_name_falls_back_to_alias(
+        self, model_service: ModelService, mock_session: AsyncMock
+    ):
+        """display_name NULL → 응답엔 alias — '비우면 alias 사용' 안내와 일치."""
+        model = _make_model()
+        model.display_name = None
+        resp = model_service._to_response(model, None)
+        assert resp.display_name == model.alias
+
+        model.display_name = "Sonnet 5 (표시명)"
+        resp = model_service._to_response(model, None)
+        assert resp.display_name == "Sonnet 5 (표시명)"

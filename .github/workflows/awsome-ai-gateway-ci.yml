@@ -228,7 +228,10 @@ jobs:
           DB_URL: postgresql+asyncpg://postgres:proof@127.0.0.1:5432/gwproof_ci
         run: |
           set -euo pipefail
-          uv run --with alembic --with asyncpg --with sqlalchemy --with pgvector \
+          # ⚠️ sqlalchemy 는 extras 없이 설치하면 greenlet 이 빠진다 — 최신 버전은
+          #    sqlalchemy.ext.asyncio import 시점에 greenlet 을 요구하므로
+          #    sqlalchemy[asyncio] 로 설치한다 (env.py 가 create_async_engine 을 import).
+          uv run --with alembic --with asyncpg --with 'sqlalchemy[asyncio]' --with pgvector \
             alembic upgrade head
           head=$(psql -h 127.0.0.1 -U postgres -d "${PROOF_DB}" -tA \
             -c "SELECT version_num FROM public.alembic_version")

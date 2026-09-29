@@ -215,6 +215,22 @@ def sanitize_output_config(
             return body
         family = _family(provider_model_id) or _family_from_alias(alias)
         if family == "legacy":
+            # haiku-4-5는 output_config.format(구조화 출력)은 받지만 effort 는 거절한다
+            # ("This model does not support the effort parameter" — 2026-09-28 실측).
+            # effort 만 떨구고 format 등 나머지는 둔다 — 통째로 버리면 구조화 출력이 깨진다.
+            if "effort" not in oc:
+                return body
+            kept_legacy = {k: v for k, v in oc.items() if k != "effort"}
+            if kept_legacy:
+                body["output_config"] = kept_legacy
+            else:
+                body.pop("output_config", None)
+            logger.info(
+                "output_config_sanitized",
+                request_id=request_id,
+                family=family,
+                dropped=["effort"],
+            )
             return body
         dropped = [k for k in oc if k not in _BEDROCK_OUTPUT_CONFIG_KEYS]
         if not dropped:
@@ -234,4 +250,104 @@ def sanitize_output_config(
         return body
     except Exception:
         logger.warning("output_config_sanitize_failed", request_id=request_id)
+        return body
+
+
+#: legacy 계열(haiku-4-5)의 출력 상한 — 2026-09-28 ap-south-1 실측.
+#: opus-4-6/4-8 · sonnet-4-6/5 · opus-5/5-5 는 128000 까지 받는다 — 클램프 대상 아님.
+_LEGACY_MAX_OUTPUT_TOKENS = 64000
+
+
+def _content_text(content: Any) -> str:
+    """message ``content`` 에서 텍스트만 추출한다 (str 또는 content-block 리스트)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [
+            b.get("text", "")
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        return "\n".join(t for t in parts if t)
+    return ""
+
+
+def _merge_system(existing: Any, hoisted: list[str]) -> Any:
+    """hoist된 system 메시지들을 최상위 ``system`` 필드에 합친다."""
+    blocks = [{"type": "text", "text": t} for t in hoisted]
+    if existing is None:
+        return hoisted[0] if len(hoisted) == 1 else blocks
+    if isinstance(existing, str):
+        return [{"type": "text", "text": existing}, *blocks]
+    if isinstance(existing, list):
+        return [*existing, *blocks]
+    return blocks
+
+
+def sanitize_bedrock_messages(
+    body: dict[str, Any],
+    provider_model_id: str | None = None,
+    *,
+    alias: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Bedrock Messages 와이어가 거부하는 본문 요소를 정리한다. 같은 dict 를 고쳐 돌려준다.
+
+    세 변환은 전부 2026-09-28 ap-south-1 실측 거절 규칙이다:
+
+      1. ``messages[].output_config`` — 어떤 모델도 메시지 단위 필드로 받지 않는다
+         ("messages.N.output_config: Extra inputs are not permitted"). Claude Code
+         v2.1.x 가 대화 이력 메시지에 싣는다. 무조건 제거.
+      2. ``messages[].role == "system"`` — 어떤 모델도 받지 않는다 ("use the
+         top-level 'system' parameter" / "role 'system' is not supported"). 내용을
+         최상위 ``system`` 으로 옮기고 메시지에서 뺀다. 빼서 생기는 연속 동일 role 은
+         Bedrock 이 허용한다(실측).
+      3. legacy 계열(haiku-4-5)의 ``max_tokens`` — 상한 64000. 초과분만 클램프한다.
+
+    예산 강등으로 생긴 조합(상위 모델용 파라미터 + 하위 모델)과 Claude Code 의 신형
+    요청 필드가 구형 모델에서 400 을 내는 것을 막는다. Never raises.
+    """
+    try:
+        msgs = body.get("messages")
+        hoisted: list[str] = []
+        if isinstance(msgs, list):
+            kept_msgs: list[Any] = []
+            oc_dropped = 0
+            for m in msgs:
+                if not isinstance(m, dict):
+                    kept_msgs.append(m)
+                    continue
+                if "output_config" in m:
+                    m = {k: v for k, v in m.items() if k != "output_config"}
+                    oc_dropped += 1
+                if m.get("role") == "system":
+                    text = _content_text(m.get("content"))
+                    if text:
+                        hoisted.append(text)
+                    continue
+                kept_msgs.append(m)
+            if oc_dropped or hoisted:
+                body["messages"] = kept_msgs
+                logger.info(
+                    "bedrock_messages_sanitized",
+                    request_id=request_id,
+                    message_output_config_dropped=oc_dropped,
+                    system_messages_hoisted=len(hoisted),
+                )
+        if hoisted:
+            body["system"] = _merge_system(body.get("system"), hoisted)
+
+        family = _family(provider_model_id) or _family_from_alias(alias)
+        mt = body.get("max_tokens")
+        if family == "legacy" and isinstance(mt, int) and mt > _LEGACY_MAX_OUTPUT_TOKENS:
+            body["max_tokens"] = _LEGACY_MAX_OUTPUT_TOKENS
+            logger.info(
+                "max_tokens_clamped",
+                request_id=request_id,
+                max_tokens=mt,
+                clamped_to=_LEGACY_MAX_OUTPUT_TOKENS,
+            )
+        return body
+    except Exception:
+        logger.warning("bedrock_messages_sanitize_failed", request_id=request_id)
         return body

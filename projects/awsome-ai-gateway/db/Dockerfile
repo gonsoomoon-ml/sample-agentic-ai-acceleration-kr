@@ -17,7 +17,7 @@ COPY ca-certificates.cr[t] /etc/ssl/certs/ca-certificates.crt
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
-RUN uv pip install --system alembic asyncpg sqlalchemy
+RUN uv pip install --system "alembic" "asyncpg" "sqlalchemy[asyncio]"
 
 COPY alembic.ini env.py ./
 COPY versions/ ./versions/

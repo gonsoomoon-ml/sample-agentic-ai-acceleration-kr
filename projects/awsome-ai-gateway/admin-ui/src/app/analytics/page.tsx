@@ -12,6 +12,7 @@ import { AnalyticsFilter } from '@/components/analytics/AnalyticsFilter';
 import { ROIMetricsCards } from '@/components/analytics/ROIMetricsCards';
 import { CostTrendChart } from '@/components/analytics/CostTrendChart';
 import { BreakdownChart } from '@/components/analytics/BreakdownChart';
+import { TokenAnalysisCard } from '@/components/analytics/TokenAnalysisCard';
 // ProductivityCards 제거 — git/IDE 연동 파이프라인 미구축으로 productivity_events·
 // git_events 가 항상 0행이라 코드라인/커밋/PR/개발자 카드가 무의미. 연동 구현
 // 후 복원. DEVLOG §21 "개발 필요" 참조. (ingest 엔드포인트는 admin-api 에 보존.)
@@ -126,8 +127,11 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const effectiveMonth = isMonth(requested) && periods.includes(requested) ? requested : latest;
 
   const filter = parseFilter(searchParams, effectiveMonth);
-  // 차트 key: custom 이면 날짜, 아니면 월 — 변경 시 remount + 재요청.
-  const sectionKey = filter.period === 'custom' ? `custom-${filter.start_date ?? ''}` : effectiveMonth;
+  // 차트 key: custom 이면 날짜 구간, 아니면 월 — 변경 시 remount + 재요청.
+  const sectionKey =
+    filter.period === 'custom'
+      ? `custom-${filter.start_date ?? ''}-${filter.end_date ?? ''}`
+      : effectiveMonth;
   // 컨텍스트용 사람이 읽는 기간 라벨.
   const periodLabel =
     filter.period === 'custom'
@@ -163,6 +167,13 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         </Suspense>
         <Suspense key={`breakdown-${sectionKey}`} fallback={<SkeletonCard count={1} />}>
           <BreakdownChart filter={filter} latestMonth={effectiveMonth} />
+        </Suspense>
+        {/* 토큰 버킷 비율(input/output/cache read/write) — 전체 폭 카드,
+            내부는 도넛+목록 중앙 정렬(dashboard app share 와 같은 레이아웃). */}
+        <Suspense key={`token-${sectionKey}`} fallback={<SkeletonCard count={1} />}>
+          <div className="lg:col-span-2">
+            <TokenAnalysisCard filter={filter} latestMonth={effectiveMonth} />
+          </div>
         </Suspense>
       </div>
     </div>

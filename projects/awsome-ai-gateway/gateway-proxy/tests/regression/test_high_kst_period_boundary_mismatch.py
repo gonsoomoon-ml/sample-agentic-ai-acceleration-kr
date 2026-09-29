@@ -39,6 +39,7 @@ import re
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -148,13 +149,21 @@ def _load_admin_kst_period():
     admin-api 는 gateway-proxy 의 sys.path 에 없고(별도 venv/패키지 루트) 모듈째
     import 하면 sqlalchemy 모델까지 끌고 온다. 함수 하나만 컴파일해 실행한다.
     (test_high_redis_url_credential_leak.py 와 같은 idiom.)
+
+    admin 쪽 구현은 ``_reporting_tz()`` (REPORTING_TIMEZONE 설정형)을 거치므로,
+    그 의존을 네임스페이스에 주입한다 — 대조 목적은 "같은 리포팅 타임존 아래 같은
+    값" 이라 Seoul 로 고정한다.
     """
     source = ADMIN_USAGE_FILTERS.read_text(encoding="utf-8")
     tree = ast.parse(source)
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == "current_kst_period":
             module = ast.Module(body=[node], type_ignores=[])
-            ns: dict = {"datetime": datetime, "KST": timezone(timedelta(hours=9))}
+            ns: dict = {
+                "datetime": datetime,
+                "KST": timezone(timedelta(hours=9)),
+                "_reporting_tz": lambda: ZoneInfo("Asia/Seoul"),
+            }
             exec(compile(module, str(ADMIN_USAGE_FILTERS), "exec"), ns)  # noqa: S102
             return ns["current_kst_period"], ns
     pytest.fail(
@@ -166,6 +175,25 @@ def _load_admin_kst_period():
 def test_admin_api_source_is_present():
     """대조군 — 상대 경로가 틀리면 아래 대조가 공허해진다."""
     assert ADMIN_USAGE_FILTERS.exists(), f"admin-api 소스가 없다: {ADMIN_USAGE_FILTERS}"
+
+
+def test_gateway_derives_periods_from_the_configured_reporting_timezone():
+    """계약의 본체 — gateway 도 REPORTING_TIMEZONE 을 읽어야 한다.
+
+    admin-api·cost-recorder-worker·notification-worker 는 전부 설정형으로 이관됐는데
+    gateway 만 KST 하드코딩으로 남으면, 리포팅 타임존을 Seoul 이 아닌 값으로 둔
+    배포(예: dev=Asia/Kolkata)에서 월 경계 몇 시간 동안 서로 다른 period 행/키를
+    읽고 쓴다 — 이 파일이 고정한 결함 #2 의 재발이다. 값 대조가 아니라 **파생
+    경로**를 못박는다.
+    """
+    src = (GATEWAY_SRC / "periods.py").read_text(encoding="utf-8")
+    assert "reporting_timezone" in src, (
+        "periods.py 가 reporting_timezone 설정을 읽지 않는다 — KST 하드코딩으로 "
+        "되돌아갔다"
+    )
+    assert "ZoneInfo(" in src, (
+        "고정 오프셋으로 되돌리면 DST 있는 리포팅 타임존에서 경계가 틀어진다"
+    )
 
 
 def test_gateway_and_admin_api_agree_on_the_kst_month():

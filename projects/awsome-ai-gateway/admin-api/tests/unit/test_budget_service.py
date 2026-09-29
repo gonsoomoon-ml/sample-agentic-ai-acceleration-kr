@@ -74,14 +74,14 @@ class TestSetUserBudget:
                 await budget_service.set_user_budget(mock_session, user_id=user_id, data=data, actor=team_leader_user)
 
     async def test_user_budget_sum_exceeds_team_budget(
-        self, budget_service: BudgetService, mock_session: AsyncMock, admin_user: CurrentUser
+        self, budget_service: BudgetService, mock_session: AsyncMock, team_leader_user: CurrentUser
     ):
+        """BR-BUD-01은 TEAM_LEADER 에만 적용 — 리더는 팀 풀을 초과해 배분 불가."""
         user_id = uuid.uuid4()
-        team_id = uuid.uuid4()
         data = SetBudgetRequest(max_budget_usd=Decimal("600.00"))
 
         user = MagicMock(spec=User)
-        user.team_id = team_id
+        user.team_id = team_leader_user.team_id
 
         team_config = MagicMock(spec=BudgetConfig)
         team_config.max_budget_usd = Decimal("1000.00")
@@ -94,7 +94,32 @@ class TestSetUserBudget:
             repo.sum_member_budgets = AsyncMock(return_value=Decimal("500.00"))
 
             with pytest.raises(ValidationError, match="exceeds team budget"):
-                await budget_service.set_user_budget(mock_session, user_id=user_id, data=data, actor=admin_user)
+                await budget_service.set_user_budget(mock_session, user_id=user_id, data=data, actor=team_leader_user)
+
+    async def test_admin_can_exceed_member_sum(
+        self, budget_service: BudgetService, mock_session: AsyncMock, admin_user: CurrentUser
+    ):
+        """ADMIN 은 BR-BUD-01을 우회한다 — 초과된 멤버의 한도 상향이 막히지 않아야 한다."""
+        user_id = uuid.uuid4()
+        team_id = uuid.uuid4()
+        data = SetBudgetRequest(max_budget_usd=Decimal("600.00"))
+
+        user = MagicMock(spec=User)
+        user.team_id = team_id
+
+        with patch("app.services.budget_service.UserRepository") as MockUserRepo, \
+             patch("app.services.budget_service.BudgetRepository") as MockBudgetRepo, \
+             patch("app.services.budget_service.audit_logger") as mock_audit:
+            MockUserRepo.return_value.get_user = AsyncMock(return_value=user)
+            repo = MockBudgetRepo.return_value
+            repo.upsert_config = AsyncMock()
+            mock_audit.log = AsyncMock()
+
+            await budget_service.set_user_budget(mock_session, user_id=user_id, data=data, actor=admin_user)
+
+        repo.upsert_config.assert_called_once()
+        # admin 우회 시 멤버 합계 조회 자체를 하지 않는다.
+        repo.sum_member_budgets.assert_not_called()
 
     async def test_user_budget_replaces_existing(
         self, budget_service: BudgetService, mock_session: AsyncMock, admin_user: CurrentUser
@@ -141,6 +166,75 @@ class TestAllocateTeamBudget:
             await budget_service.allocate_team_budget(
                 mock_session, team_id=other_team_id, data=data, actor=team_leader_user
             )
+
+    async def test_team_leader_can_allocate_own_team(
+        self, budget_service: BudgetService, mock_session: AsyncMock, team_leader_user: CurrentUser
+    ):
+        team_id = team_leader_user.team_id
+        data = AllocateBudgetRequest(allocations=[
+            AllocateBudgetItem(user_id=str(uuid.uuid4()), allocated_usd=Decimal("100.00")),
+        ])
+
+        team_config = MagicMock(spec=BudgetConfig)
+        team_config.max_budget_usd = Decimal("1000.00")
+        team_config.policy = BudgetPolicy.HARD_BLOCK
+
+        with patch("app.services.budget_service.BudgetRepository") as MockBudgetRepo, \
+             patch("app.services.budget_service.audit_logger") as mock_audit:
+            repo = MockBudgetRepo.return_value
+            repo.get_active_config = AsyncMock(return_value=team_config)
+            repo.upsert_config = AsyncMock()
+            mock_audit.log = AsyncMock()
+
+            await budget_service.allocate_team_budget(
+                mock_session, team_id=team_id, data=data, actor=team_leader_user
+            )
+
+        repo.upsert_config.assert_called_once()
+
+    async def test_get_team_allocation_forbidden_for_other_team(
+        self, budget_service: BudgetService, mock_session: AsyncMock, team_leader_user: CurrentUser
+    ):
+        """get_team_allocation 은 이전에 actor 검사가 없어 임의 team_id 로 타 팀
+        배정을 읽을 수 있었다 — 소속 팀 외에는 403."""
+        with pytest.raises(ForbiddenError):
+            await budget_service.get_team_allocation(
+                mock_session,
+                team_id=uuid.uuid4(),
+                period="2026-09",
+                actor=team_leader_user,
+            )
+
+    async def test_get_team_allocation_allowed_for_own_team(
+        self, budget_service: BudgetService, mock_session: AsyncMock, team_leader_user: CurrentUser
+    ):
+        team_id = team_leader_user.team_id
+        team = MagicMock(spec=Team)
+        team.id = team_id
+        team.name = "Dev"
+        team.dept_id = uuid.uuid4()
+        team.department = None
+        team.members = []
+
+        team_config = MagicMock(spec=BudgetConfig)
+        team_config.max_budget_usd = Decimal("500.00")
+        usage = MagicMock()
+        usage.used_usd = Decimal("10.00")
+
+        with patch("app.services.budget_service.UserRepository") as MockUserRepo, \
+             patch("app.services.budget_service.BudgetRepository") as MockBudgetRepo:
+            MockUserRepo.return_value.get_team = AsyncMock(return_value=team)
+            repo = MockBudgetRepo.return_value
+            repo.get_first_active_config = AsyncMock(return_value=team_config)
+            repo.get_usage = AsyncMock(return_value=usage)
+
+            result = await budget_service.get_team_allocation(
+                mock_session, team_id=team_id, period="2026-09", actor=team_leader_user
+            )
+
+        assert result is not None
+        assert result.team_id == str(team_id)
+        assert result.total_budget_usd == Decimal("500.00")
 
     async def test_allocation_exceeds_team_budget(
         self, budget_service: BudgetService, mock_session: AsyncMock, admin_user: CurrentUser
