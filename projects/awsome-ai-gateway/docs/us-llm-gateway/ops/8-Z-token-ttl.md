@@ -115,5 +115,89 @@ cp $V.bak-<날짜> $V
 
 📋 .bak 복원을 빼먹으면 다음 배포에서 24 가 다시 올라간다.
 
+## prod 에 적용 — prod 계정의 배포 EC2 에서
+
+위 절차를 dev 에서 검증한 뒤 같은 순서로 한다. 다른 것은 셋뿐 — values 파일 이름(`values-eks-fargate-prod.yaml`), terraform 디렉터리(`llm-gateway-prod`), 스크립트 인자(`prod`). admin-api 파드만 롤링되고 추론(gateway-proxy)은 건드리지 않는다.
+
+▶ **실행** · prod 배포 EC2 — 위에서부터 그대로. 📋 = 기대 출력.
+
+**0. 저장소 최신화 (필요 시)** — 최신 fork 와의 차이가 문서뿐이면 건너뛴다.
+
+```bash
+cd ~/awsome-ai-gateway && git remote -v
+V=deployment/charts/llm-gateway/values-eks-fargate-prod.yaml
+cp $V ~/values.bak && git fetch origin
+git reset --hard origin/us/deploy-fixes && cp ~/values.bak $V
+cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
+```
+
+📋 `values restored OK`. `git remote -v` 의 origin 은 `gonsoomoon-ml/…` 이어야 한다.
+
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-prod
+terraform init | tail -3
+terraform output -json >/dev/null && echo "output OK"
+cd ~/awsome-ai-gateway
+```
+
+📋 `output OK`.
+
+**1. 현재 상태**
+
+```bash
+cd ~/awsome-ai-gateway
+V=deployment/charts/llm-gateway/values-eks-fargate-prod.yaml
+grep -n vkTtlHours $V
+kubectl -n llm-gateway set env deploy --all --list | grep OIDC_VK_TTL
+helm -n llm-gateway list
+```
+
+📋 `vkTtlHours: 1` · `OIDC_VK_TTL_HOURS=1` 1줄(admin-api 만) · REVISION N 을 적어 둔다.
+
+**2. 백업** — 롤백 좌표 = 이 .bak + REVISION N
+
+```bash
+cp -n $V $V.bak-$(date +%Y%m%d)
+```
+
+**3. 변경 (한 줄)**
+
+```bash
+sed -i 's/^    vkTtlHours: 1$/    vkTtlHours: 24/' $V
+grep -n vkTtlHours $V
+```
+
+📋 `vkTtlHours: 24`
+
+**4. 배포 (3–5분)**
+
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-prod
+terraform init | tail -3
+terraform output -json >/dev/null && echo "output OK"
+cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh prod
+```
+
+📋 `output OK` 뒤에 배포 로그, 끝에 `deployed`. 실패하면 REVISION N 으로 자동 복귀. "계속 진행 (y)/(N)" 이 뜨면 Secrets Manager 시크릿 문제 → N 으로 중단.
+
+**5. 검증**
+
+```bash
+helm -n llm-gateway list
+kubectl -n llm-gateway set env deploy --all --list | grep OIDC_VK_TTL
+kubectl -n llm-gateway get pods | grep admin-api
+```
+
+📋 REVISION N+1 · `OIDC_VK_TTL_HOURS=24` **정확히 1줄** · admin-api 전부 Running.
+
+**6. 롤백 (필요 시)**
+
+```bash
+helm -n llm-gateway rollback llm-gateway N
+cp $V.bak-<날짜> $V
+```
+
+📋 .bak 복원을 빼먹으면 다음 배포에서 24 가 다시 올라간다.
+
 > 짧을수록 유출 내성 ↑ · admin-api 재발급 부하 ↑. 길수록 반대. **24h 로 늘리면 달라지는 것**: Cognito 그룹(팀) 변경 반영 최대 ~25h · 재발급 뒤 옛 VK 는 Redis TTL 동안(≤24h) 통과. 그대로인 것: 관리자 폐기 즉시 · 비활성화 5분 내 차단 · 재로그인 주기(refresh 7일).
 
