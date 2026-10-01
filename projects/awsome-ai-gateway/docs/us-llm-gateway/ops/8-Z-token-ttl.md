@@ -12,9 +12,9 @@
 | access/id_token             | 1시간     | Cognito (terraform)               | refresh 와 동일  |
 
 
-두 절은 서로 독립이다. **VK 만 바꾸면 ① 만** 한다(values + helm). Cognito 토큰(재로그인 주기 등)을 바꿀 때만 ② 로 간다(terraform).
+아래 따라 하기는 **VK** 만 다룬다(values + helm). Cognito 토큰(refresh·access/id)은 `deployment/terraform/modules/cognito/main.tf` 121~123행의 `*_token_validity` 값을 고치고 `environments/llm-gateway-dev` 에서 `terraform apply` 한다 — 콘솔·`aws cognito-idp` 로 바꾸면 다음 apply 가 되돌린다.
 
-## ① VK TTL (게이트웨이 열쇠, 기본 1시간) — 따라 하기
+## VK TTL (게이트웨이 열쇠, 기본 1시간) — 따라 하기
 
 admin-api 환경변수 `OIDC_VK_TTL_HOURS`(`admin-api/src/app/core/config.py:124` 기본 1)다. chart 가 이 env 를 values `adminApi.oidc.vkTtlHours` 에서 렌더하므로 그 키 한 줄을 고치고 재배포한다. 새로 발급되는 VK 부터 적용, admin-api 파드만 롤링(추론 무중단), 약 10분.
 
@@ -103,6 +103,8 @@ kubectl -n llm-gateway get pods | grep admin-api
 ```bash
 jq '(.expires_at-now)/3600' ~/.gateway-cli/vk-cache.json
 ```
+
+📋 23.9 근처.
 
 **6. 롤백 (필요 시)**
 

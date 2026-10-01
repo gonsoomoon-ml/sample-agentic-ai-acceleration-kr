@@ -298,6 +298,6 @@ JIT 형(링크 없이 federated 사용자 생성)이면 groups 가 IdP 클레임
 
 ## 알아둘 점
 
-- **세션 1시간** — admin 쿠키는 Cognito id_token 이라 1시간 뒤 만료되고 로그인 화면으로 돌아간다. 수명은 [8-Z](8-Z-token-ttl.md) ②.
+- **세션 1시간** — admin 쿠키는 Cognito id_token 이라 1시간 뒤 만료되고 로그인 화면으로 돌아간다. 수명은 [8-Z](8-Z-token-ttl.md) 머리말의 Cognito 안내(terraform).
 - **로그아웃은 admin 쿠키만 지운다** — Cognito 쪽 로그인 세션은 별개다. 다른 계정으로 바꿀 때는 시크릿 창으로.
 - **관리자 권한은 그룹이 정한다** — `ClaudeAdmin` 에서 빼면 그 사람의 다음 토큰(최대 1시간 뒤)부터 관리자가 아니다.
