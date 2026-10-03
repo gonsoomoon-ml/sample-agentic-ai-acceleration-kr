@@ -624,6 +624,8 @@ global:
     alb.ingress.kubernetes.io/inbound-cidrs: "<EC2>/32,<PC>/32"
 ```
 
+> 📋 선택 · 게이트웨이 열쇠(VK) 수명을 24시간으로 하려면 같은 파일의 `adminApi.oidc.vkTtlHours: 1` 을 `24` 로(기본 1시간, US-15). 설치 뒤에 바꾸는 절차는 [ops/8-Z](ops/8-Z-token-ttl.md).
+
 
 
 **Web Search 키만 예외** — `AGENTCORE_GATEWAY_URL` 은 §5 에서 프로비저닝 후 채운다. 지금은 비워둔다(비면 web search 만 꺼지고 나머지는 정상). `AGENTCORE_REGION: "us-east-1"` 은 `aws.region`(us-west-2)과 **일부러 다르다** — 관리형 커넥터가 us-east-1 전용이라 cross-region 이다. (`WEB_SEARCH_ENABLED` 는 죽은 설정 — 전역 off 는 URL 비우기, §5-5.)

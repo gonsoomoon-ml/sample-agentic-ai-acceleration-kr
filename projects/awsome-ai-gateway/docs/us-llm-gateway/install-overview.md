@@ -48,6 +48,7 @@
   - **`US-11`** — install-guide §4-2 (C) 가 `update-scripts/pricing.tsv` 의 단가를 심는다(기본 = `us.` Standard 티어). **다른 리전·티어로 청구받는 배포**는 §4-2 전에 이 파일을 자기 청구 단가로 고친다(방법은 install-guide §4-2 (C) 의 설명대로).
 - **설치를 마친 뒤 따로 하는 것**:
   - **`US-12`(관리 화면 Cognito 로그인)** — 설치 절차에 들어 있지 않다. 설치가 끝나면 [ops/8-L-admin-login.md](ops/8-L-admin-login.md) 로 켠다(https 주소 = `US-06` 전제). 코드 조건(admin-api `1.0.69-idpjwks`)은 지금 코드로 설치하면 이미 충족한다. **운영(`US-08`)은 사실상 필수** — prod values 는 개발용 로그인이 꺼진 채로 나오므로, US-12 전에는 관리 화면에 들어갈 방법이 없다.
+  - **`US-15`(VK 수명 24시간, 선택)** — 설치 절차의 기본은 1시간이다. 처음부터 24시간으로 하려면 §3-6 에서 values 에 `adminApi.oidc.vkTtlHours: 24` 한 줄을 넣고, 나중에 바꾸려면 [ops/8-Z-token-ttl.md](ops/8-Z-token-ttl.md).
 - **직원 PC 설치 방식은 둘 중 하나만 고른다** — Windows 는 `US-01` §6-3 의 수동 절차(Python·저장소·PATH)로 붙이거나, 설치 파일 하나로 끝내는 **`US-14`** 으로 한다. Cowork 도 같은 선택이 수동 가이드 ↔ **`US-09`** 로 있다. 어느 쪽이든 게이트웨이는 바뀌지 않는다.
 - **POC(`US-01`)** 에만 해당:
   - **`US-06`(ALB HTTPS)** — Cowork 는 https 필수. 도메인 없으면 CloudFront(`03`), 있으면 US-06 — 둘 다는 불필요. 나중에 도메인이 생기면 [전환 절차](ops/8-H-alb-https.md).
