@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # status.sh — which updates this gateway has applied
 #
-# WHAT: probe the live system and report US-02 … US-07, US-12 and US-13 as
+# WHAT: probe the live system and report US-02 … US-07, US-12, US-13 and US-15 as
 #       applied, partially applied, or not applied, and print the next command
 #       for each. Every other US-NN gets a `--` line that says where it is
 #       checked instead (another account, the employee PC, 14-postdeploy-check.sh),
@@ -424,6 +424,31 @@ probe_us13() {
   fi
 }
 
+# ── US-15 — VK TTL 24h (optional) ────────────────────────────────────────────
+# Applied = admin-api Deployment carries OIDC_VK_TTL_HOURS=24 (values
+# adminApi.oidc.vkTtlHours). The default 1 is a valid choice, so "not applied"
+# is skip, not warn (ops/8-Z-token-ttl.md). Any other value is reported as-is.
+probe_us15() {
+  local api ttl
+  api=$(kubectl get deploy "${HELM_RELEASE}-admin-api" -n "$NS" -o json 2>/dev/null)
+  if [ -z "$api" ]; then
+    row warn "US-15" "VK 수명 24시간 — 판정 불가"
+    detail "admin-api Deployment 를 읽지 못했습니다 (kubectl get deploy -n $NS)"
+    return
+  fi
+  ttl=$(jq -r '[.spec.template.spec.containers[0].env[]? | select(.name == "OIDC_VK_TTL_HOURS") | .value] | last // ""' <<<"$api")
+  if [ "$ttl" = 24 ]; then
+    row ok "US-15" "VK 수명 24시간"
+    detail "admin-api OIDC_VK_TTL_HOURS=24 — 새로 발급되는 열쇠부터"
+  elif [ -z "$ttl" ] || [ "$ttl" = 1 ]; then
+    row skip "US-15" "VK 수명 24시간 — 미적용 (선택 · 지금은 기본 1시간)"
+    detail "values adminApi.oidc.vkTtlHours: 24 → install-eks.sh — ops/8-Z-token-ttl.md"
+  else
+    row ok "US-15" "VK 수명 ${ttl}시간 (24 아님 — 의도한 값인지 확인)"
+    detail "admin-api OIDC_VK_TTL_HOURS=$ttl — ops/8-Z-token-ttl.md"
+  fi
+}
+
 # ── Items this script does not judge — listed so nothing reads as "applied" by
 #    omission. Each line says where the real check is.
 info_us08() {
@@ -465,6 +490,7 @@ probe_us12
 probe_us13
 info_rows "US-14" "Claude Code Windows 설치 파일 — 직원 PC 쪽 (이 스크립트는 판정 안 함)" \
   "설치 여부는 직원 PC 에서 — claude-code/installer/cc-installer-admin-e2e-windows.md"
+probe_us15
 
 echo
 if [ "${#TODO[@]}" -eq 0 ]; then

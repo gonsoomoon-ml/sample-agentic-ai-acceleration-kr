@@ -128,7 +128,7 @@ Claude Code 는 `api-key-helper` 를 **매 요청 직전에 자동 실행**해�
 
 | 산출물 | 수명(TTL) | 만료되면 | 누가 처리 · 직원 체감 |
 |---|---|---|---|
-| **VK** (게이트웨이 열쇠) | 1시간 (`OIDC_VK_TTL_HOURS=1`) | **2단계 재실행** — id_token 으로 VK 재발급 | helper 자동 · 체감 없음 |
+| **VK** (게이트웨이 열쇠) | 24시간 (`OIDC_VK_TTL_HOURS=24`, 기본 1) | **2단계 재실행** — id_token 으로 VK 재발급 | helper 자동 · 체감 없음 |
 | **id_token** (신분증) | ~1시간 (Cognito access TTL) | refresh 로 자동 재발급 → 2단계 | helper 자동 · 체감 없음 |
 | **refresh_token** (갱신 열쇠) | **7일** (`refresh_token_validity=7`) | ❌ 자동 불가 → **재로그인 요구** | 직원이 다시 `gateway-cli login` (브라우저 1회) |
 

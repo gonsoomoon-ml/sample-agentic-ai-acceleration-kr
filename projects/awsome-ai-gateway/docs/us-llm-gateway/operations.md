@@ -27,7 +27,7 @@
 | §8-H | ALB HTTPS — 커스텀 도메인 + ACM (방식 A → B) | 도메인이 있을 때 (US-06, 선택 · 운영이면 강력 권장) | [ops/8-H-alb-https.md](ops/8-H-alb-https.md) |
 | §8-I | admin ALB 2개를 internal 로 (고객사 최종형) | S2S VPN 개통 후 (US-07, 선택) | [ops/8-I-admin-internal.md](ops/8-I-admin-internal.md) |
 | §8-T | teardown (과금 중단 · 초기화) | 과금 중단 | [아래](#8-t-teardown-과금-중단--초기화) |
-| §8-Z | 토큰 TTL 조절 | 토큰 수명 바꿀 때 | [ops/8-Z-token-ttl.md](ops/8-Z-token-ttl.md) |
+| §8-Z | 토큰 TTL 조절 | 토큰 수명 바꿀 때 (US-15, 선택) | [ops/8-Z-token-ttl.md](ops/8-Z-token-ttl.md) |
 | §8-P | dev → prod 승격 — 별도 계정에 prod 스택 신설 | prod 승격 (US-08) | [ops/8-P-prod.md](ops/8-P-prod.md) |
 | §8-X | 멀티계정 확장 — claude-code 를 별도 계정 Bedrock 으로 | 멀티계정 확장 | [아래](#8-x-멀티계정-확장--claude-code-를-별도-계정-bedrock-으로) |
 
@@ -127,7 +127,7 @@ python3 ~/awsome-ai-gateway/deployment/scripts/provision_agentcore_websearch.py 
 
 ### 8-Z. 토큰 TTL 조절
 
-토큰 수명 — refresh 7일·access/id 1시간(Cognito, terraform) · VK 1시간(admin-api env). 바꾸는 이유는 client-setup-explained 「만료 조건」.
+토큰 수명 — refresh 7일·access/id 1시간(Cognito, terraform) · VK 기본 1시간, 이 배포 24시간(values `adminApi.oidc.vkTtlHours`, US-15). 바꾸는 이유는 client-setup-explained 「만료 조건」.
 → **[ops/8-Z-token-ttl.md](ops/8-Z-token-ttl.md)**
 
 ---

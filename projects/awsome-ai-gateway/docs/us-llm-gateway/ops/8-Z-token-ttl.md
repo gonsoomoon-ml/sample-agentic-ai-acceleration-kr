@@ -1,13 +1,13 @@
 # 8-Z. 토큰 TTL 조절
 
-> ← [operations.md](../operations.md) §8 목차로 · 이 절 = **§8-Z**
+> ← [operations.md](../operations.md) §8 목차로 · 이 절 = **§8-Z** · 업데이트 ID **US-15** · 등급 **선택**
 
 인증 토큰 수명(기본값)과 **바꾸는 이유**는 [client-setup-explained.md 의 "만료 조건"](../client-setup-explained.md#언제-다시-인증해야-하나-만료-조건) 참고. 여기서는 **어떻게 바꾸나**만 다룬다. 둘은 위치·반영 방식이 다르다.
 
 
 | 무엇                          | 기본      | 어디서                               | 반영            |
 | --------------------------- | ------- | --------------------------------- | ------------- |
-| **VK** (게이트웨이 열쇠)           | **1시간** | values `adminApi.oidc.vkTtlHours` | 다음 VK 발급부터    |
+| **VK** (게이트웨이 열쇠)           | **1시간** (이 배포 24시간) | values `adminApi.oidc.vkTtlHours` | 다음 VK 발급부터    |
 | **refresh_token** (재로그인 주기) | **7일**  | Cognito (terraform)               | 새로 로그인하는 사람부터 |
 | access/id_token             | 1시간     | Cognito (terraform)               | refresh 와 동일  |
 
@@ -16,7 +16,7 @@
 
 ## VK TTL (게이트웨이 열쇠, 기본 1시간) — 따라 하기
 
-admin-api 환경변수 `OIDC_VK_TTL_HOURS`(`admin-api/src/app/core/config.py:124` 기본 1)다. chart 가 이 env 를 values `adminApi.oidc.vkTtlHours` 에서 렌더하므로 그 키 한 줄을 고치고 재배포한다. 새로 발급되는 VK 부터 적용, admin-api 파드만 롤링(추론 무중단), 약 10분.
+admin-api 환경변수 `OIDC_VK_TTL_HOURS`(`admin-api/src/app/core/config.py:124` 기본 1)다. chart 가 이 env 를 values `adminApi.oidc.vkTtlHours` 에서 렌더하므로 그 키 한 줄을 고치고 재배포한다. 새로 발급되는 VK 부터 적용, admin-api 파드만 롤링(추론 무중단), 약 10분. 값은 24 가 아니어도 된다 — 12 처럼 원하는 정수 시간을 넣으면 그대로 적용된다. 아래 명령·기대값의 `24` 를 그 값으로 바꿔 읽는다.
 
 ```
 values-eks-fargate-dev.yaml (배포 EC2 유일본)   adminApi.oidc.vkTtlHours: 1 -> 24
