@@ -38,7 +38,7 @@ cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
 ▶ **실행** · 배포 EC2
 
 ```bash
-cd docs/us-llm-gateway/update-scripts
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 [ -f config.env ] || cp config.env.example config.env
 grep -E '^(AWS_ACCOUNT_ID|MODEL_ALIAS)=' config.env
 ```
@@ -74,7 +74,7 @@ EC2 에 들어갈 수 없으면 관리 화면 **모델** 에서 ACTIVE 목록이
 - **기본 모델** — `claude-sonnet-5-5`
 - **폴백 규칙** — `claude-opus-5-5 → claude-sonnet-5-5` 하나
 - **내린 모델** — Opus 5 · Sonnet 5 · Opus 4.8 (`US-16`). INACTIVE 라 과거 사용량·비용 기록은 남는다
-- **클라이언트 최소 버전** — Opus 5.5 는 Claude Code 2.1.280 이상 · Sonnet 5.5 는 미확인(「A2」 첫 호출로 확인)
+- **클라이언트 최소 버전** — Opus 5.5 는 Claude Code 2.1.280 이상 · Sonnet 5.5 는 2.1.288 에서 확인(그보다 낮은 버전은 미확인)
 
 ### 모델별 값
 
@@ -161,6 +161,7 @@ bash 00-preflight-check.sh
 ▶ **실행** · 배포 EC2 — 미리보기
 
 ```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 02-add-opus5-model.sh
 ```
 
@@ -221,6 +222,8 @@ claude --model claude-sonnet-5-5 -p "hi"
   「A1」 의 확인으로 돌아간다.
 - **`403` 또는 `AccessDenied`** — 계정에서 모델이 안 켜졌거나 IAM 이 그 모델을 허용하지 않는다.
   저장소 관리자에게 알린다(「부록」 1) · 3) 의 IAM 확인).
+- **로그인(`gateway-cli login`)이 HTTP 500** — 관리 API 가 끊긴 DB 연결을 꺼내 쓴 일시 오류다.
+  한두 번 다시 시도하면 된다.
 
 ### A3. 클라이언트에 보이게 하기
 
@@ -242,6 +245,11 @@ gateway-cli-cowork setup --model claude-sonnet-5-5 --available-models $m
 `.mobileconfig` 의 `inferenceModels` 를 같은 목록으로 고쳐 다시 설치한다(같은 프로파일이
 교체된다). GPO 로 관리하는 조직은 같은 `inferenceModels` 값(JSON 배열 문자열)을 정책으로
 배포하고 앱을 재시작한다.
+
+Cowork 가 `Credential helper exited with code 4` · `Session expired — re-login required. Run:
+gateway-cli login` 을 내면 Cowork 쪽 로그인이 만료된 것이다. 안내 문구와 달리
+**`gateway-cli-cowork login`** 을 실행한다 — Cowork 는 Claude Code(`gateway-cli`)와 토큰을 따로
+저장한다(`%LOCALAPPDATA%\gateway-cli-cowork`). 로그인한 뒤 Claude Desktop 을 껐다 켠다.
 
 ### A4. (선택) 폴백 규칙
 
