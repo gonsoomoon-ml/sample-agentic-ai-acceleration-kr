@@ -574,7 +574,7 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
 
 ```powershell
 $BASE   = "<from operator - the https:// URL>"
-$MODELS = '["claude-opus-5","claude-opus-4-8","claude-sonnet-5","claude-haiku-4-5-20251001"]'
+$MODELS = '["claude-sonnet-5-5","claude-opus-5-5","claude-haiku-4-5-20251001"]'
 $BASE
 ```
 
@@ -835,7 +835,7 @@ $K = "HKLM:\SOFTWARE\Policies\Claude"
 Set-ItemProperty $K autoModeEnabled "true"
 ```
 
-⚠️ **모델이 Claude 4.6 이상**이어야 선택지가 활성화됩니다. 이 배포의 목록 중 `claude-opus-5`·`claude-opus-4-8`·`claude-sonnet-5` 는 충족하고, `claude-haiku-4-5-20251001` 은 미달이라 그 모델을 고르면 회색으로 보입니다.
+⚠️ **모델이 Claude 4.6 이상**이어야 선택지가 활성화됩니다. 이 배포의 목록 중 `claude-sonnet-5-5`·`claude-opus-5-5` 는 충족하고, `claude-haiku-4-5-20251001` 은 미달이라 그 모델을 고르면 회색으로 보입니다.
 
 ### 내장 도구 빼기
 

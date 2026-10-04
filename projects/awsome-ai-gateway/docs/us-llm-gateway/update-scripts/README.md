@@ -447,7 +447,7 @@ for i in 1 2 3; do
     -H "Authorization: Bearer $VK" \
     -H "Content-Type: application/json" \
     -H "anthropic-version: 2023-06-01" \
-    -d '{"model":"claude-opus-5","max_tokens":64,
+    -d '{"model":"claude-sonnet-5-5","max_tokens":64,
          "messages":[{"role":"user","content":"hi"}]}'
 done
 ```

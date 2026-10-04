@@ -263,7 +263,7 @@ gateway-cli version
 ▶ **실행** · 사용자 PC — 🔴 관리자 PowerShell
 
 ```powershell
-gateway-cli setup --model claude-sonnet-5
+gateway-cli setup --model claude-sonnet-5-5
 ```
 
 Claude Code 의 관리형 설정 파일을 써서 요청이 게이트웨이로 가게 만드는 단 하나의 스위치입니다.

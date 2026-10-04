@@ -123,12 +123,12 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && bash 00-preflight-c
            alias           | provider |  provider_model_id
 ---------------------------+----------+---------------------
  claude-haiku-4-5-20251001 | bedrock  | us.anthropic.…
- claude-opus-5             | bedrock  | us.anthropic.…
- claude-sonnet-5           | bedrock  | us.anthropic.…
+ claude-opus-5-5           | bedrock  | us.anthropic.…
+ claude-sonnet-5-5         | bedrock  | us.anthropic.…
 ```
 
 `alias` 값을 `coworkModels` 에 쉼표로 나열한다. 출력은 알파벳순이지만 **첫 항목이 앱의
-기본 모델**이 되므로 원하는 순서로 적는다 (예: `claude-sonnet-5,claude-opus-5-5,claude-haiku-4-5-20251001`). 새로 빌드할 때는 Opus 5.5 를 넣는다 — 서버에 등록돼 있어도 이 목록에 없으면 앱에서 안 보인다.
+기본 모델**이 되므로 원하는 순서로 적는다 (예: `claude-sonnet-5-5,claude-opus-5-5,claude-haiku-4-5-20251001`). 새로 빌드할 때는 Sonnet 5.5 를 맨 앞(기본)에 둔다 — 서버에 등록돼 있어도 이 목록에 없으면 앱에서 안 보인다.
 admin-ui **모델** 화면의 `ACTIVE` 목록과 같은 값이다.
 
 ### (2) 파일 작성 — 빌드 PC 에서
@@ -167,7 +167,7 @@ notepad packaging\site-config.json
 | `gatewayUrl`            | 게이트웨이 추론 엔드포인트                         | `https://gateway-dev.example.com`                                 |
 | `adminApiUrl`           | admin-api (VK 발급)                      | `https://admin-api-dev.example.com`                               |
 | `coworkGatewayHttpsUrl` | 앱이 쓰는 추론 base — 보통 `gatewayUrl` 과 같은 값 | `https://gateway-dev.example.com`                                 |
-| `coworkModels`          | 게이트웨이에 등록된 모델 alias, 쉼표 구분 (첫 항목이 기본)  | `claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001`         |
+| `coworkModels`          | 게이트웨이에 등록된 모델 alias, 쉼표 구분 (첫 항목이 기본)  | `claude-sonnet-5-5,claude-opus-5-5,claude-haiku-4-5-20251001`     |
 
 ## 3. 빌드
 

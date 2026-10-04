@@ -243,9 +243,8 @@ cat > ~/Downloads/us-llm-gateway-cowork.mobileconfig <<EOF
       <integer>1800</integer>
       <key>inferenceModels</key>
       <array>
-        <string>claude-opus-5</string>
-        <string>claude-opus-4-8</string>
-        <string>claude-sonnet-5</string>
+        <string>claude-sonnet-5-5</string>
+        <string>claude-opus-5-5</string>
         <string>claude-haiku-4-5-20251001</string>
       </array>
     </dict>

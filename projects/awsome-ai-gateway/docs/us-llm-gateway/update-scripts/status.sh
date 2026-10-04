@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # status.sh — which updates this gateway has applied
 #
-# WHAT: probe the live system and report US-02 … US-07, US-12, US-13 and US-15 as
+# WHAT: probe the live system and report US-02 … US-07, US-12, US-13, US-15 and US-16 as
 #       applied, partially applied, or not applied, and print the next command
 #       for each. Every other US-NN gets a `--` line that says where it is
 #       checked instead (another account, the employee PC, 14-postdeploy-check.sh),
@@ -85,8 +85,14 @@ SELECT 'ALIAS='   || count(*) FROM model.model_aliases
 SELECT 'O55=' || status || '|' || coalesce(provider_model_id, '') FROM model.model_aliases
  WHERE alias='claude-opus-5-5';
 SELECT 'O55P=' || count(*) FROM model.model_pricings
- WHERE model_alias='claude-opus-5-5' AND effective_until IS NULL;" 2>&1)
-  US02_OUT="$out"   # probe_us13 reads its markers from the same query (one psql pod)
+ WHERE model_alias='claude-opus-5-5' AND effective_until IS NULL;
+SELECT 'S55=' || status || '|' || coalesce(provider_model_id, '') FROM model.model_aliases
+ WHERE alias='claude-sonnet-5-5';
+SELECT 'S55P=' || count(*) FROM model.model_pricings
+ WHERE model_alias='claude-sonnet-5-5' AND effective_until IS NULL;
+SELECT 'OLD=' || count(*) FROM model.model_aliases
+ WHERE alias IN ('claude-opus-5','claude-sonnet-5','claude-opus-4-8') AND status='ACTIVE';" 2>&1)
+  US02_OUT="$out"   # probe_us13/us16 read their markers from the same query (one psql pod)
 
   routing=$(grep -o 'ROUTING=[a-z]*' <<<"$out" | head -1 | cut -d= -f2)
   alias_n=$(grep -o 'ALIAS=[0-9]*'   <<<"$out" | head -1 | cut -d= -f2)
@@ -449,6 +455,43 @@ probe_us15() {
   fi
 }
 
+# ── US-16 — Sonnet 5.5 + latest-only roster (recommended; part of a fresh install)
+# Same query as US-13. Applied = claude-sonnet-5-5 ACTIVE on the US geo profile
+# with an open price row AND the previous generation (Opus 5 · Sonnet 5 ·
+# Opus 4.8) INACTIVE. The last step is deliberately after the employee PCs
+# switch their default model, so "partial" is the normal in-between state.
+probe_us16() {
+  local s55 s55p old st pid
+  if ! grep -q 'S55P=' <<<"${US02_OUT:-}"; then
+    row warn "US-16" "Sonnet 5.5 기본 전환 — 판정 불가"
+    detail "DB 조회 결과가 없습니다 (US-02 줄 참조)"
+    return
+  fi
+  s55=$(grep -o 'S55=[^[:space:]]*' <<<"$US02_OUT" | head -1 | cut -d= -f2-)
+  s55p=$(grep -o 'S55P=[0-9]*' <<<"$US02_OUT" | head -1 | cut -d= -f2)
+  old=$(grep -o 'OLD=[0-9]*' <<<"$US02_OUT" | head -1 | cut -d= -f2)
+  st=${s55%%|*}; pid=${s55#*|}
+  if [ -z "$s55" ] || [ "$st" != ACTIVE ]; then
+    row warn "US-16" "Sonnet 5.5 기본 전환 — 미적용 (권장)"
+    detail "claude-sonnet-5-5 ${s55:+($st) }— 절차는 ops/8-M-models.md 「US-16」"
+    TODO+=("(수동) docs/us-llm-gateway/ops/8-M-models.md — US-16 Sonnet 5.5 등록")
+  elif [ "${s55p:-0}" -lt 1 ]; then
+    row bad "US-16" "Sonnet 5.5 기본 전환 — 단가 없음 (호출 비용이 0 으로 기록됨)"
+    detail "claude-sonnet-5-5 ACTIVE · $pid · 열린 단가 행 0"
+    TODO+=("bash 08-set-model-pricing.sh --alias claude-sonnet-5-5 --apply")
+  elif [[ "$pid" != us.* ]]; then
+    row warn "US-16" "Sonnet 5.5 기본 전환 — 미국 리전 프로파일 아님"
+    detail "provider_model_id=$pid — us.anthropic.claude-sonnet-5-5 로 (ops/8-M-models.md)"
+  elif [ "${old:-0}" -gt 0 ]; then
+    row warn "US-16" "Sonnet 5.5 기본 전환 — 부분 적용 (이전 세대 ${old}개 ACTIVE)"
+    detail "claude-sonnet-5-5 등록 완료 · 직원 PC 기본 모델을 바꾼 뒤 이전 세대를 비활성화"
+    TODO+=("(수동) ops/8-M-models.md 「US-16」 ③④ — PC 기본 모델 전환 후 Opus 5·Sonnet 5·Opus 4.8 비활성화")
+  else
+    row ok "US-16" "Sonnet 5.5 기본 전환"
+    detail "claude-sonnet-5-5 ACTIVE · $pid · 단가 있음 · 이전 세대 INACTIVE"
+  fi
+}
+
 # ── Items this script does not judge — listed so nothing reads as "applied" by
 #    omission. Each line says where the real check is.
 info_us08() {
@@ -491,6 +534,7 @@ probe_us13
 info_rows "US-14" "Claude Code Windows 설치 파일 — 직원 PC 쪽 (이 스크립트는 판정 안 함)" \
   "설치 여부는 직원 PC 에서 — claude-code/installer/cc-installer-admin-e2e-windows.md"
 probe_us15
+probe_us16
 
 echo
 if [ "${#TODO[@]}" -eq 0 ]; then

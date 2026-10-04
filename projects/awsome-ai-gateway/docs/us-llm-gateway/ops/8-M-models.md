@@ -2,9 +2,32 @@
 
 > ← [operations.md](../operations.md) §8 목차로 · 이 절 = **§8-M**
 
-> 📒 `US-02` 의 일부 — [README.md 「최신 업데이트」](../README.md#2-최신-업데이트). **Cowork 와 무관하며 Claude Code 만 쓰는 배포에도 해당**한다.
+> 📒 `US-02` · `US-13` · `US-16` 이 이 절차를 쓴다 — [README.md 「최신 업데이트」](../README.md#2-최신-업데이트). **Cowork 와 무관하며 Claude Code 만 쓰는 배포에도 해당**한다.
 
 `02-add-opus5-model.sh` 는 이름과 달리 **범용**이다. `config.env` 의 `MODEL_ALIAS`·`MODEL_PROVIDER_ID` 를 바꾸면 어떤 모델이든 등록한다. 시드에는 **Opus 4.8 까지만** 들어 있으므로(마이그레이션 `0006`), 그 이후 모델은 전부 이 절차를 거친다.
+
+---
+
+## US-16 — Sonnet 5.5 를 기본 모델로 (이미 설치한 곳)
+
+신규 설치는 install-guide §4-2 가 처음부터 최신 3모델(Opus 5.5 · Sonnet 5.5 · Haiku 4.5)만 켜므로
+이 절이 필요 없다. 이미 설치한 곳은 아래 **순서를 지킨다** — 이전 세대를 먼저 끄면 기본 모델이
+`claude-sonnet-5` 로 박힌 직원 PC 가 바로 실패한다.
+
+1. **Sonnet 5.5 등록** — 아래 「실행」 절. 1) 에서 `config.env` 의 `MODEL_*` 를
+   `config.env.example` 의 **Sonnet 5.5 주석 블록** 값으로 바꾼다.
+2. **첫 호출 확인** — 사용자 PC 에서 `claude update` 뒤 한 번 호출한다(아래 명령). 400
+   `version … or newer is required` 가 나오면 그 버전 이상으로 올린다(Cowork 는 새 offline `.msix`).
+3. **기본 모델 전환** — 「등록 뒤」 절의 Claude Code · Cowork 명령을 PC 마다 실행하고, 폴백 규칙을
+   `claude-opus-5-5 → claude-sonnet-5-5` 로 바꾼다(「폴백 체인」).
+4. **이전 세대 내리기** — Opus 5 · Sonnet 5 · Opus 4.8 을 「안 쓰는 모델 내리기」대로 비활성화한다.
+5. **확인** — 배포 EC2 에서 `bash status.sh` 의 US-16 줄이 OK 면 끝이다(3·4 전에는 "부분 적용").
+
+▶ **실행** · 사용자 PC — 2) 첫 호출 확인
+
+```bash
+claude --model claude-sonnet-5-5 -p "hi"
+```
 
 ---
 
@@ -35,6 +58,8 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 
 **고칠 것은 보통 `AWS_ACCOUNT_ID` 한 줄뿐이다.** 모델 기본값이 Opus 5.5 로 맞춰져 있다 —
 별칭 `claude-opus-5-5` · 모델 ID `us.anthropic.claude-opus-5-5` · 단가 5종(`pricing.tsv` 와 같은 값).
+**US-16 이면 Sonnet 5.5 로 바꾼다** — `MODEL_*` 9줄과 `MODEL_PRICE_ASOF` 를 `config.env.example` 의
+Sonnet 5.5 주석 블록 값으로(`grep -A12 'Sonnet 5.5' config.env.example` 로 본다).
 
 ▶ **실행** · 배포 EC2 — 먼저 지금 값을 본다
 
@@ -90,8 +115,10 @@ bash 04-verify.sh
 - **Claude Code** — 게이트웨이가 내려주는 모델 목록을 따른다. `model:list` 캐시 5분이 지나면
   보인다. **새 모델은 클라이언트 최소 버전을 요구할 수 있으니 먼저 `claude update` 를 실행한다** —
   버전이 낮으면 목록에 보여도 Bedrock 이 400 으로 거절한다(Opus 5.5 는 2.1.280 이상, 2026-09-23
-  실측). 설치할 때 `--available-models` 로 모델 목록을 PC 에 고정한 곳만 `gateway-cli setup` 을
-  다시 돌려야 한다.
+  실측 · Sonnet 5.5 는 등록 뒤 첫 호출로 확인). 설치할 때 `--available-models` 로 모델 목록을 PC 에
+  고정한 곳만 `gateway-cli setup` 을 다시 돌려야 한다. **기본 모델을 바꿀 때**(US-16)는 설치 파일로
+  깐 Windows PC 마다 관리자 PowerShell 에서 `gateway-cli setup --model claude-sonnet-5-5` 를 다시
+  실행한다 — `setup` 이 관리형 설정의 `model` 을 쓰기 때문이다.
 - **Cowork** — PC 마다 모델 목록(`inferenceModels`)을 다시 써야 한다. 레지스트리를 직접 고치지
   말고 설치기 CLI 를 쓴다. `--model` 이 기본 모델이고, 그 값은 목록 안에 있어야 한다. `setup` 은
   설정을 쓴 뒤 Claude Desktop 을 자동으로 재시작한다. **앱에 내장된 Claude Code 가 낮아 새 모델이
@@ -100,8 +127,8 @@ bash 04-verify.sh
 ▶ **실행** · 사용자 PC — 🔴 관리자 PowerShell (정책이 HKLM 이면 관리자 권한이 필요하다)
 
 ```powershell
-$m = "claude-sonnet-5,claude-opus-5-5,claude-haiku-4-5-20251001"
-gateway-cli-cowork setup --model claude-sonnet-5 --available-models $m
+$m = "claude-sonnet-5-5,claude-opus-5-5,claude-haiku-4-5-20251001"
+gateway-cli-cowork setup --model claude-sonnet-5-5 --available-models $m
 ```
 
 확인은 `gateway-cli-cowork verify` 와 Cowork 의 모델 선택기다. GPO 로 관리하는 조직은 같은
@@ -110,7 +137,7 @@ gateway-cli-cowork setup --model claude-sonnet-5 --available-models $m
 ### 폴백 체인
 
 장애(5xx)나 예산 초과 때 다른 모델로 내려가게 하려면 관리 화면 **예산 →
-자동 다운그레이드** 에서 규칙을 추가한다(예: `claude-opus-5-5` → `claude-sonnet-5`). 기존 규칙은
+자동 다운그레이드** 에서 규칙을 추가한다(예: `claude-opus-5-5` → `claude-sonnet-5-5`). 기존 규칙은
 지우지 않는다 — 화면이 목록 전체를 저장한다.
 
 규칙을 저장한 뒤 **gateway-proxy 를 재시작**해야 적재된다. 기동 시 활성 행 전부(스코프 무관)를
@@ -136,7 +163,8 @@ kubectl -n llm-gateway rollout restart deploy/llm-gateway-gateway-proxy
 
 새 모델을 넣었으면 그 자리를 대신하는 옛 모델은 선택 목록에서 치운다. 예를 들어 Opus 5.5 를
 등록했으면 **Opus 4.8 은 더 둘 이유가 없다** — 같은 급인데 더 비싸고(입력 $5 vs $4 / 1M), 최근
-사용도 없다. 내리기 전에 그 모델을 최근에 쓴 사람이 있는지 관리 화면의 사용량에서 한 번 본다.
+사용도 없다. US-16 에서는 **Opus 5 · Sonnet 5 · Opus 4.8** 세 개를 내린다 — 직원 PC 의 기본
+모델을 Sonnet 5.5 로 바꾼 뒤에(먼저 내리면 그 PC 들이 실패한다). 내리기 전에 그 모델을 최근에 쓴 사람이 있는지 관리 화면의 사용량에서 한 번 본다.
 
 관리 화면 **모델** 에서 그 별칭의 **비활성화** 를 누른다. **삭제는 안 된다** — `model_aliases` 를
 참조하는 FK 가 여럿이고 `ON DELETE` 가 없어 실패한다. 비활성으로 바꿔도 과거 사용량·비용
