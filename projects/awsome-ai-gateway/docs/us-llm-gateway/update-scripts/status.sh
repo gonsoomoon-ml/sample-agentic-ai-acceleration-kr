@@ -473,7 +473,7 @@ probe_us16() {
   st=${s55%%|*}; pid=${s55#*|}
   if [ -z "$s55" ] || [ "$st" != ACTIVE ]; then
     row warn "US-16" "Sonnet 5.5 기본 전환 — 미적용 (권장)"
-    detail "claude-sonnet-5-5 ${s55:+($st) }— 절차는 ops/8-M-models.md 「US-16」"
+    detail "claude-sonnet-5-5 ${s55:+($st) }— 절차는 ops/8-M-models.md 「0」→「A」→「B」→「C」"
     TODO+=("(수동) docs/us-llm-gateway/ops/8-M-models.md — US-16 Sonnet 5.5 등록")
   elif [ "${s55p:-0}" -lt 1 ]; then
     row bad "US-16" "Sonnet 5.5 기본 전환 — 단가 없음 (호출 비용이 0 으로 기록됨)"
@@ -485,7 +485,7 @@ probe_us16() {
   elif [ "${old:-0}" -gt 0 ]; then
     row warn "US-16" "Sonnet 5.5 기본 전환 — 부분 적용 (이전 세대 ${old}개 ACTIVE)"
     detail "claude-sonnet-5-5 등록 완료 · 직원 PC 기본 모델을 바꾼 뒤 이전 세대를 비활성화"
-    TODO+=("(수동) ops/8-M-models.md 「US-16」 ③④ — PC 기본 모델 전환 후 Opus 5·Sonnet 5·Opus 4.8 비활성화")
+    TODO+=("(수동) ops/8-M-models.md 「B」·「C」 — PC 기본 모델 전환 후 Opus 5·Sonnet 5·Opus 4.8 비활성화")
   else
     row ok "US-16" "Sonnet 5.5 기본 전환"
     detail "claude-sonnet-5-5 ACTIVE · $pid · 단가 있음 · 이전 세대 INACTIVE"
