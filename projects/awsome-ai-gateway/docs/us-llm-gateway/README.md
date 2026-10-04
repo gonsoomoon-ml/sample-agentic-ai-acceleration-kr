@@ -14,7 +14,7 @@
 - 🔴 **코드** — fork 의 **`us/deploy-fixes`** 브랜치: https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway (원본 [aws-samples](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr) 에 아직 없는 배포·벤더 픽스 포함, `forked from aws-samples/…` 배너가 정상). upstream 위로 **리베이스**되어 해시가 바뀌므로 버전은 **`US-NN`** 으로 센다
 - **리전** — `us-west-2`(인프라) · 추론은 **US Geo**(`us.anthropic.*`, us-east-1/2·us-west-2 분산) · 리전 변경/US 밖 설치는 [install-overview §0](install-overview.md#0-이번-배포의-범위-확정)
 - **추론 백엔드** — `bedrock-runtime` + US Geo 추론 프로파일 (Mantle 아님)
-- **클라이언트 · 모델** — Claude Code(Mac·Windows·Linux) · Cowork · Opus 5 · Opus 4.8 · Sonnet 5 · Haiku 4.5 — 전부 `US-01` 에 포함, 운영(`US-08`)도 포함
+- **클라이언트 · 모델** — Claude Code(Mac·Windows·Linux) · Cowork · **Opus 5.5 · Sonnet 5.5 · Haiku 4.5** — 전부 `US-01` 에 포함, 운영(`US-08`)도 포함
 - **접속(입구)** — POC: http ALB + IP 허용목록(방식 A), 도메인이 있으면 https(`US-06`) · 운영(`US-08`): https 도메인 + admin ALB 2개 internal(S2S VPN)
 
 ---
@@ -31,7 +31,7 @@
 
 | 사용 구성 | POC (dev) | 운영 (prod) |
 |---|---|---|
-| Claude Code 만 (Opus 5 · Opus 4.8 · Sonnet 5 · Haiku 4.5) | `US-01` | `US-08`(`US-01` 과 같은 설치를 prod 계정에서 8-P 대로 — https·admin internal·VPN 포함) |
+| Claude Code 만 (**Opus 5.5 · Sonnet 5.5 · Haiku 4.5**) | `US-01` | `US-08`(`US-01` 과 같은 설치를 prod 계정에서 8-P 대로 — https·admin internal·VPN 포함) |
 | Claude Code + **Cowork** | `US-01` + https 입구 하나(도메인 있으면 `US-06`, 없으면 `US-02` 의 `03` CloudFront) | `US-08`(같음 · https 포함이라 입구 선택 없음) |
 
 **신규 설치에서 각 `US-NN` 은** — 자세한 설명은 [install-overview.md §1](install-overview.md#1-신규-설치와-us-nn)

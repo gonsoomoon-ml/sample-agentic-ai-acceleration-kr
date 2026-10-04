@@ -16,7 +16,7 @@ What sets this edition apart: a region outside Korea · direct to Bedrock (not M
 - 🔴 **Code** — the fork's **`us/deploy-fixes`** branch: https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway (deployment · vendor fixes not yet in upstream [aws-samples](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr); the `forked from aws-samples/…` banner is expected). It is **rebased** onto upstream, so hashes change — versions are counted by **`US-NN`**
 - **Region** — `us-west-2` (infrastructure) · inference on **US Geo** (`us.anthropic.*`, spread across us-east-1/2 · us-west-2) · changing region / deploying outside the US: [install-overview §0](install-overview.md#0-이번-배포의-범위-확정) (Korean)
 - **Inference backend** — `bedrock-runtime` + US Geo inference profiles (not Mantle)
-- **Clients · models** — Claude Code (Mac · Windows · Linux) · Cowork · Opus 5 · Opus 4.8 · Sonnet 5 · Haiku 4.5 — all included in `US-01`; production (`US-08`) includes them too
+- **Clients · models** — Claude Code (Mac · Windows · Linux) · Cowork · **Opus 5.5 · Sonnet 5.5 · Haiku 4.5** — all included in `US-01`; production (`US-08`) includes them too
 - **Entry point** — POC: http ALB + IP allow-list (mode A), https (`US-06`) with a domain · production (`US-08`): https domain + both admin ALBs internal (site-to-site VPN)
 
 ---
@@ -33,7 +33,7 @@ What sets this edition apart: a region outside Korea · direct to Bedrock (not M
 
 | Your setup | POC (dev) | Production (prod) |
 |---|---|---|
-| Claude Code only (Opus 5 · Opus 4.8 · Sonnet 5 · Haiku 4.5) | `US-01` | `US-08` (the same install as `US-01`, in the prod account per 8-P — https · admin internal · VPN included) |
+| Claude Code only (**Opus 5.5 · Sonnet 5.5 · Haiku 4.5**) | `US-01` | `US-08` (the same install as `US-01`, in the prod account per 8-P — https · admin internal · VPN included) |
 | Claude Code + **Cowork** | `US-01` + one https entry (`US-06` with a domain, otherwise `03` CloudFront from `US-02`) | `US-08` (same; https included, so no entry choice) |
 
 **How each `US-NN` is handled in a new install** — details in [install-overview.md §1](install-overview.md#1-신규-설치와-us-nn) (Korean)
