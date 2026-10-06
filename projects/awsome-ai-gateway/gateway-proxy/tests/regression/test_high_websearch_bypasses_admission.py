@@ -34,6 +34,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from starlette.datastructures import Headers
 
 from app.schemas.domain import (
     ApiFormat,
@@ -223,7 +224,7 @@ class _FakeRequest:
         self._body = json.dumps(body).encode()
         self.scope = {"state": state}
         self.app = SimpleNamespace(state=app_state)
-        self.headers = {}
+        self.headers = Headers()   # 실제 Request 처럼 getlist() 를 갖춘 헤더
 
     async def body(self) -> bytes:
         return self._body

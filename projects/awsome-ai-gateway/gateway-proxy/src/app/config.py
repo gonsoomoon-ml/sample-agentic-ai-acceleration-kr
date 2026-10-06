@@ -285,6 +285,40 @@ class Settings(BaseSettings):
     #: here, not a release. Blank = pass everything through. See services/upstream_compat.py.
     bedrock_unsupported_tool_type_prefixes: str = "advisor_"
 
+    #: Bedrock InvokeModel 로 넘길 anthropic-beta 값(본문 ``anthropic_beta``).
+    #: 쉼표로 구분한 ``beta[:field]`` 형식이며, ``field`` 는 그 beta 가 여는
+    #: 최상위 본문 필드로 beta 와 함께일 때만 넘어간다. 클라이언트 헤더의
+    #: 나머지 beta 는 버린다 — Bedrock 은 모르는 beta 가 하나라도 있으면 요청
+    #: 전체를 400 으로 거부한다(2026-10-05: prompt-caching-scope-2026-01-05).
+    #: - dangerous-tool-use + safeguards: Claude Code 의 서버측 auto mode
+    #:   분류기(판정은 ``safeguard_results`` 로 돌아온다).
+    #: - per-turn-control: Claude Code 2.1.289 이상이 대화 중간 메시지에 붙이는
+    #:   ``messages[].output_config``(턴별 effort)를 연다. 없으면 세션 첫
+    #:   요청이 400 이다.
+    #: 빈 값 = 아무것도 넘기지 않음(이전 동작) — 끄기 스위치다. beta 추가가
+    #: 설정 변경만으로 되는 것은 그 필드와 응답이 웹 검색 루프·사용량 집계·
+    #: 폴백과 얽히지 않을 때뿐이고, 그 밖에는 코드 변경이 필요하다.
+    #: services/upstream_compat.py 참고.
+    #:
+    #: English: anthropic-beta values forwarded to Bedrock InvokeModel (body
+    #: ``anthropic_beta``), as comma-separated ``beta[:field]``; ``field`` is the
+    #: top-level body field the beta opens and that travels ONLY with it. Every
+    #: other beta in the client's header is dropped: Bedrock 400s the whole
+    #: request on a beta it does not know (2026-10-05:
+    #: prompt-caching-scope-2026-01-05).
+    #: - dangerous-tool-use + safeguards: Claude Code's server-side auto-mode
+    #:   classifier (verdicts return as ``safeguard_results``).
+    #: - per-turn-control: opens ``messages[].output_config`` (per-turn effort)
+    #:   that Claude Code 2.1.289+ puts on mid-conversation messages; without it
+    #:   a session's first request is a 400.
+    #: Blank = forward nothing (the previous behaviour) — this is a kill switch.
+    #: Adding a beta is only a config change when its field and response do not
+    #: touch the web-search loop, usage accounting or fallback; otherwise it
+    #: needs a code change. See services/upstream_compat.py.
+    bedrock_forward_betas: str = (
+        "dangerous-tool-use-2026-09-03:safeguards,per-turn-control-2026-07-01"
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -43,6 +43,9 @@ from app.services.streaming import bedrock_anthropic_sse_stream
 from app.services.thinking_normalizer import normalize_thinking, sanitize_output_config
 from app.services.tool_filter import strip_unsupported_tools
 from app.services.upstream_compat import (
+    apply_forwarded_betas,
+    client_betas,
+    forward_beta_map,
     strip_unsupported_server_tools,
     unsupported_tool_prefixes,
 )
@@ -92,7 +95,12 @@ def _has_1h_cache_control(req_data: dict) -> bool:
 
 # Bedrock invoke_model only accepts specific fields — strip everything else.
 # Claude Code sends extra fields (model, stream, context_management, etc.) that Bedrock rejects.
-# Bedrock does NOT accept anthropic_beta — caching is handled automatically via cache_control in content.
+# anthropic_beta 와 safeguards 는 일부러 이 목록에 넣지 않는다 — 정해 둔 beta 와 그 짝
+# 필드만 _build_candidate_body 에서 apply_forwarded_betas 로 넣는다(그래야 끄기 스위치가
+# 동작한다).
+# English: anthropic_beta and safeguards are deliberately NOT in this list — only the
+# configured betas and their paired fields are added, by apply_forwarded_betas in
+# _build_candidate_body (that is what makes the kill switch work).
 _BEDROCK_ALLOWED_FIELDS = {
     "anthropic_version",
     "messages",
@@ -363,6 +371,13 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
 
     is_mantle = decision.provider == ProviderType.BEDROCK_MANTLE
 
+    # 클라이언트가 보낸 anthropic-beta 와 넘길 목록은 요청마다 한 번만 읽는다.
+    # _build_candidate_body 는 폴백 후보·웹 검색 턴마다 불리므로 그 안에서 읽지 않는다.
+    # English: read the client's anthropic-beta and the forward list once per request;
+    # _build_candidate_body runs once per fallback candidate and per web-search turn.
+    _client_betas = client_betas(request.headers.getlist("anthropic-beta"))
+    _fwd_map = forward_beta_map(get_settings().bedrock_forward_betas)
+
     def _build_candidate_body(
         req_d: dict, cand_config: ModelConfigSchema, streaming: bool
     ) -> tuple[bytes, dict, dict]:
@@ -372,6 +387,10 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
            턴이 모두 이 함수를 지난다. 그래서 모델별 본문 정규화도 여기서 한다.
         """
         if is_mantle:
+            # Mantle 에는 beta 를 넘기지 않는다(헤더로 넘겨야 하고 아직 시험하지 않았다).
+            # safeguards 는 아래 필터에서 빠지므로 Claude Code 는 이전처럼 로컬 분류기를 쓴다.
+            # English: no betas to Mantle (they would go as a header; untested). safeguards
+            # is filtered out below, so Claude Code keeps its local classifier as before.
             mantle_b = {k: v for k, v in req_d.items() if k in _BEDROCK_ALLOWED_FIELDS}
             mantle_b.pop("anthropic_version", None)
             sanitize_output_config(mantle_b, cand_config.provider_model_id, request_id=request_id)
@@ -420,6 +439,13 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
             bedrock_b = normalize_thinking(
                 bedrock_b, cand_config.provider_model_id, request_id=request_id
             )
+            # 정해 둔 anthropic-beta 와 그 짝 필드(safeguards)를 본문에 넣는다. 다른 정규화가
+            # 모두 끝난 뒤, 보내기 직전에 넣어 어느 단계도 이를 지우거나 바꾸지 못하게 한다.
+            # 폴백 후보·예산 강등 후보·웹 검색 턴이 모두 이 함수를 지나므로 같이 적용된다.
+            # English: add the configured anthropic-beta values and their paired fields
+            # (safeguards) last, right before sending, so no normalisation step can drop
+            # them; every fallback / downgrade candidate and web-search turn comes here.
+            apply_forwarded_betas(bedrock_b, req_d, _client_betas, _fwd_map)
             return (
                 json.dumps(bedrock_b).encode(),
                 {"path_suffix": "invoke-with-response-stream"},

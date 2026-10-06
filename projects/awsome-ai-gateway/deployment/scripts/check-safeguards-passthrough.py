@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""게이트웨이에 Auto mode 서버 분류기 패치가 적용됐는지 확인한다.
+
+Claude Code 와 같은 모양의 요청(같은 User-Agent, 같은 anthropic-beta 11개)을
+게이트웨이에 보내고 세 가지를 본다. 모델이 도구를 부르더라도 실행하지 않는다.
+  1) 턴별 effort  — 대화 중간 메시지의 output_config 가 400 없이 통과하는가
+  2) 판정(비스트리밍) — 응답 최상위에 safeguard_results 가 오는가
+  3) 판정(스트리밍)   — message_delta.delta.safeguard_results 가 오는가
+모두 통과하면 종료 코드 0, 아니면 1.
+
+사용법:
+  export ANTHROPIC_AUTH_TOKEN=vk-...     # 게이트웨이 키(VK)
+  python3 check-safeguards-passthrough.py https://<게이트웨이 주소>
+  python3 check-safeguards-passthrough.py https://<게이트웨이 주소> \
+      --model claude-opus-5-5
+모델은 턴별 effort 를 받는 Sonnet 5.5 · Opus 5.5 중 하나여야 한다.
+
+English: checks whether the Auto-mode server-classifier patch is live on a gateway.
+Sends Claude Code-shaped requests (same User-Agent, same 11 anthropic-beta values)
+and checks 1) per-turn effort passes without a 400, 2) non-streaming verdicts
+(top-level safeguard_results), 3) streaming verdicts
+(message_delta.delta.safeguard_results). No tool is ever executed. Exit code 0 when
+all pass, 1 otherwise. Use Sonnet 5.5 or Opus 5.5 (models that take per-turn effort).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import unicodedata
+import urllib.error
+import urllib.request
+
+BETAS = ("claude-code-20250219,interleaved-thinking-2025-05-14,"
+         "thinking-token-count-2026-05-13,context-management-2025-06-27,"
+         "prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,"
+         "per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,"
+         "effort-2025-11-24,dangerous-tool-use-2026-09-03,afk-mode-2026-01-31")
+BASH = {"name": "Bash", "description": "Run a shell command.",
+        "input_schema": {"type": "object",
+                         "properties": {"command": {"type": "string"}},
+                         "required": ["command"]}}
+#: 판단 재료는 최소한만 — 사용자 경로·신원은 보내지 않는다.
+#: English: a minimal classifier context — no user paths or identity.
+SAFEGUARDS = [{"type": "dangerous_tool_use",
+               "classifier_context": {"v": 1, "permission_mode": "auto"}}]
+ASK = "Use the Bash tool to run exactly: ls -la"
+
+
+def post(base: str, key: str, body: dict) -> tuple[int, str]:
+    req = urllib.request.Request(
+        base.rstrip("/") + "/v1/messages", data=json.dumps(body).encode(),
+        method="POST", headers={
+            "content-type": "application/json",
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": BETAS,
+            "authorization": f"Bearer {key}",
+            "user-agent": "claude-cli/2.1.289 (external, sdk-cli)",
+            "x-app": "cli"})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            return resp.status, resp.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode(errors="replace")
+
+
+def sse_events(text: str) -> list[tuple[str, dict]]:
+    out = []
+    for block in text.split("\n\n"):
+        event, data = None, None
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                event = line[6:].strip()
+            elif line.startswith("data:"):
+                try:
+                    data = json.loads(line[5:].strip())
+                except ValueError:
+                    data = None
+        if event and isinstance(data, dict):
+            out.append((event, data))
+    return out
+
+
+def verdict_for(results, tool_id: str) -> str | None:
+    """safeguard_results 에서 tool_id 의 판정(outcome)을 꺼낸다. 없으면 None."""
+    for r in results or []:
+        if isinstance(r, dict) and r.get("type") == "dangerous_tool_use":
+            v = ((r.get("status") or {}).get("tool_uses") or {}).get(tool_id)
+            if isinstance(v, dict):
+                return v.get("outcome") or v.get("type")
+    return None
+
+
+def check_effort(base, key, model):
+    body = {"model": model, "max_tokens": 50, "messages": [
+        {"role": "user", "content": "Say OK."},
+        {"role": "system", "content": [{"type": "text", "text": "One word."}],
+         "output_config": {"effort": "low"}}]}
+    st, text = post(base, key, body)
+    if st == 200:
+        return "PASS", "200"
+    if "output_config" in text:
+        return "FAIL", f"{st} per-turn-control 이 Bedrock 까지 가지 않음"
+    if "Unexpected value" in text:
+        return "FAIL", f"{st} 모르는 beta 까지 넘김: {text[:120]}"
+    return "ERROR", f"{st} {text[:160]}"
+
+
+def check_verdict(base, key, model, stream: bool):
+    body = {"model": model, "max_tokens": 400, "tools": [BASH],
+            "safeguards": SAFEGUARDS, "stream": stream,
+            "messages": [{"role": "user", "content": ASK}]}
+    for _ in range(3):                       # 모델이 도구를 안 부르면 다시
+        st, text = post(base, key, body)
+        if st != 200:
+            return "FAIL", f"{st} {text[:160]}"
+        if stream:
+            evs = sse_events(text)
+            err = [d for e, d in evs if e == "error"]
+            if err:
+                return "FAIL", f"스트림 오류: {json.dumps(err[0])[:160]}"
+            ids = [d["content_block"]["id"] for e, d in evs
+                   if e == "content_block_start"
+                   and d.get("content_block", {}).get("type") == "tool_use"]
+            deltas = [d.get("delta") or {} for e, d in evs if e == "message_delta"]
+            results = deltas[-1].get("safeguard_results") if deltas else None
+        else:
+            msg = json.loads(text)
+            ids = [b["id"] for b in msg.get("content", [])
+                   if b.get("type") == "tool_use"]
+            results = msg.get("safeguard_results")
+        if not ids:
+            continue
+        outcome = verdict_for(results, ids[0])
+        if outcome:
+            return "PASS", f"{ids[0]} -> {outcome}"
+        return "FAIL", "판정 없음 (safeguards 또는 판정이 중간에 사라짐)"
+    return "SKIP", "모델이 도구를 부르지 않아 판정을 볼 수 없음 (다시 실행)"
+
+
+def _pad(s: str, width: int) -> str:
+    """한글을 2칸으로 세어 오른쪽을 채운다. English: pad by display width."""
+    w = sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+    return s + " " * max(width - w, 0)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Auto mode 서버 분류기 패치 확인")
+    ap.add_argument("url", help="게이트웨이 주소, 예: https://gateway.example.com")
+    ap.add_argument("--model", default="claude-sonnet-5-5")
+    args = ap.parse_args()
+    key = os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get("GATEWAY_KEY")
+    if not key:
+        print("ANTHROPIC_AUTH_TOKEN(게이트웨이 키)를 먼저 설정하세요.")
+        return 2
+    url, model = args.url, args.model
+    rows = [("1) 턴별 effort", check_effort(url, key, model)),
+            ("2) 판정 (비스트리밍)", check_verdict(url, key, model, False)),
+            ("3) 판정 (스트리밍)", check_verdict(url, key, model, True))]
+    print(f"게이트웨이: {url}   모델: {model}")
+    for name, (res, detail) in rows:
+        print(f"  {res:5s}  {_pad(name, 20)} {detail}")
+    passed = [r for _, (r, _) in rows]
+    if passed == ["PASS"] * 3:
+        print("결과: 패치 적용됨")
+        return 0
+    if passed[1] == "PASS" and passed[2] == "FAIL":
+        print("결과: 요청 쪽만 적용됨 — 웹 검색 응답 수정(변경 3)을 확인하세요")
+    elif all(p == "FAIL" for p in passed):
+        print("결과: 패치 미적용 (이전 동작)")
+    else:
+        print("결과: 일부만 확인됨 — 위 항목을 확인하세요")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
