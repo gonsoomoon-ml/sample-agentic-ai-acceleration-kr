@@ -171,6 +171,8 @@ notepad packaging\site-config.json
 
 ## 3. 빌드
 
+`packaging\site-extra.json`(저장소에 포함)이 Chat 탭과 Chat 첨부 분석(`chatTabEnabled`·`chatAdvancedFileAnalysisEnabled`)을 켠다 — 끌 고객이면 빌드 전에 그 키를 지운다.
+
 ▶ **실행** · 🔵 일반 PowerShell — installer 폴더
 
 ```powershell
