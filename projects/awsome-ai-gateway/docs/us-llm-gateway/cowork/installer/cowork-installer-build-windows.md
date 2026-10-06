@@ -173,6 +173,17 @@ notepad packaging\site-config.json
 
 `packaging\site-extra.json`(저장소에 포함)이 Chat 탭과 Chat 첨부 분석(`chatTabEnabled`·`chatAdvancedFileAnalysisEnabled`)을 켠다 — 끌 고객이면 빌드 전에 그 키를 지운다.
 
+📋 **참고** — `packaging\site-extra.json` 의 내용입니다
+
+- 전체 경로: `%USERPROFILE%\sample-agentic-ai-acceleration-kr\projects\awsome-ai-gateway\cowork-installer\installer\packaging\site-extra.json`
+
+```json
+{
+  "chatTabEnabled": true,
+  "chatAdvancedFileAnalysisEnabled": true
+}
+```
+
 ▶ **실행** · 🔵 일반 PowerShell — installer 폴더
 
 ```powershell
