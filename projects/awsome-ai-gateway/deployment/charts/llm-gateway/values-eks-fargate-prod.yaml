@@ -204,7 +204,8 @@ gatewayProxy:
     # 1.0.79-advisorstrip: Anthropic 전용 서버 도구를 Bedrock 으로 보내기 전에 제거 — Claude Code 의 advisor 가 켜진 세션은 모든 요청에 {"type":"advisor_20260301"} 를 실어 보내고 Bedrock 이 요청 전체를 400 으로 거절("hi" 도 실패, 2026-09-18 US). 접두어 목록은 BEDROCK_UNSUPPORTED_TOOL_TYPE_PREFIXES(기본 "advisor_", 빈 값 = 끔) — 새 Anthropic 전용 도구 타입은 재빌드 없이 설정으로 대응.
     # 1.0.80-wsdefaults: web search 설정의 코드 기본값을 실측·검증된 값으로(기본값이 하나가 됨) — 턴당 3 · 검색 턴 2 · 결과 5건 · 12000자 · native 흔적(cowork,claude-code) · 혼합 턴 실행 · soft 최종 턴. 종전 기본(4·5·10·60000·text·cowork·off·off)은 17 스크립트를 돌리지 않은 설치를 비싸고 결함 있는 상태로 뒀다. 전부 env 로 되돌릴 수 있음(재빌드 불필요). 여기처럼 values 에 값을 명시한 배포는 동작 변화 없음.
     # 1.0.81-connretry: 비스트리밍 Bedrock 호출(invoke·converse·count_tokens)에도 연결 수준 오류 1회 재시도 — 풀의 죽은 연결(장시간 idle 뒤 조용히 끊긴 것)을 집으면 "Connection was closed…" 로 실패하는데 bedrock_max_attempts=1 이라 그대로 502 로 나갔다(2026-09-19 13:07Z, 2.5시간 idle 뒤). 스트리밍은 9/16 부터 재시도가 있었다. 재시도 전에 유휴 풀 연결을 비워 같은 실패를 피한다. Bedrock 이 실제로 응답한 오류(400/429/5xx)는 재시도하지 않는다(이중 과금 없음).
-    tag: "1.0.81-connretry"
+    # 1.0.84-safeguards: Claude Code Auto mode 서버 분류기 지원(US-17) — anthropic-beta 중 dangerous-tool-use(+본문 safeguards)·per-turn-control 만 Bedrock 본문 anthropic_beta 로 넘기고 나머지는 버린다(모르는 beta 하나로 요청 전체가 400). 웹 검색 루프는 마지막 턴의 message_delta.delta 를 복사해 판정(safeguard_results)을 유지한다. 별도 분류기 요청·과금 안내와 Claude Code 2.1.289 의 세션 첫 요청 400 이 사라진다. 끄기 = BEDROCK_FORWARD_BETAS 빈 값(재빌드 불필요).
+    tag: "1.0.84-safeguards"
   serviceAccount:
     annotations:
       # CHANGE_ME (terraform output): IRSA role ARN. terraform output -raw gateway_proxy_role_arn
