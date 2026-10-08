@@ -54,9 +54,11 @@ US-17 은 beta 중 두 개와 `safeguards` 만 Bedrock 으로 넘기고(나머�
 - 시간: 약 20분(이미지 빌드 포함). gateway-proxy 만 롤링되어 추론은 끊기지 않는다.
 - 직원 PC 는 바꿀 것이 없다.
 
-▶ **실행** · 배포 EC2 — 위에서부터 그대로. 📋 = 기대 출력.
+명령 블록 위의 ▶ **실행** 표시가 실행할 곳이다(배포 EC2 / 관리자 PC). 📋 = 기대 출력.
 
 ## 1. 저장소 최신화
+
+▶ **실행** · 배포 EC2
 
 ```bash
 cd ~/awsome-ai-gateway && git remote -v
@@ -76,6 +78,8 @@ cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
 
 ① **접속 값 4줄** — 배포 EC2
 
+▶ **실행** · 배포 EC2
+
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 07-client-values.sh --claude-code
@@ -83,7 +87,9 @@ bash 07-client-values.sh --claude-code
 
 출력에서 `macOS / Linux` 아래의 `export …` 4줄을 이 셸에 붙여 넣는다. 새 SSH 창을 열면 다시 붙여 넣는다 — 새 셸에는 `~/.bashrc` 의 옛 값이 들어 있을 수 있다.
 
-② **터널** — 내 PC 의 새 터미널. 로그인 뒤 브라우저가 돌아오는 `localhost:8090` 을 배포 EC2 로 넘긴다. 멈춘 것처럼 보이는 게 정상이니 ③ 이 끝날 때까지 그대로 둔다(`Ctrl+C`·`Ctrl+Z` 를 누르지 않는다). VS Code·Cursor Remote-SSH 로 붙었다면 자동으로 넘겨 주므로 건너뛴다.
+② **터널** — 관리자 PC 의 새 터미널. 로그인 뒤 브라우저가 돌아오는 `localhost:8090` 을 배포 EC2 로 넘긴다. 멈춘 것처럼 보이는 게 정상이니 ③ 이 끝날 때까지 그대로 둔다(`Ctrl+C`·`Ctrl+Z` 를 누르지 않는다). VS Code·Cursor Remote-SSH 로 붙었다면 자동으로 넘겨 주므로 건너뛴다.
+
+▶ **실행** · 관리자 PC (새 터미널)
 
 ```bash
 ssh -N -L 8090:localhost:8090 -i ~/.ssh/<키>.pem ubuntu@<배포 EC2 공인 IP>
@@ -95,7 +101,9 @@ ssh -N -L 8090:localhost:8090 -i ~/.ssh/<키>.pem ubuntu@<배포 EC2 공인 IP>
 ssh -N -L 8090:localhost:8090 -i ~/.ssh/my-key.pem ubuntu@203.0.113.10
 ```
 
-③ **로그인** — 배포 EC2. 출력된 URL 을 내 PC 브라우저로 연다.
+③ **로그인** — 배포 EC2. 출력된 URL 을 관리자 PC 브라우저로 연다.
+
+▶ **실행** · 배포 EC2
 
 ```bash
 gateway-cli login --redirect-port 8090
@@ -104,6 +112,8 @@ gateway-cli login --redirect-port 8090
 📋 `Login successful`. 끝에 `Next: run gateway-cli setup` 이 나와도 setup 은 하지 않는다. 이제 ② 의 창을 `Ctrl+C` 로 닫는다.
 
 ④ **키 받기** — 배포 EC2
+
+▶ **실행** · 배포 EC2
 
 ```bash
 export GATEWAY_KEY=$(api-key-helper | grep -m1 '^vk-')
@@ -117,9 +127,11 @@ echo ${GATEWAY_KEY:0:3} $ANTHROPIC_BASE_URL
 **막히면**
 
 - 브라우저가 `localhost refused to connect` 를 낸다 → ② 터널이 없거나 멈췄다. `Ctrl+Z` 를 눌렀다면 그 창에서 `fg` 를 친다.
-- ② 가 `Address already in use` 를 낸다 → 내 PC 의 8090 을 다른 앱이 쓴다. ②·③ 포트를 둘 다 8091 로 바꾼다(Cognito 등록 포트는 8090·8091·8092).
+- ② 가 `Address already in use` 를 낸다 → 관리자 PC 의 8090 을 다른 앱이 쓴다. ②·③ 포트를 둘 다 8091 로 바꾼다(Cognito 등록 포트는 8090·8091·8092).
 - ④ 가 `ConnectTimeout … elb.amazonaws.com` 을 낸다 → 셸에 HTTPS 전환 전의 옛 주소가 남았다. ① 의 4줄을 다시 붙여 넣는다.
 - `gateway-cli: command not found` → 이 EC2 에 클라이언트가 없다. 게이트웨이에 로그인된 PC 에서 키를 복사한다. macOS 는 `api-key-helper 2>/dev/null | grep -m1 '^vk-' | pbcopy`, Windows 는 아래 명령이다. 배포 EC2 에서 `read -rs GATEWAY_KEY && export GATEWAY_KEY` 를 실행해 붙여 넣는다(화면에 안 보인다). PC 가 `Missing required OIDC config` 를 내면 07 출력에서 그 OS 블록 4줄을 먼저 붙여 넣는다.
+
+  ▶ **실행** · 관리자 PC (Windows PowerShell)
 
   ```powershell
   api-key-helper 2>$null | sls '^vk-' |
@@ -127,6 +139,8 @@ echo ${GATEWAY_KEY:0:3} $ANTHROPIC_BASE_URL
   ```
 
 **확인 스크립트 실행.**
+
+▶ **실행** · 배포 EC2
 
 ```bash
 cd ~/awsome-ai-gateway/deployment/scripts
@@ -144,6 +158,8 @@ python3 check-safeguards-passthrough.py "$ANTHROPIC_BASE_URL"
 
 ## 3. 이미지 태그 올리기
 
+▶ **실행** · 배포 EC2
+
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 13-bump-image-tags.sh dev
@@ -151,13 +167,18 @@ bash 13-bump-image-tags.sh dev
 
 📋 `<- change` 는 **gateway-proxy 한 줄**(→ `1.0.84-safeguards`)만 나와야 한다. 왼쪽(current) 값은 설치마다 다르다. 다른 서비스에도 `<- change` 가 붙으면 멈춘다 — 이 EC2 가 다른 업데이트를 덜 적용한 상태라 [8-U](8-U-update.md) 또는 [8-D](8-D-upstream-sync.md) 대상이다.
 
+▶ **실행** · 배포 EC2
+
 ```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 13-bump-image-tags.sh dev --apply
 ```
 
 📋 helm 렌더 확인 뒤 values 가 바뀌고 백업 경로가 나온다.
 
 ## 4. gateway-proxy 이미지 빌드
+
+▶ **실행** · 배포 EC2
 
 ```bash
 cd ~/awsome-ai-gateway
@@ -168,6 +189,8 @@ cd ~/awsome-ai-gateway
 
 ## 5. 배포
 
+▶ **실행** · 배포 EC2
+
 ```bash
 cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 ```
@@ -175,6 +198,8 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 📋 helm REVISION 이 하나 오르고, gateway-proxy 파드만 새로 뜬다.
 
 ## 6. 확인 (패치 후)
+
+▶ **실행** · 배포 EC2
 
 ```bash
 kubectl -n llm-gateway get deploy gateway-proxy \
@@ -184,6 +209,8 @@ kubectl -n llm-gateway get deploy gateway-proxy \
 📋 `…/gateway-proxy:1.0.84-safeguards`
 
 키와 주소는 2절 "키(VK)와 주소" 로 준비한다. 2절을 건너뛰었거나 새 SSH 창이면 그 부분부터 한다.
+
+▶ **실행** · 배포 EC2
 
 ```bash
 cd ~/awsome-ai-gateway/deployment/scripts
@@ -214,6 +241,8 @@ python3 check-safeguards-passthrough.py "$ANTHROPIC_BASE_URL"
 
 **② 판정이 필요한 명령을 Auto mode 로 한 번 실행**
 
+▶ **실행** · 관리자 PC
+
 ```bash
 P="Run: curl -s -o /dev/null -w '%{http_code}' https://example.com"
 claude -p "$P" --permission-mode auto --debug-file /tmp/cc.log
@@ -222,6 +251,8 @@ claude -p "$P" --permission-mode auto --debug-file /tmp/cc.log
 📋 답에 `200` 이 들어 있다(확인 창 없이 실행됨). `curl` 은 네트워크 명령이라 판정 대상이다. `ls` 같은 읽기 명령은 판정 없이 실행돼 확인이 되지 않는다.
 
 **③ 로그 확인**
+
+▶ **실행** · 관리자 PC
 
 ```bash
 grep -E "server-classifier|classifier_request_started" /tmp/cc.log
@@ -242,6 +273,8 @@ grep -E "server-classifier|classifier_request_started" /tmp/cc.log
 
 **Windows (PowerShell)** — ②③ 을 이렇게 한다.
 
+▶ **실행** · 관리자 PC (Windows PowerShell)
+
 ```powershell
 $P = "Run: curl -s -o /dev/null -w '%{http_code}' https://example.com"
 claude -p $P --permission-mode auto --debug-file $env:TEMP\cc.log
@@ -254,9 +287,13 @@ sls $env:TEMP\cc.log "server-classifier|classifier_request_started"
 
 **끄기 스위치 (재빌드 없이 이전 동작)** — values 의 `gatewayProxy:` → `env:` 아래에 한 줄을 넣고 배포한다.
 
+📋 **참고** · values 파일에 넣을 줄 (실행 아님)
+
 ```yaml
     BEDROCK_FORWARD_BETAS: ""
 ```
+
+▶ **실행** · 배포 EC2
 
 ```bash
 cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
@@ -265,6 +302,8 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 📋 2절의 확인 스크립트가 다시 `패치 미적용` 이 된다. 다시 켜려면 그 줄을 지우고 배포한다.
 
 **이미지까지 되돌리기** — [8-U](8-U-update.md) 4단계와 같다.
+
+▶ **실행** · 배포 EC2
 
 ```bash
 helm -n llm-gateway history llm-gateway
