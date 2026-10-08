@@ -202,7 +202,7 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 ▶ **실행** · 배포 EC2
 
 ```bash
-kubectl -n llm-gateway get deploy gateway-proxy \
+kubectl -n llm-gateway get deploy llm-gateway-gateway-proxy \
   -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
 ```
 
