@@ -192,10 +192,13 @@ cd ~/awsome-ai-gateway
 ▶ **실행** · 배포 EC2
 
 ```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
+terraform init | tail -3
+terraform output -json >/dev/null && echo "output OK"
 cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 ```
 
-📋 helm REVISION 이 하나 오르고, gateway-proxy 파드만 새로 뜬다.
+📋 `output OK` 뒤에 배포 로그가 나오고, helm REVISION 이 하나 오르며 gateway-proxy 파드만 새로 뜬다. `terraform output 실패 …` 로 멈추면 `terraform init` 이 안 돈 것이다 — 1절의 `reset --hard` 가 `.terraform.lock.hcl` 을 되돌리기 때문이다.
 
 ## 6. 확인 (패치 후)
 
