@@ -89,6 +89,12 @@ bash 07-client-values.sh --claude-code
 ssh -N -L 8090:localhost:8090 -i ~/.ssh/<키>.pem ubuntu@<배포 EC2 공인 IP>
 ```
 
+예 — 키 파일이 `~/.ssh/my-key.pem`, 배포 EC2 공인 IP 가 `203.0.113.10` 일 때(설명용 값). `<배포 EC2 공인 IP>` 는 지금 SSH 로 접속할 때 쓰는 주소다.
+
+```bash
+ssh -N -L 8090:localhost:8090 -i ~/.ssh/my-key.pem ubuntu@203.0.113.10
+```
+
 ③ **로그인** — 배포 EC2. 출력된 URL 을 내 PC 브라우저로 연다.
 
 ```bash
@@ -263,6 +269,12 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 ```bash
 helm -n llm-gateway history llm-gateway
 helm -n llm-gateway rollback llm-gateway <직전 REVISION>
+```
+
+예 — `history` 의 마지막 줄(이번 배포)이 REVISION 50 이면 바로 전인 49 로 되돌린다.
+
+```bash
+helm -n llm-gateway rollback llm-gateway 49
 ```
 
 ## 8. 참고
