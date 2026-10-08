@@ -49,11 +49,11 @@
 
 | ID (문서) | 무엇 | 등급 · 처음 설치한다면 | 이미 설치했다면 — 적용 방법 |
 |---|---|---|---|
+| [**US-17**](ops/8-A-automode-server.md) 2026/10 | Claude Code **Auto mode 의 안전 판정을 Bedrock 이 하도록** — 지금은 게이트웨이가 판정 요청 표시를 버려서, Claude Code 가 판정을 위한 요청을 따로 보내고(비용) 과금 안내를 띄운다. 표시 2개만 골라 Bedrock 으로 넘기면 따로 보내던 요청과 안내가 사라지고, 최신 Claude Code 에서 세션 첫 요청이 한 번 실패하던 것도 사라진다 | 권장 · Auto mode 를 쓰면 · 신규 설치는 코드에 포함 | [8-A](ops/8-A-automode-server.md) 순서대로 — 저장소 최신화 → 확인 스크립트(전) → gateway-proxy 이미지만 새로 → `install-eks.sh` → 확인 스크립트(후) (약 20분, 추론 무중단) |
 | [**US-16**](ops/8-M-models.md) 2026/10 | **Sonnet 5.5 를 기본 모델로** — Sonnet 5 의 다음 모델(단가 같음)을 등록하고, 직원 PC 의 기본 모델을 Sonnet 5.5 로 바꾼 뒤 이전 세대(Opus 5 · Sonnet 5 · Opus 4.8)를 목록에서 내린다. 남는 모델 = Opus 5.5 · Sonnet 5.5 · Haiku 4.5 | 권장 · **신규 설치는 §4-2 에 포함**(이미 설치한 곳만 이 절차) | [8-M](ops/8-M-models.md) 의 「0」 → 「A」 → 「B」 → 「C」 순서대로 — 등록(스크립트 또는 관리 화면) → 첫 호출 확인 → 직원 PC 기본 모델·폴백 규칙 전환 → 이전 세대 비활성화 → `status.sh` 로 확인 |
 | [**US-15**](ops/8-Z-token-ttl.md) 2026/10 | 게이트웨이 열쇠(VK) **수명 1시간 → 24시간** — 직원 PC 의 helper 가 매시간 관리 API 에서 열쇠를 다시 받던 것을 하루 한 번으로. 재발급 순간의 지연과 관리 API 부하가 줄고, 로그인 주기(7일)·모델·예산은 그대로 | 선택 · 보안 정책이 짧은 수명을 요구하면 1시간 유지 · 신규 설치는 values 한 줄이라 설치 때 함께 | [8-Z](ops/8-Z-token-ttl.md) 순서대로 — values `vkTtlHours: 24` 한 줄 → `install-eks.sh` → 관리 API 파드만 재시작(추론 무중단, 약 10분) |
 | [**US-14**](claude-code/installer/cc-installer-admin-e2e-windows.md) 2026/09 | Claude Code **Windows 설치 파일** — 관리자가 설치 파일 1개를 만들어 배포하면 직원은 실행 후 명령 두 개로 끝난다(지금은 PC 마다 Python·저장소·PATH 를 손으로 맞춘다) | 선택 · Windows 직원 PC 가 있으면 권장 · `US-01` §6-3(수동 설치)으로도 붙는다 · 게이트웨이는 바뀌지 않는다 | 소스 브랜치(`feat/cc-installer-import`)에서 설치 파일 만들기 → 직원 PC 에 설치 → 로그인 1회 |
 | [**US-13**](ops/8-M-models.md) 2026/09 | **Opus 5.5 모델 추가** — Opus 5 와 문맥·기능은 같고 단가가 20% 낮은 새 모델. 별칭 `claude-opus-5-5` 를 등록하고, 장애 시 Sonnet 5 로 내려가는 체인에도 넣는다 | 권장 · 기본 모델은 Sonnet 5 그대로(US-16 에서 Sonnet 5.5 로 전환) · **신규 설치는 §4-2 에 포함**(이미 설치한 곳만 이 절차) | [8-M](ops/8-M-models.md) 순서대로 — `config.env` 에 별칭·모델 ID·단가 → `02-add-opus5-model.sh --apply` → 5분 뒤 `04-verify.sh` → 폴백 체인 등록 후 gateway-proxy 재시작 |
-| [**US-12**](ops/8-L-admin-login.md) 2026/09 | 관리 화면에 **Cognito 로그인** — 지금은 관리 화면 주소에 닿는 사람은 누구나 관리자로 들어간다(개발용 로그인). 직원과 같은 Cognito 계정으로 로그인하고 관리자 그룹만 들어가게 한다 | 선택 · 권장(주소만 막는 지금 방식에 계정 확인을 더한다 · https 주소 필요) · **운영(`US-08`)은 사실상 필수** · 처음 설치도 설치를 마친 뒤 이 문서로 | [8-L](ops/8-L-admin-login.md) 을 위에서 아래로(관리 API 새 버전 포함 · 두 번 배포 · 약 40분) — 콜백 주소 등록 → 관리 API 새 버전과 로그인 켜기 → 확인 → 개발용 로그인 끄기 |
 그 이전(`US-01` 최초 설치)과 항목별 이유·함정 → [updates.md](updates.md)
 
 ---

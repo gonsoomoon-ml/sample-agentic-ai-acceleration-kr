@@ -22,6 +22,7 @@
 | §8-Y | 직원 온보딩 — Cognito 사용자 추가 | 직원 추가 시 | [ops/8-Y-onboarding.md](ops/8-Y-onboarding.md) |
 | §8-S | 배포 후 보안 하드닝 (직원 오픈 전 필수) | 직원 오픈 전 1회 | [ops/8-S-hardening.md](ops/8-S-hardening.md) |
 | §8-L | admin 콘솔 Cognito 로그인 | admin 콘솔을 계정으로 막을 때 (US-12, 선택 · 권장) | [ops/8-L-admin-login.md](ops/8-L-admin-login.md) |
+| §8-A | Claude Code Auto mode 서버 분류기 | Auto mode 를 쓸 때 (US-17, 권장) | [ops/8-A-automode-server.md](ops/8-A-automode-server.md) |
 | §8-N | Bedrock 을 NAT 대신 VPC Endpoint(PrivateLink)로 | 기존 VPC 1회 (US-04) | [ops/8-N-vpc-endpoint.md](ops/8-N-vpc-endpoint.md) |
 | §8-E | EKS 버전 업그레이드 (1.31 → 1.34) | EKS 버전 올릴 때 (US-05) | [ops/8-E-eks-upgrade.md](ops/8-E-eks-upgrade.md) |
 | §8-H | ALB HTTPS — 커스텀 도메인 + ACM (방식 A → B) | 도메인이 있을 때 (US-06, 선택 · 운영이면 강력 권장) | [ops/8-H-alb-https.md](ops/8-H-alb-https.md) |
@@ -79,6 +80,13 @@ upstream 을 통째로 들여온 뒤 배포 EC2 에서 명령만 위에서 아�
 
 `US-12` 선택·권장 — admin-ui 를 Cognito 로그인으로(지금은 dev-login = 주소에 닿으면 관리자). `19-admin-login.sh` 가 콜백(tfvars→terraform)·admin-ui 설정 4줄·dev-login 끄기를 계산해 넣는다. https(US-06) 전제, 배포 두 번, 추론 무중단.
 → **[ops/8-L-admin-login.md](ops/8-L-admin-login.md)**
+
+---
+
+### 8-A. Claude Code Auto mode 서버 분류기
+
+Claude Code 의 Auto mode 판정을 Bedrock 이 하도록 beta 2개와 `safeguards` 를 넘긴다(US-17) — gateway-proxy 이미지만 바뀐다. 끄기 = `BEDROCK_FORWARD_BETAS` 빈 값.
+→ **[ops/8-A-automode-server.md](ops/8-A-automode-server.md)**
 
 ---
 
