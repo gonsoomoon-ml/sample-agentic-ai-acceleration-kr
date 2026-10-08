@@ -80,6 +80,12 @@ read -rs GATEWAY_KEY && export GATEWAY_KEY
 python3 check-safeguards-passthrough.py https://<게이트웨이 주소>
 ```
 
+예 — US dev 게이트웨이. `<게이트웨이 주소>` 는 `<>` 까지 통째로 바꾼다. 그대로 두면 bash 가 `syntax error near unexpected token 'newline'` 을 낸다.
+
+```bash
+python3 check-safeguards-passthrough.py https://gateway-dev.awsome-ai-gw.click
+```
+
 둘째 줄에서 `vk-…` 를 붙여 넣고 Enter 를 누른다(화면에 안 보인다). 키를 `ANTHROPIC_AUTH_TOKEN` 으로 export 하지 않는다 — 같은 셸에서 Claude Code 를 띄우면 그 값을 먼저 써서, 키가 만료된 뒤 401 이 난다.
 
 📋
@@ -136,6 +142,12 @@ kubectl -n llm-gateway get deploy gateway-proxy \
 cd ~/awsome-ai-gateway/deployment/scripts
 read -rs GATEWAY_KEY && export GATEWAY_KEY
 python3 check-safeguards-passthrough.py https://<게이트웨이 주소>
+```
+
+예 — US dev:
+
+```bash
+python3 check-safeguards-passthrough.py https://gateway-dev.awsome-ai-gw.click
 ```
 
 📋
