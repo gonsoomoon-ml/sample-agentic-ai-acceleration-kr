@@ -198,7 +198,7 @@ terraform output -json >/dev/null && echo "output OK"
 cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 ```
 
-📋 `output OK` 뒤에 배포 로그가 나오고, helm REVISION 이 하나 오르며 gateway-proxy 파드만 새로 뜬다. `terraform output 실패 …` 로 멈추면 `terraform init` 이 안 돈 것이다 — 1절의 `reset --hard` 가 `.terraform.lock.hcl` 을 되돌리기 때문이다.
+📋 `output OK` 뒤에 배포 로그가 나오고, helm REVISION 이 하나 오르며 gateway-proxy 파드만 새로 뜬다.
 
 ## 6. 확인 (패치 후)
 
@@ -211,7 +211,25 @@ kubectl -n llm-gateway get deploy llm-gateway-gateway-proxy \
 
 📋 `…/gateway-proxy:1.0.84-safeguards`
 
-키와 주소는 2절 "키(VK)와 주소" 로 준비한다. 2절을 건너뛰었거나 새 SSH 창이면 그 부분부터 한다.
+키와 주소를 다시 받는다. 빌드·배포 사이에 SSH 창이 바뀌었을 수 있으므로 같은 창이어도 그대로 한다 — 이미 있으면 같은 값으로 다시 채워질 뿐이다. 로그인은 2절에서 했으므로 터널·로그인은 필요 없다.
+
+▶ **실행** · 배포 EC2
+
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 07-client-values.sh --claude-code
+```
+
+출력에서 `macOS / Linux` 아래의 `export …` 4줄을 붙여 넣고 키를 받는다.
+
+▶ **실행** · 배포 EC2
+
+```bash
+export GATEWAY_KEY=$(api-key-helper | grep -m1 '^vk-')
+echo ${GATEWAY_KEY:0:3} $ANTHROPIC_BASE_URL
+```
+
+📋 `vk- https://gateway-dev.awsome-ai-gw.click` 처럼 나온다(US dev 예). `vk-` 가 없으면 2절 ②·③ 으로 다시 로그인한다.
 
 ▶ **실행** · 배포 EC2
 
