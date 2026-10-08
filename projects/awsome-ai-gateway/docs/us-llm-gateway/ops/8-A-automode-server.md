@@ -72,14 +72,32 @@ cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
 
 확인 스크립트는 Claude Code 와 같은 모양의 요청 3개(턴별 effort · 판정 비스트리밍 · 판정 스트리밍)를 게이트웨이에 보내 결과를 판정한다. 모델이 도구를 부르더라도 실행하지 않는다. 비용은 짧은 요청 몇 건이다.
 
-**키(VK)와 주소 — 배포 EC2 에서 받는다.** 설치 가이드 §6-0 에서 배포 EC2 에 `gateway-cli` 를 깔고 로그인해 두었다. 접속 값 4줄부터 뽑는다.
+**키(VK)와 주소 — 배포 EC2 에서 받는다.** 설치 가이드 §6-0 에서 배포 EC2 에 `gateway-cli` 를 깔아 두었다. 로그인은 업데이트 사이에 대개 만료되므로 매번 새로 한다.
+
+① **접속 값 4줄** — 배포 EC2
 
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 07-client-values.sh --claude-code
 ```
 
-출력에서 `macOS / Linux` 아래의 `export …` 4줄을 이 셸에 붙여 넣고 키를 받는다. 새 SSH 창을 열었으면 4줄부터 다시 붙여 넣는다 — 새 셸에는 `~/.bashrc` 의 옛 값이 들어 있을 수 있다.
+출력에서 `macOS / Linux` 아래의 `export …` 4줄을 이 셸에 붙여 넣는다. 새 SSH 창을 열면 다시 붙여 넣는다 — 새 셸에는 `~/.bashrc` 의 옛 값이 들어 있을 수 있다.
+
+② **터널** — 내 PC 의 새 터미널. 로그인 뒤 브라우저가 돌아오는 `localhost:8090` 을 배포 EC2 로 넘긴다. 멈춘 것처럼 보이는 게 정상이니 ③ 이 끝날 때까지 그대로 둔다(`Ctrl+C`·`Ctrl+Z` 를 누르지 않는다). VS Code·Cursor Remote-SSH 로 붙었다면 자동으로 넘겨 주므로 건너뛴다.
+
+```bash
+ssh -N -L 8090:localhost:8090 -i ~/.ssh/<키>.pem ubuntu@<배포 EC2 공인 IP>
+```
+
+③ **로그인** — 배포 EC2. 출력된 URL 을 내 PC 브라우저로 연다.
+
+```bash
+gateway-cli login --redirect-port 8090
+```
+
+📋 `Login successful`. 끝에 `Next: run gateway-cli setup` 이 나와도 setup 은 하지 않는다. 이제 ② 의 창을 `Ctrl+C` 로 닫는다.
+
+④ **키 받기** — 배포 EC2
 
 ```bash
 export GATEWAY_KEY=$(api-key-helper | grep -m1 '^vk-')
@@ -88,47 +106,19 @@ echo ${GATEWAY_KEY:0:3} $ANTHROPIC_BASE_URL
 
 📋 로그 몇 줄 뒤에 `vk- https://gateway-dev.awsome-ai-gw.click` 처럼 나온다(US dev 예 — 주소는 설치마다 다르다). 키 자체는 화면에 나오지 않는다.
 
-`vk-` 가 없으면 로그를 보고 원인을 고른다.
+키를 `ANTHROPIC_AUTH_TOKEN` 으로 export 하지 않는다 — 같은 셸에서 Claude Code 를 띄우면 그 값을 먼저 써서, 키가 만료된 뒤 401 이 난다.
 
-- `refresh failed … invalid_grant` 또는 `not logged in` → 로그인이 만료됐다. 업데이트 사이가 길면 대개 이렇다. 아래 "다시 로그인" 을 한다.
-- `ConnectTimeout … elb.amazonaws.com` → 셸에 HTTPS 전환 전의 옛 주소가 남아 있다. 07 의 4줄을 다시 붙여 넣는다.
-- `api-key-helper: command not found` → 이 EC2 에 클라이언트가 없다. 아래 "PC 에서 받기" 를 한다.
+**막히면**
 
-**다시 로그인**
-
-1. 내 PC 에서 새 터미널을 열고 터널만 연다. 멈춘 것처럼 보이는 게 정상이다 — 로그인이 끝날 때까지 그대로 두고(`Ctrl+C`·`Ctrl+Z` 를 누르지 않는다), 끝나면 `Ctrl+C` 로 닫는다. VS Code·Cursor Remote-SSH 로 붙었다면 포트를 자동으로 넘겨 주므로 건너뛴다.
-
-   ```bash
-   ssh -N -L 8090:localhost:8090 -i ~/.ssh/<키>.pem ubuntu@<배포 EC2 공인 IP>
-   ```
-
-2. 배포 EC2 에서 로그인하고, 출력된 URL 을 내 PC 브라우저로 연다. 📋 `Login successful`. 끝에 `Next: run gateway-cli setup` 이 나와도 setup 은 하지 않는다.
-
-   ```bash
-   gateway-cli login --redirect-port 8090
-   ```
-
-3. 위 `export GATEWAY_KEY=…` 두 줄을 다시 실행한다.
-
-브라우저가 `localhost refused to connect` 를 내면 1번 터널이 없는 것이다. 1번이 `Address already in use` 를 내면 내 PC 의 8090 을 다른 앱이 쓰는 것이니, 1·2번 포트를 둘 다 8091 로 바꾼다(Cognito 등록 포트는 8090·8091·8092).
-
-**PC 에서 받기** — 게이트웨이에 로그인된 PC 에서 키를 클립보드로 복사한다. PC 가 `Missing required OIDC config` 를 내면 07 출력에서 그 OS 블록 4줄을 먼저 붙여 넣는다.
-
-- macOS: `api-key-helper 2>/dev/null | grep -m1 '^vk-' | pbcopy`
-- Windows (PowerShell):
+- 브라우저가 `localhost refused to connect` 를 낸다 → ② 터널이 없거나 멈췄다. `Ctrl+Z` 를 눌렀다면 그 창에서 `fg` 를 친다.
+- ② 가 `Address already in use` 를 낸다 → 내 PC 의 8090 을 다른 앱이 쓴다. ②·③ 포트를 둘 다 8091 로 바꾼다(Cognito 등록 포트는 8090·8091·8092).
+- ④ 가 `ConnectTimeout … elb.amazonaws.com` 을 낸다 → 셸에 HTTPS 전환 전의 옛 주소가 남았다. ① 의 4줄을 다시 붙여 넣는다.
+- `gateway-cli: command not found` → 이 EC2 에 클라이언트가 없다. 게이트웨이에 로그인된 PC 에서 키를 복사한다. macOS 는 `api-key-helper 2>/dev/null | grep -m1 '^vk-' | pbcopy`, Windows 는 아래 명령이다. 배포 EC2 에서 `read -rs GATEWAY_KEY && export GATEWAY_KEY` 를 실행해 붙여 넣는다(화면에 안 보인다). PC 가 `Missing required OIDC config` 를 내면 07 출력에서 그 OS 블록 4줄을 먼저 붙여 넣는다.
 
   ```powershell
   api-key-helper 2>$null | sls '^vk-' |
     select -First 1 -ExpandProperty Line | Set-Clipboard
   ```
-
-배포 EC2 에서 아래 줄을 실행하고 붙여 넣는다(화면에 안 보인다).
-
-```bash
-read -rs GATEWAY_KEY && export GATEWAY_KEY
-```
-
-키를 `ANTHROPIC_AUTH_TOKEN` 으로 export 하지 않는다 — 같은 셸에서 Claude Code 를 띄우면 그 값을 먼저 써서, 키가 만료된 뒤 401 이 난다.
 
 **확인 스크립트 실행.**
 
