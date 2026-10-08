@@ -123,8 +123,6 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 
 📋 helm REVISION 이 하나 오르고, gateway-proxy 파드만 새로 뜬다.
 
-> 마지막 배포 뒤에 `05-allow-client-ip.sh` 로 접속 IP 를 추가했다면, 배포 전에 [8-U](8-U-update.md) 0단계를 먼저 한다 — 안 하면 그 IP 가 이 배포로 지워진다.
-
 ## 6. 확인 (패치 후)
 
 ```bash
