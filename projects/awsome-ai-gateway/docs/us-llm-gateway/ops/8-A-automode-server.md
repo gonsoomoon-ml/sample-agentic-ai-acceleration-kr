@@ -132,10 +132,9 @@ kubectl -n llm-gateway get deploy gateway-proxy \
 
 📋 `…/gateway-proxy:1.0.84-safeguards`
 
-2절과 다른 셸이면 `read -rs GATEWAY_KEY && export GATEWAY_KEY` 를 다시 한다.
-
 ```bash
 cd ~/awsome-ai-gateway/deployment/scripts
+read -rs GATEWAY_KEY && export GATEWAY_KEY
 python3 check-safeguards-passthrough.py https://<게이트웨이 주소>
 ```
 
@@ -150,10 +149,54 @@ python3 check-safeguards-passthrough.py https://<게이트웨이 주소>
 
 `SKIP` 은 모델이 도구를 부르지 않은 경우다. 한 번 더 실행한다. 끝나면 `unset GATEWAY_KEY`.
 
-Claude Code 로도 확인한다(관리자 PC). Auto mode 로 새 세션을 열고 도구가 필요한 요청(예: "이 폴더 파일 목록 보여 줘")을 보낸다.
+### Claude Code 로 확인 (관리자 PC)
 
-- "classifier 요청 과금" 안내가 뜨지 않는다. 다만 안내를 이미 확인했다면 24시간 동안 원래 안 뜨므로, 아래 로그로 판정한다.
-- `claude --debug-file /tmp/cc.log` 로 실행한 뒤 `grep server-classifier /tmp/cc.log` — `server_no_result` 줄이 없어야 한다.
+확인 스크립트는 게이트웨이만 본다. 실제 Claude Code 가 서버 판정을 쓰는지는 게이트웨이에 연결된 관리자 PC 에서 아래 세 단계로 본다. **배포 뒤 새로 연 세션**이어야 한다 — 배포 전에 연 세션은 끝날 때까지 PC 쪽 분류기를 쓴다.
+
+**① 서버 판정이 켜져 있는지** — 새 터미널에서 `claude` 를 열고 `/status` 를 친다.
+
+📋 `Auto mode server: Enabled`. 확인했으면 `/exit`.
+
+- `Disabled` 면 관리형 설정이나 환경 변수에 `CLAUDE_CODE_AUTO_MODE_SERVER=0` 이 있다. 서버 판정을 시도하지 않는 상태라 아래 확인이 거짓으로 통과하므로, 그 값이 없는 PC 에서 한다.
+- 모델은 Sonnet 5.5 또는 Opus 5.5 다(Auto mode 는 Haiku 4.5 를 지원하지 않는다).
+
+**② 판정이 필요한 명령을 Auto mode 로 한 번 실행**
+
+```bash
+P="Run: curl -s -o /dev/null -w '%{http_code}' https://example.com"
+claude -p "$P" --permission-mode auto --debug-file /tmp/cc.log
+```
+
+📋 답에 `200` 이 들어 있다(확인 창 없이 실행됨). `curl` 은 네트워크 명령이라 판정 대상이다. `ls` 같은 읽기 명령은 판정 없이 실행돼 확인이 되지 않는다.
+
+**③ 로그 확인**
+
+```bash
+grep -E "server-classifier|classifier_request_started" /tmp/cc.log
+```
+
+📋 **아무것도 나오지 않으면 통과**다. 패치 전에는 아래 같은 줄이 나온다.
+
+```text
+[server-classifier] the platform gave no classification ... (server_no_result) ...
+[server-classifier] Bash: no server verdict for this call (server_no_result) ...
+[Stall] classifier_request_started reqId=... tool=Bash ...
+```
+
+- `server_no_result` = 응답에 판정이 없어 PC 쪽 분류기로 바꿨다는 뜻이다.
+- `classifier_request_started` = 판정용 요청(약 4.7만 토큰)을 따로 보냈다는 뜻이다. 과금 안내가 뜨는 원인이 이것이다.
+
+로그에는 프롬프트와 경로가 남으므로 확인 뒤 지운다: `rm /tmp/cc.log`
+
+**Windows (PowerShell)** — ②③ 을 이렇게 한다.
+
+```powershell
+$P = "Run: curl -s -o /dev/null -w '%{http_code}' https://example.com"
+claude -p $P --permission-mode auto --debug-file $env:TEMP\cc.log
+sls $env:TEMP\cc.log "server-classifier|classifier_request_started"
+```
+
+**과금 안내는 판정 근거로 쓰지 않는다** — 대화형 세션에서는 "classifier 요청 과금" 안내가 안 떠야 맞다. 하지만 한 번 확인한 안내는 24시간 동안 원래 안 뜨고, `-p` 실행에서는 아예 안 뜬다.
 
 ## 7. 되돌리기
 
