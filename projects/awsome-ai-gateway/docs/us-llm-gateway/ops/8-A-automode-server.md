@@ -7,14 +7,46 @@ Claude Code 의 Auto mode 는 도구를 실행하기 전에 "안전한가" 판�
 - 판정이 오지 않으니 Claude Code 가 PC 쪽 분류기로 바꾼다. 판정이 필요한 도구마다 별도 요청(약 4.7만 토큰)이 나가고, "classifier 요청 과금" 안내가 뜬다.
 - Claude Code 2.1.289 이상은 대화 중간 메시지에 턴별 effort(`output_config`)를 붙인다. 그 beta 가 없으면 세션 첫 요청이 400 으로 한 번 실패한 뒤 다시 보낸다.
 
-US-17 은 beta 중 두 개와 `safeguards` 만 Bedrock 으로 넘기고(나머지는 지금처럼 버린다 — Bedrock 은 모르는 beta 하나에도 요청 전체를 거절한다), 웹 검색 경로에서도 판정을 그대로 돌려준다. 아래 그림의 CC 는 Claude Code 다.
+US-17 은 beta 중 두 개와 `safeguards` 만 Bedrock 으로 넘기고(나머지는 지금처럼 버린다 — Bedrock 은 모르는 beta 하나에도 요청 전체를 거절한다), 웹 검색 경로에서도 판정을 그대로 돌려준다.
 
 ```text
-before  CC --beta + safeguards--> gateway --(dropped)--> Bedrock
-        CC <--tool_use, no verdict-- gateway   => extra classifier call
-after   CC --beta + safeguards--> gateway --2 betas + safeguards--> Bedrock
-        CC <--tool_use + safeguard_results-- gateway <-- Bedrock
+[지금] 게이트웨이가 beta·safeguards 를 버림
+
+ 사용자 프롬프트
+   |
+   v
+ Claude Code -- ① 본 요청 (beta + safeguards) ----> 게이트웨이 --(버림)--> Bedrock
+ Claude Code <-- ② 400 (턴별 effort 거부) --------- 게이트웨이 <---------- Bedrock
+   |
+   |  턴별 effort 를 끄고 다시 보냄 (세션당 한 번)
+   v
+ Claude Code -- ③ 다시 보냄 (턴별 effort 뺌) -----> 게이트웨이 --(버림)--> Bedrock
+ Claude Code <-- ④ 응답: tool_use (판정 없음) ----- 게이트웨이 <---------- Bedrock
+   |
+   |  판정이 없으므로 로컬 분류기로 전환 + 과금 안내
+   v
+ Claude Code -- ⑤ 분류기 요청 (약 4.7만 토큰) ----> 게이트웨이 ----------> Bedrock
+ Claude Code <-- ⑥ 판정: 허용 / 차단 -------------- 게이트웨이 <---------- Bedrock
+   |
+   v
+ ⑦ 도구 실행 (예: curl) --> ⑧ 결과를 담아 다음 본 요청
 ```
+
+```text
+[수정 후] 게이트웨이가 beta 2개·safeguards 를 넘기고 판정을 돌려줌
+
+ 사용자 프롬프트
+   |
+   v
+ Claude Code -- ① 본 요청 (beta + safeguards) ----> 게이트웨이 --(전달)--> Bedrock
+ Claude Code <-- ② tool_use + safeguard_results --- 게이트웨이 <---------- Bedrock
+   |
+   |  Bedrock 의 판정(not_flagged / flagged)을 그대로 사용
+   v
+ ③ 도구 실행 (예: curl) --> ④ 결과를 담아 다음 본 요청
+```
+
+⑤⑥ 은 curl 처럼 판정이 필요한 명령일 때만 생긴다.
 
 - 바뀌는 것: gateway-proxy 이미지 하나(`1.0.84-safeguards`). DB, 다른 서비스, values 의 다른 값은 그대로다.
 - 넘기는 beta: `dangerous-tool-use-2026-09-03`(본문 `safeguards` 와 함께), `per-turn-control-2026-07-01`
