@@ -19,6 +19,7 @@
 | §8-D | upstream 동기화 배포 (코드·스키마·단가 일괄) | upstream 을 크게 들여왔을 때 (US-10 · US-18) | [ops/8-D-upstream-sync.md](ops/8-D-upstream-sync.md) |
 | §8-M | 모델 추가와 교체 | 모델 추가·교체 | [ops/8-M-models.md](ops/8-M-models.md) |
 | §8-R | 모델 단가 맞추기 (AWS 실제 청구와 같게) | 단가가 바뀔 때마다 · upstream 동기화 직후 (US-11) | [ops/8-R-pricing.md](ops/8-R-pricing.md) |
+| §8-Q | Bedrock Marketplace 구독 (AccessDenied 해결) | 신형 모델이 AccessDenied aws-marketplace 로 거절될 때 | [ops/8-Q-marketplace.md](ops/8-Q-marketplace.md) |
 | §8-Y | 직원 온보딩 — Cognito 사용자 추가 | 직원 추가 시 | [ops/8-Y-onboarding.md](ops/8-Y-onboarding.md) |
 | §8-S | 배포 후 보안 하드닝 (직원 오픈 전 필수) | 직원 오픈 전 1회 | [ops/8-S-hardening.md](ops/8-S-hardening.md) |
 | §8-L | admin 콘솔 Cognito 로그인 | admin 콘솔을 계정으로 막을 때 (US-12, 선택 · 권장) | [ops/8-L-admin-login.md](ops/8-L-admin-login.md) |
@@ -61,6 +62,13 @@ upstream 을 통째로 들여온 뒤 배포 EC2 에서 명령만 위에서 아�
 
 비용·예산은 DB 의 단가 × 토큰이다 — 단가가 청구와 다르면 조용히 틀린다. 단가 표는 `update-scripts/pricing.tsv` 하나, 적용은 `08-set-model-pricing.sh`. ⚠️ upstream 마이그레이션이 글로벌 단가를 다시 넣으므로 동기화 뒤에는 꼭 한 번 더.
 → **[ops/8-R-pricing.md](ops/8-R-pricing.md)**
+
+---
+
+### 8-Q. Bedrock Marketplace 구독 (AccessDenied 해결)
+
+Anthropic 신형 모델은 계정별 **AWS Marketplace 구독**이 필요하다 — §8-M 등록만으로는 부족하고, 구독이 없으면 호출이 `AccessDeniedException … aws-marketplace:Subscribe` 로 떨어진다. 콘솔 주체에 마켓플레이스 권한 → Marketplace/Bedrock에서 수동 구독 → ~2분 전파. prod·멀티계정도 계정마다 동일 절차.
+→ **[ops/8-Q-marketplace.md](ops/8-Q-marketplace.md)**
 
 ---
 
