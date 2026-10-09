@@ -258,7 +258,8 @@ gatewayProxy:
     # 1.0.80-wsdefaults: web search 설정의 코드 기본값을 실측·검증된 값으로(기본값이 하나가 됨) — 턴당 3 · 검색 턴 2 · 결과 5건 · 12000자 · native 흔적(cowork,claude-code) · 혼합 턴 실행 · soft 최종 턴. 종전 기본(4·5·10·60000·text·cowork·off·off)은 17 스크립트를 돌리지 않은 설치를 비싸고 결함 있는 상태로 뒀다. 전부 env 로 되돌릴 수 있음(재빌드 불필요). 여기처럼 values 에 값을 명시한 배포는 동작 변화 없음.
     # 1.0.81-connretry: 비스트리밍 Bedrock 호출(invoke·converse·count_tokens)에도 연결 수준 오류 1회 재시도 — 풀의 죽은 연결(장시간 idle 뒤 조용히 끊긴 것)을 집으면 "Connection was closed…" 로 실패하는데 bedrock_max_attempts=1 이라 그대로 502 로 나갔다(2026-09-19 13:07Z, 2.5시간 idle 뒤). 스트리밍은 9/16 부터 재시도가 있었다. 재시도 전에 유휴 풀 연결을 비워 같은 실패를 피한다. Bedrock 이 실제로 응답한 오류(400/429/5xx)는 재시도하지 않는다(이중 과금 없음).
     # 1.0.84-safeguards: Claude Code Auto mode 서버 분류기 지원(US-17) — anthropic-beta 중 dangerous-tool-use(+본문 safeguards)·per-turn-control 만 Bedrock 본문 anthropic_beta 로 넘기고 나머지는 버린다(모르는 beta 하나로 요청 전체가 400). 웹 검색 루프는 마지막 턴의 message_delta.delta 를 복사해 판정(safeguard_results)을 유지한다. 별도 분류기 요청·과금 안내와 Claude Code 2.1.289 의 세션 첫 요청 400 이 사라진다. 끄기 = BEDROCK_FORWARD_BETAS 빈 값(재빌드 불필요).
-    tag: "1.0.84-safeguards"
+    # 1.0.85-betas: 계정 기능 플래그가 켜진 Claude Code 2.1.29x 가 더 보내는 beta 2개도 넘긴다 — inline-tools(system 메시지의 tool_addition·tool_removal, 대화 중간 도구 추가)·thinking-display-updates(thinking.display "updates"). 버리면 대화마다 첫 요청이 400 이었다(2026-10-08 US dev, Claude Code 가 기능을 빼고 재시도). advisor 를 tools 에서 지울 때 그 도구를 가리키는 tool_addition·tool_removal 블록도 지운다(남기면 beta 를 넘겨도 400). 이 둘만 끄기 = BEDROCK_FORWARD_BETAS 를 "dangerous-tool-use-2026-09-03:safeguards,per-turn-control-2026-07-01" 로(재빌드 불필요).
+    tag: "1.0.85-betas"
   serviceAccount:
     annotations:
       # CHANGE_ME (terraform output): IRSA role ARN. terraform output -raw gateway_proxy_role_arn
