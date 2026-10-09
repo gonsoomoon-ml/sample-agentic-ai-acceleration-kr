@@ -120,7 +120,7 @@ export GATEWAY_KEY=$(api-key-helper | grep -m1 '^vk-')
 echo ${GATEWAY_KEY:0:3} $ANTHROPIC_BASE_URL
 ```
 
-📋 로그 몇 줄 뒤에 `vk- https://gateway-dev.awsome-ai-gw.click` 처럼 나온다(US dev 예 — 주소는 설치마다 다르다). 키 자체는 화면에 나오지 않는다.
+📋 로그 몇 줄 뒤에 `vk- <게이트웨이 주소>` 가 나온다. 예: `vk- https://gateway-dev.awsome-ai-gw.click`. 키 자체는 화면에 나오지 않는다.
 
 키를 `ANTHROPIC_AUTH_TOKEN` 으로 export 하지 않는다 — 같은 셸에서 Claude Code 를 띄우면 그 값을 먼저 써서, 키가 만료된 뒤 401 이 난다.
 
@@ -229,7 +229,7 @@ export GATEWAY_KEY=$(api-key-helper | grep -m1 '^vk-')
 echo ${GATEWAY_KEY:0:3} $ANTHROPIC_BASE_URL
 ```
 
-📋 `vk- https://gateway-dev.awsome-ai-gw.click` 처럼 나온다(US dev 예). `vk-` 가 없으면 2절 ②·③ 으로 다시 로그인한다.
+📋 `vk- <게이트웨이 주소>` 가 나온다. 예: `vk- https://gateway-dev.awsome-ai-gw.click`. `vk-` 가 없으면 2절 ②·③ 으로 다시 로그인한다.
 
 ▶ **실행** · 배포 EC2
 
@@ -318,7 +318,7 @@ G=$(aws bedrock get-model-invocation-logging-configuration \
 echo $G
 ```
 
-📋 `/aws/bedrock/invocations` 처럼 로그 그룹 이름이 나온다(US dev 예). `None` 이면 로깅이 꺼져 있어 이 단계는 할 수 없다.
+📋 `<로그 그룹 이름>` 이 나온다. 예: `/aws/bedrock/invocations`. `None` 이면 로깅이 꺼져 있어 이 단계는 할 수 없다.
 
 ▶ **실행** · 배포 EC2
 
@@ -387,5 +387,5 @@ helm -n llm-gateway rollback llm-gateway 49
 
 ## 8. 참고
 
-- **새 beta 가 생기면**: Claude Code 를 올린 뒤 6절 "Claude Code 로 확인"을 다시 한다. 게이트웨이 로그의 `upstream_compat.beta_dropped` 에 처음 보는 이름이 나오면, Bedrock 에 직접 시험한 뒤 `BEDROCK_FORWARD_BETAS` 에 넣을지 정한다. 그 기능이 웹 검색·사용량 집계와 얽히면 코드 변경이 필요하다.
+- **새 beta 가 생기면**: Claude Code 를 올린 뒤 게이트웨이 로그에서 처음 보는 beta 이름(`upstream_compat.beta_dropped`)과 Bedrock 의 거부(`bedrock_stream_client_error`·`bedrock_client_error`)를 본다. 400 이 있어도 Claude Code 가 그 기능을 빼고 다시 보내 겉으로는 동작하지만, Claude Code 가 모르는 400 이면 그 대화는 서버 판정 대신 PC 쪽 분류기를 쓴다(6절 확인으로는 보이지 않는다). 점검 명령, 지금까지 본 beta 표, 넣을지 정하는 기준은 [beta 헤더 기록](../beta-headers/README.md)에 있다.
 - **보안**: `safeguards` 의 판단 재료에는 작업 경로, git 상태, 사용자 이름이 들어 있고, 이제 Bedrock 까지(호출 로그를 켰다면 그 로그에도) 간다. 프롬프트와 같은 경계다.
