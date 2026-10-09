@@ -209,6 +209,17 @@ def test_same_object_when_nothing_points_at_a_removed_tool():
 
 
 # ── 라우트 / route: /v1/messages → Bedrock body ──────────────────────────────
+def _model_config_55():
+    """신형 필드(tool_addition·output_config·system 메시지)를 실측으로 받는
+    5.5 계열 설정 — 4.x 로 돌리면 beta 가 전달돼도 정규화가 필드를 걷어낸다."""
+    from tests.unit.test_count_tokens_router import _model_config
+
+    cfg = _model_config()
+    cfg.alias = "claude-sonnet-5-5"
+    cfg.provider_model_id = "global.anthropic.claude-sonnet-5-5"
+    return cfg
+
+
 async def test_route_sends_no_advisor_reference_and_forwards_inline_tools(monkeypatch):
     from tests.regression.test_high_bedrock_beta_forwarding import _sent_to_bedrock
 
@@ -217,6 +228,7 @@ async def test_route_sends_no_advisor_reference_and_forwards_inline_tools(monkey
                  "content": [_text(), _add("advisor", cache=True)]}]
     sent = await _sent_to_bedrock(
         monkeypatch, header=FLAGGED_HEADER,
+        model="claude-sonnet-5-5", resolve=_model_config_55(),
         extra={"tools": [READ, ADVISOR], "messages": messages,
                "safeguards": SAFEGUARDS})
     assert "advisor" not in json.dumps(sent)

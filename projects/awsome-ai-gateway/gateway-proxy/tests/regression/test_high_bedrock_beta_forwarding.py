@@ -207,7 +207,7 @@ _OK = json.dumps({"id": "m", "type": "message", "role": "assistant",
                   "usage": {"input_tokens": 1, "output_tokens": 1}}).encode()
 
 
-def _app(adapter, monkeypatch):
+def _app(adapter, monkeypatch, resolve=None):
     app = FastAPI()
     registry = ProviderRegistry()
     registry.register(ProviderType.BEDROCK, adapter)
@@ -217,7 +217,7 @@ def _app(adapter, monkeypatch):
     app.state.cost_recorder = recorder
     svc = messages_router._router_service
     monkeypatch.setattr(svc, "resolve_bedrock_model",
-                        AsyncMock(return_value=_model_config()))
+                        AsyncMock(return_value=resolve or _model_config()))
     monkeypatch.setattr(svc, "check_key_scope", MagicMock())
 
     @app.middleware("http")
@@ -232,7 +232,8 @@ def _app(adapter, monkeypatch):
     return app
 
 
-async def _sent_to_bedrock(monkeypatch, *, header=None, extra=None):
+async def _sent_to_bedrock(monkeypatch, *, header=None, extra=None,
+                           model="claude-sonnet-4-6", resolve=None):
     """요청 하나를 보내고 Bedrock 으로 나간 본문을 돌려준다.
 
     English: send one request and return the body that went to Bedrock.
@@ -240,10 +241,10 @@ async def _sent_to_bedrock(monkeypatch, *, header=None, extra=None):
     adapter = MagicMock()
     usage = TokenUsage(input_tokens=1, output_tokens=1)
     adapter.invoke = AsyncMock(return_value=(200, _OK, {}, usage))
-    body = {"model": "claude-sonnet-4-6", "max_tokens": 10,
+    body = {"model": model, "max_tokens": 10,
             "messages": [{"role": "user", "content": "hi"}], **(extra or {})}
     headers = {"anthropic-beta": header} if header else {}
-    transport = ASGITransport(app=_app(adapter, monkeypatch))
+    transport = ASGITransport(app=_app(adapter, monkeypatch, resolve=resolve))
     async with AsyncClient(transport=transport, base_url="http://t") as c:
         resp = await c.post("/v1/messages", json=body, headers=headers)
     assert resp.status_code == 200
