@@ -27,6 +27,7 @@
 | §8-E | EKS 버전 업그레이드 (1.31 → 1.34) | EKS 버전 올릴 때 (US-05) | [ops/8-E-eks-upgrade.md](ops/8-E-eks-upgrade.md) |
 | §8-H | ALB HTTPS — 커스텀 도메인 + ACM (방식 A → B) | 도메인이 있을 때 (US-06, 선택 · 운영이면 강력 권장) | [ops/8-H-alb-https.md](ops/8-H-alb-https.md) |
 | §8-I | admin ALB 2개를 internal 로 (고객사 최종형) | S2S VPN 개통 후 (US-07, 선택) | [ops/8-I-admin-internal.md](ops/8-I-admin-internal.md) |
+| §8-V | 본문 로깅 활성화 (요청/응답 전문 → S3) | 감사·디버깅이 필요할 때 (선택 · 프라이버시 검토 필수) | [ops/8-V-body-logging.md](ops/8-V-body-logging.md) |
 | §8-T | teardown (과금 중단 · 초기화) | 과금 중단 | [아래](#8-t-teardown-과금-중단--초기화) |
 | §8-Z | 토큰 TTL 조절 | 토큰 수명 바꿀 때 (US-15, 선택) | [ops/8-Z-token-ttl.md](ops/8-Z-token-ttl.md) |
 | §8-P | dev → prod 승격 — 별도 계정에 prod 스택 신설 | prod 승격 (US-08) | [ops/8-P-prod.md](ops/8-P-prod.md) |
@@ -115,6 +116,22 @@ Claude Code 의 Auto mode 판정을 Bedrock 이 하도록 정해 둔 beta 와 `s
 
 `US-07` 선택 — 전제 S2S VPN. values 주석 2곳 해제 → `install-eks.sh`(ALB 재생성) → admin SG·CNAME 교체. VPN 없이 적용하면 VK 발급이 끊겨 게이트웨이 사용 불가. terraform 무변경. 신규 설치는 `US-01` 때 values 로 포함.
 → **[ops/8-I-admin-internal.md](ops/8-I-admin-internal.md)**
+
+---
+
+### 8-V. 본문 로깅 활성화 (요청/응답 전문 → S3)
+
+선택 — ⚠️ 켜면 요청 JSON·응답 전문이 **마스킹 없이** S3 에 저장된다. 잠금이 두 겹: ① terraform sink + `gatewayProxy.env` (`update-scripts/20-enable-body-logging.sh` 가 여는 쪽), ② `/monitoring` 런타임 토글(기본 OFF). `env --apply` + install-eks.sh 후에도 수집은 꺼져 있다.
+
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 20-enable-body-logging.sh                  # 상태 (읽기 전용)
+bash 20-enable-body-logging.sh tfvars --apply    # tfvars 편집 → 운영자가 terraform apply
+bash 20-enable-body-logging.sh env --apply       # values env 주입 → 운영자가 install-eks.sh
+bash 20-enable-body-logging.sh verify            # 버킷/스트림/env 검증
+```
+
+→ **[ops/8-V-body-logging.md](ops/8-V-body-logging.md)**
 
 ---
 
