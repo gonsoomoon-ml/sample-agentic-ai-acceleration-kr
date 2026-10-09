@@ -8,7 +8,8 @@ from datetime import date
 from decimal import Decimal
 
 import structlog
-from sqlalchemy import text
+from redis.asyncio.cluster import RedisCluster
+from sqlalchemy import func, select as sa_select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clients import CLIENT_ORDER
@@ -17,8 +18,10 @@ from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
+from app.core.usage_filters import cost_period_filter
 from app.models.auth import UserRole
 from app.models.budget import BudgetConfig, BudgetPolicy, BudgetScope, DowngradePolicy, PeriodType
+from app.models.usage import UsageLog
 from app.repositories.budget_repository import BudgetRepository, DowngradePolicyRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.budgets import (
@@ -750,36 +753,93 @@ class BudgetService:
 
         target_id_str = str(target_id) if target_id else None
 
-        async def _resolve_used(cfg: BudgetConfig) -> Decimal:
-            sid = str(cfg.scope_id)
-            scope_type = cfg.scope.value.lower()
-            used = Decimal("0")
-            if redis is not None:
-                redis_key = f"budget:{scope_type}:{{{sid}}}:{period}"
-                try:
-                    raw = await redis.get(redis_key)
+        # 예산 설정(BudgetConfig) 유무와 무관하게 실사용액은 항상 계산해야 한다.
+        # 이전엔 cfg 가 없으면(예: 팀 예산만 적용받는 사용자) used=0 으로 하드코딩돼
+        # 실제 usage_logs 비용이 있어도 "$0.00" 로 표시되는 버그가 있었다.
+        #
+        # 1) Redis enforcement 카운터 — 대상 전체를 MGET 한 번으로 조회한다.
+        #    대상마다 개별 GET 하면 round-trip 이 표시 대상 수만큼 쌓인다.
+        #    0/미스는 "아직 증가 안 함"과 구분이 안 되므로 신뢰하지 않고
+        # 2) usage_logs 일괄 그룹집계로 채운다 — 표시 대상만 IN 으로 좁힌다
+        #    (팀 리더는 위에서 소속 팀/멤버로 이미 좁혀져 있다).
+        user_sids = [
+            str(u.id) for u in users
+            if (budget_scope is None or budget_scope == BudgetScope.USER)
+            and (not target_id_str or str(u.id) == target_id_str)
+        ]
+        team_sids = [
+            str(t.id) for t in teams
+            if (budget_scope is None or budget_scope == BudgetScope.TEAM)
+            and (not target_id_str or str(t.id) == target_id_str)
+        ]
+        key_pairs = (
+            [(BudgetScope.USER, sid) for sid in user_sids]
+            + [(BudgetScope.TEAM, sid) for sid in team_sids]
+        )
+
+        used_by_key: dict[tuple[BudgetScope, str], Decimal] = {}
+        if redis is not None and key_pairs:
+            try:
+                # 카운터 키의 해시태그가 sid 마다 달라 슬롯이 흩어진다 — prod 는
+                # RedisCluster 라 mget 은 CROSSSLOT 으로 실패해 클러스터는
+                # non-atomic fan-out 으로 간다(결과 순서·개수는 mget 과 동일).
+                keys = [
+                    f"budget:{sc.value.lower()}:{{{sid}}}:{period}"
+                    for sc, sid in key_pairs
+                ]
+                if isinstance(redis, RedisCluster):
+                    raws = await redis.mget_nonatomic(keys)
+                else:
+                    raws = await redis.mget(keys)
+                for (sc, sid), raw in zip(key_pairs, raws):
                     if raw:
-                        used = Decimal(raw.decode() if isinstance(raw, bytes) else raw)
-                except Exception:
-                    pass
-            if used == 0:
-                from sqlalchemy import func, select as sa_select
-                from app.models.usage import UsageLog
-                from app.core.usage_filters import cost_period_filter
-                col = UsageLog.user_id if cfg.scope == BudgetScope.USER else UsageLog.team_id
-                # 비용 집계 표준(§59): SUCCESS 만 + KST 월 경계. 대시보드 Top 사용자/팀·
-                # chat 과 동일 기준으로 통일(실패 호출 비용 제외, UTC 9시간 오차 제거).
-                stmt = sa_select(func.coalesce(func.sum(UsageLog.cost_usd), 0)).where(
-                    col == cfg.scope_id,
-                    cost_period_filter(period),
+                        val = Decimal(raw.decode() if isinstance(raw, bytes) else raw)
+                        if val != 0:
+                            used_by_key[(sc, sid)] = val
+            except Exception:
+                logger.warning(
+                    "budget_summary.redis_read_failed", exc_info=True,
+                    hint="사용액을 usage_logs 집계로 대체합니다",
                 )
-                result = await session.execute(stmt)
-                used = Decimal(str(result.scalar_one()))
-            return used
+                used_by_key = {}
+
+        # Redis 미스분만 usage_logs 에서 그룹집계(N+1·대상 단위 쿼리 방지).
+        # 비용 집계 표준(§59): SUCCESS 만 + KST 월 경계. 대시보드 Top 사용자/팀·
+        # chat 과 동일 기준으로 통일(실패 호출 비용 제외, UTC 9시간 오차 제거).
+        # TEAM_LEADER 는 표시 대상이 소속 팀/멤버뿐이라 IN 으로 좁힌다. ADMIN 은
+        # 표시 대상이 전사라 전체 집계가 기본이지만, target 지정 요청처럼 미스
+        # 대상이 소수일 때는 IN 이 훨씬 싸다 — 그 경우에도 좁힌다.
+        narrow = actor.role == UserRole.TEAM_LEADER
+        user_miss = [uuid.UUID(s) for s in user_sids if (BudgetScope.USER, s) not in used_by_key]
+        team_miss = [uuid.UUID(s) for s in team_sids if (BudgetScope.TEAM, s) not in used_by_key]
+
+        async def _aggregate(scope_enum: BudgetScope, col, miss: list[uuid.UUID]) -> None:
+            if not miss:
+                return  # Redis 가 표시 대상 전부 커버 — SQL 불필요
+            conds = [cost_period_filter(period)]
+            if narrow or len(miss) <= 500:
+                conds.append(col.in_(miss))
+            rows = (
+                await session.execute(
+                    sa_select(col, func.coalesce(func.sum(UsageLog.cost_usd), 0))
+                    .where(*conds)
+                    .group_by(col)
+                )
+            ).all()
+            used_by_key.update(
+                {
+                    (scope_enum, str(sid)): Decimal(str(cost))
+                    for sid, cost in rows
+                    if sid is not None and (scope_enum, str(sid)) not in used_by_key
+                }
+            )
+
+        await _aggregate(BudgetScope.USER, UsageLog.user_id, user_miss)
+        await _aggregate(BudgetScope.TEAM, UsageLog.team_id, team_miss)
 
         items: list[BudgetSummaryItem] = []
 
-        async def _append(
+        def _append(
             scope_enum: BudgetScope,
             sid: str,
             name: str,
@@ -789,14 +849,13 @@ class BudgetService:
             department_name: str | None = None,
         ) -> None:
             cfg = cfg_by_target.get((scope_enum, sid))
+            used = used_by_key.get((scope_enum, sid), Decimal("0"))
             if cfg is not None:
-                used = await _resolve_used(cfg)
                 limit = cfg.max_budget_usd
                 remaining = limit - used
                 pct = (used / limit * 100) if limit > 0 else Decimal("0")
                 thresholds = list(cfg.alert_thresholds or [])
             else:
-                used = Decimal("0")
                 limit = None
                 remaining = None
                 pct = None
@@ -825,7 +884,7 @@ class BudgetService:
                     continue
                 u_team_id = getattr(u, "team_id", None)
                 u_dept = dept_by_team.get(str(u_team_id)) if u_team_id else None
-                await _append(
+                _append(
                     BudgetScope.USER,
                     uid,
                     u.display_name or u.email,
@@ -842,7 +901,7 @@ class BudgetService:
                     continue
                 has_active_members = any(m.is_active for m in t.members)
                 t_dept = dept_by_team.get(tid)
-                await _append(
+                _append(
                     BudgetScope.TEAM,
                     tid,
                     t.name,
