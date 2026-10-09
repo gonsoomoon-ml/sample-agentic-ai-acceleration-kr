@@ -443,7 +443,12 @@
       "GLOBAL": "Global",
       "TEAM": "Team",
       "USER": "User"
-    }
+    },
+    "usageTrend": "Usage trend",
+    "usageTrendDesc": "Bucket averages normalized to per-minute / per-hour rates — same unit as the configured limits",
+    "trendEmpty": "No usage recorded in this window",
+    "trendLimit": "Configured limit",
+    "trendPartial": "(in progress)"
   },
   "users": {
     "title": "User/Team Management",

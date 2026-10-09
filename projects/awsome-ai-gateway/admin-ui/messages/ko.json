@@ -443,7 +443,12 @@
       "GLOBAL": "전역",
       "TEAM": "팀",
       "USER": "사용자"
-    }
+    },
+    "usageTrend": "사용량 트렌드",
+    "usageTrendDesc": "버킷 평균을 분당·시간당 비율로 환산 — 설정 한도와 같은 단위",
+    "trendEmpty": "기간 내 사용 기록이 없습니다",
+    "trendLimit": "설정 한도",
+    "trendPartial": "(진행 중)"
   },
   "users": {
     "title": "사용자/팀 관리",

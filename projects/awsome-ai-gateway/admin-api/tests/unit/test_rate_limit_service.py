@@ -204,3 +204,141 @@ class TestGatewayCacheInvalidation:
         deleted_keys = [c.args[0] for c in mock_redis.delete.call_args_list]
         assert "rl:config:GLOBAL:NULL:claude-opus" in deleted_keys
         mock_redis.scan_iter.assert_not_called()
+
+
+class TestGetUsageTrend:
+    """get_usage_trend — usage_logs 버킷 집계 + 60s 캐시 + fail-soft."""
+
+    @staticmethod
+    def _rows_result(rows: list):
+        result = MagicMock()
+        result.all.return_value = rows
+        return result
+
+    @staticmethod
+    def _row(ts: int, req: int, tok: int, cost):
+        from datetime import datetime, timezone
+
+        r = MagicMock()
+        r.b = datetime.fromtimestamp(ts, tz=timezone.utc)
+        r.req = req
+        r.tok = tok
+        r.cost = cost
+        return r
+
+    async def test_invalid_scope_returns_unavailable(
+        self, rate_limit_service: RateLimitService, mock_session: AsyncMock
+    ):
+        for scope in ("GLOBAL", "DEPT", "bogus"):
+            out = await rate_limit_service.get_usage_trend(
+                mock_session, scope, str(uuid.uuid4()), "24h"
+            )
+            assert out["available"] is False
+            assert out["reason"] == "invalid scope"
+        mock_session.execute.assert_not_called()
+
+    async def test_invalid_window_returns_unavailable(
+        self, rate_limit_service: RateLimitService, mock_session: AsyncMock
+    ):
+        out = await rate_limit_service.get_usage_trend(
+            mock_session, "USER", str(uuid.uuid4()), "3h"
+        )
+        assert out["available"] is False
+        assert out["reason"] == "invalid window"
+        mock_session.execute.assert_not_called()
+
+    async def test_invalid_scope_id_returns_unavailable(
+        self, rate_limit_service: RateLimitService, mock_session: AsyncMock
+    ):
+        out = await rate_limit_service.get_usage_trend(
+            mock_session, "USER", "not-a-uuid", "24h"
+        )
+        assert out["available"] is False
+        assert out["reason"] == "invalid scope_id"
+        mock_session.execute.assert_not_called()
+
+    async def test_happy_path_fills_zero_buckets_and_caches(
+        self,
+        rate_limit_service: RateLimitService,
+        mock_session: AsyncMock,
+        mock_redis: AsyncMock,
+    ):
+        import time
+        from decimal import Decimal
+
+        user_id = uuid.uuid4()
+        # 1h 창 → 60s 버킷. 현재 시각 정렬 지점 하나만 행이 있다고 가정.
+        bucket_ts = int(time.time()) - (int(time.time()) % 60)
+        mock_session.execute.return_value = self._rows_result(
+            [self._row(bucket_ts, 3, 900, Decimal("0.5"))]
+        )
+
+        out = await rate_limit_service.get_usage_trend(
+            mock_session, "USER", str(user_id), "1h"
+        )
+
+        assert out["available"] is True
+        assert out["bucket_sec"] == 60
+        # 1h/60s = 60 또는 61 포인트(경계 포함)
+        assert len(out["points"]) in (60, 61)
+        hit = [p for p in out["points"] if p["requests"] == 3]
+        assert len(hit) == 1
+        assert hit[0]["tokens"] == 900
+        assert hit[0]["cost_usd"] == 0.5
+        # 나머지 포인트는 0 채움
+        assert sum(p["requests"] for p in out["points"]) == 3
+        mock_redis.setex.assert_called_once()
+        assert mock_redis.setex.call_args.args[0] == f"trend:rl:USER:{user_id}:1h"
+
+    async def test_team_scope_uses_team_column(
+        self,
+        rate_limit_service: RateLimitService,
+        mock_session: AsyncMock,
+        mock_redis: AsyncMock,
+    ):
+        team_id = uuid.uuid4()
+        mock_session.execute.return_value = self._rows_result([])
+
+        out = await rate_limit_service.get_usage_trend(
+            mock_session, "TEAM", str(team_id), "7d"
+        )
+
+        assert out["available"] is True
+        assert out["bucket_sec"] == 3600
+        sql = str(mock_session.execute.call_args.args[0].text)
+        assert "team_id" in sql
+        assert "user_id" not in sql
+
+    async def test_cache_hit_skips_db(
+        self,
+        rate_limit_service: RateLimitService,
+        mock_session: AsyncMock,
+        mock_redis: AsyncMock,
+    ):
+        import json
+
+        user_id = uuid.uuid4()
+        cached = {"available": True, "scope": "USER", "points": []}
+        mock_redis.get = AsyncMock(return_value=json.dumps(cached))
+
+        out = await rate_limit_service.get_usage_trend(
+            mock_session, "USER", str(user_id), "24h"
+        )
+
+        assert out == cached
+        mock_session.execute.assert_not_called()
+
+    async def test_db_error_fails_soft(
+        self,
+        rate_limit_service: RateLimitService,
+        mock_session: AsyncMock,
+        mock_redis: AsyncMock,
+    ):
+        mock_session.execute.side_effect = RuntimeError("db down")
+
+        out = await rate_limit_service.get_usage_trend(
+            mock_session, "USER", str(uuid.uuid4()), "24h"
+        )
+
+        assert out["available"] is False
+        assert out["reason"] == "RuntimeError"

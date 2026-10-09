@@ -9,6 +9,7 @@ import type { RateLimitTreeNode } from '@/types/entities';
 import { RateLimitScope } from '@/types/enums';
 import { setRateLimitAction } from '@/lib/actions/rate-limits';
 import { fetchRateLimitUsage, type RateLimitUsage } from '@/lib/utils/rateLimitUsage';
+import { UsageTrendChart } from '@/components/rate-limits/UsageTrendChart';
 import { FormError } from '@/components/common/FormError';
 import { SpinnerButton } from '@/components/common/SpinnerButton';
 import { useToast } from '@/components/common/ToastProvider';
@@ -178,6 +179,20 @@ export function RateLimitConfigPanel({ node }: RateLimitConfigPanelProps) {
             <p className="mt-1 text-[11px] text-muted-foreground">{t('noRecentRequests', { seconds: usage.window_sec })}</p>
           )}
         </div>
+      )}
+
+      {/* 과거 사용량 트렌드 — 한도 설정의 근거. usage_logs 버킷 집계를
+          한도 단위(분당/시간당)로 정규화해 설정값 기준선과 함께 표시. */}
+      {isUserOrTeam && (
+        <UsageTrendChart
+          scope={node.scope}
+          scopeId={node.id}
+          limits={{
+            rpm: node.config?.rpm,
+            tpm: node.config?.tpm,
+            cph: node.config?.cph,
+          }}
+        />
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
