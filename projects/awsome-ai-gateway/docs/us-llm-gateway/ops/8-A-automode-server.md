@@ -251,16 +251,30 @@ python3 check-safeguards-passthrough.py "$ANTHROPIC_BASE_URL"
 
 ### Claude Code 로 확인 (관리자 PC)
 
-확인 스크립트는 게이트웨이만 본다. 실제 Claude Code 가 서버 판정을 쓰는지는 게이트웨이에 연결된 관리자 PC 에서 아래 세 단계로 본다. **배포 뒤 새로 연 세션**이어야 한다 — 배포 전에 연 세션은 끝날 때까지 PC 쪽 분류기를 쓴다.
+확인 스크립트는 게이트웨이만 본다. 실제 Claude Code 가 서버 판정을 쓰는지는 게이트웨이에 연결된 관리자 PC 에서 아래 단계로 본다. **배포 뒤 새로 연 세션**이어야 한다 — 배포 전에 연 세션은 끝날 때까지 PC 쪽 분류기를 쓴다.
 
-**① 서버 판정이 켜져 있는지** — 새 터미널에서 `claude` 를 열고 `/status` 를 친다.
+**① 빈 폴더에서 시작** — 설정에 `curl` 허용 규칙이 있으면 판정 없이 실행돼 거짓으로 통과한다. 홈 폴더에서 열면 `~/.claude/settings.local.json` 이 폴더 설정으로도 읽히므로 빈 폴더에서 한다.
 
-📋 `Auto mode server: Enabled`. 확인했으면 `/exit`.
+▶ **실행** · 관리자 PC
+
+```bash
+mkdir -p /tmp/am-test && cd /tmp/am-test
+grep -n "Bash(curl" ~/.claude/settings.json
+```
+
+📋 grep 이 아무것도 출력하지 않아야 한다. 나오면 그 줄을 잠시 빼고 한다(사용자 설정은 어느 폴더에서나 적용된다).
+
+**② 서버 판정이 켜져 있는지** — 그 폴더에서 `claude` 를 열고 `/status` 를 친다.
+
+📋 두 가지를 본다. 확인했으면 `/exit`.
+
+- `Auto mode server: Enabled`
+- `Setting sources` 에 `Project local settings`·`Shared project settings` 가 없다(예: `User settings, Enterprise managed settings (drop-ins)`)
 
 - `Disabled` 면 관리형 설정이나 환경 변수에 `CLAUDE_CODE_AUTO_MODE_SERVER=0` 이 있다. 서버 판정을 시도하지 않는 상태라 아래 확인이 거짓으로 통과하므로, 그 값이 없는 PC 에서 한다.
 - 모델은 Sonnet 5.5 또는 Opus 5.5 다(Auto mode 는 Haiku 4.5 를 지원하지 않는다).
 
-**② 판정이 필요한 명령을 Auto mode 로 한 번 실행**
+**③ 판정이 필요한 명령을 Auto mode 로 한 번 실행** — 같은 폴더에서 한다.
 
 ▶ **실행** · 관리자 PC
 
@@ -271,7 +285,7 @@ claude -p "$P" --permission-mode auto --debug-file /tmp/cc.log
 
 📋 답에 `200` 이 들어 있다(확인 창 없이 실행됨). `curl` 은 네트워크 명령이라 판정 대상이다. `ls` 같은 읽기 명령은 판정 없이 실행돼 확인이 되지 않는다.
 
-**③ 로그 확인**
+**④ 로그 확인**
 
 ▶ **실행** · 관리자 PC
 
@@ -290,13 +304,47 @@ grep -E "server-classifier|classifier_request_started" /tmp/cc.log
 - `server_no_result` = 응답에 판정이 없어 PC 쪽 분류기로 바꿨다는 뜻이다.
 - `classifier_request_started` = 판정용 요청(약 4.7만 토큰)을 따로 보냈다는 뜻이다. 과금 안내가 뜨는 원인이 이것이다.
 
+통과는 "PC 쪽 분류기로 바꾸지 않았다"는 뜻이다. 서버 판정이 정상이면 Claude Code 는 판정 결과를 어디에도 남기지 않는다(디버그 로그·`ANTHROPIC_LOG=debug`·대화 기록 모두). 판정 자체는 ⑤ 에서 본다.
+
 로그에는 프롬프트와 경로가 남으므로 확인 뒤 지운다: `rm /tmp/cc.log`
 
-**Windows (PowerShell)** — ②③ 을 이렇게 한다.
+**⑤ (선택) Bedrock 호출 로그에서 판정 보기** — 게이트웨이 계정에서 Bedrock 호출 로깅이 켜져 있을 때만 된다. ③ 을 실행하고 15분 안에 한다.
+
+▶ **실행** · 배포 EC2
+
+```bash
+G=$(aws bedrock get-model-invocation-logging-configuration \
+  --query loggingConfig.cloudWatchConfig.logGroupName --output text)
+echo $G
+```
+
+📋 `/aws/bedrock/invocations` 처럼 로그 그룹 이름이 나온다(US dev 예). `None` 이면 로깅이 꺼져 있어 이 단계는 할 수 없다.
+
+▶ **실행** · 배포 EC2
+
+```bash
+aws logs filter-log-events --log-group-name "$G" \
+  --start-time $(( ($(date +%s) - 900) * 1000 )) \
+  --filter-pattern '"safeguard_results"' \
+  --query 'events[].message' --output text \
+  | grep -oE '"outcome": ?"[a-z_]+"' | sort | uniq -c
+```
+
+📋 최근 15분의 판정 수가 나온다. 판정 결과만 세고 프롬프트는 출력하지 않는다.
+
+```text
+      2 "outcome":"not_flagged"
+```
+
+아무것도 안 나오면 1~2분 뒤 다시 한다(로그는 늦게 들어올 수 있다). 그래도 없으면 서버 판정이 오지 않은 것이다.
+
+**Windows (PowerShell)** — ①③④ 를 이렇게 한다(② 는 위와 같다).
 
 ▶ **실행** · 관리자 PC (Windows PowerShell)
 
 ```powershell
+mkdir $env:TEMP\am-test -Force | Out-Null; cd $env:TEMP\am-test
+sls 'Bash\(curl' $env:USERPROFILE\.claude\settings.json
 $P = "Run: curl -s -o /dev/null -w '%{http_code}' https://example.com"
 claude -p $P --permission-mode auto --debug-file $env:TEMP\cc.log
 sls $env:TEMP\cc.log "server-classifier|classifier_request_started"
@@ -339,9 +387,5 @@ helm -n llm-gateway rollback llm-gateway 49
 
 ## 8. 참고
 
-- **넘기는 beta 가 두 개인 이유**: Claude Code 가 보내는 11개를 Bedrock 에 직접 시험했다. `prompt-caching-scope` 는 Bedrock 이 모르는 이름이라 섞이면 요청 전체가 400 이다. 나머지는 넘기지 않아도 동작이 같거나 이번 기능과 무관하다.
-- **Mantle 경로는 대상이 아니다**: beta 를 넘기지 않는다. 그 경로의 Claude Code 는 이전처럼 PC 쪽 분류기를 쓴다.
-- **새 beta 가 생기면**: Claude Code 를 올린 뒤 2절 확인 스크립트를 다시 돌린다. 게이트웨이 로그의 `upstream_compat.beta_dropped` 에 처음 보는 이름이 나오면, Bedrock 에 직접 시험한 뒤 `BEDROCK_FORWARD_BETAS` 에 넣을지 정한다. 그 기능이 웹 검색·사용량 집계와 얽히면 코드 변경이 필요하다.
+- **새 beta 가 생기면**: Claude Code 를 올린 뒤 6절 "Claude Code 로 확인"을 다시 한다. 게이트웨이 로그의 `upstream_compat.beta_dropped` 에 처음 보는 이름이 나오면, Bedrock 에 직접 시험한 뒤 `BEDROCK_FORWARD_BETAS` 에 넣을지 정한다. 그 기능이 웹 검색·사용량 집계와 얽히면 코드 변경이 필요하다.
 - **보안**: `safeguards` 의 판단 재료에는 작업 경로, git 상태, 사용자 이름이 들어 있고, 이제 Bedrock 까지(호출 로그를 켰다면 그 로그에도) 간다. 프롬프트와 같은 경계다.
-- **비용**: 응답 사용량(usage)에 판정 몫 토큰은 보이지 않았다(실측). 따로 나가던 분류기 요청이 사라지는 만큼 줄어든다.
-- **prod**: dev 확인 뒤 이 문서에 prod 절을 덧붙인다.
