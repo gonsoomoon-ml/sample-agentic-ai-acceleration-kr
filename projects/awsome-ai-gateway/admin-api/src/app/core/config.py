@@ -228,6 +228,10 @@ class Settings(BaseSettings):
     # ── Scheduler ──
     ROI_AGGREGATION_CRON: str = "*/15 * * * *"
     KEY_EXPIRY_CRON: str = "0 * * * *"
+    # 되돌릴 수 없는 물리 DELETE 라 기본 OFF — 운영 검토 후 명시적으로 켠다.
+    KEY_PURGE_ENABLED: bool = False
+    KEY_PURGE_CRON: str = "30 3 * * *"
+    KEY_PURGE_RETENTION_DAYS: int = 90
     # DAILY_USAGE_AGG_CRON: 2026-04-21 cost-recorder-worker 로 이관됨. 이 setting
     # 은 worker 서비스 환경변수로 관리.
 

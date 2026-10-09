@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -60,6 +61,8 @@ class TestIssueKey:
         # Mock the real method with its real return shape: (expired_count, new_id).
         # issue_key sets vk.issued_at itself, so the old _populate_dates hook is obsolete.
         repo.expire_and_create = AsyncMock(return_value=(expire_count, uuid.uuid4()))
+        # issue_key dedup path awaits repo.list_active_for_user before generating a new key.
+        repo.list_active_for_user = AsyncMock(return_value=[])
         return repo
 
     async def test_issue_key_generates_vk_prefix(
@@ -276,6 +279,7 @@ class TestIssueKey:
              patch("app.services.key_service.TeamAllowedModelRepository") as MockTam:
             repo = MockRepo.return_value
             repo.expire_and_create = AsyncMock(return_value=(0, uuid.uuid4()))
+            repo.list_active_for_user = AsyncMock(return_value=[])
             MockUserRepo.return_value.get_user = AsyncMock(
                 return_value=_stub_user(user_id, team_id)
             )
@@ -315,6 +319,7 @@ class TestIssueKey:
              patch("app.services.key_service.TeamAllowedModelRepository"):
             repo = MockRepo.return_value
             repo.expire_and_create = AsyncMock(return_value=(0, uuid.uuid4()))
+            repo.list_active_for_user = AsyncMock(return_value=[])
             MockUserRepo.return_value.get_user = AsyncMock(
                 return_value=_stub_user(user_id, team_id=None)
             )
@@ -339,10 +344,14 @@ class TestRevokeKey:
 
         with patch("app.services.key_service.KeyRepository") as MockRepo:
             repo = MockRepo.return_value
+            repo.get_by_id = AsyncMock(return_value=None)
             repo.revoke = AsyncMock(return_value=None)
 
             with pytest.raises(NotFoundError):
                 await key_service.revoke_key(mock_session, key_id=key_id, actor=admin_user)
+
+            # ACTIVE 체크는 행 잠금(FOR UPDATE)으로 읽어야 동시 폐기의 이중 발행을 막는다
+            repo.get_by_id.assert_called_once_with(key_id, for_update=True)
 
     async def test_revoke_key_invalidates_cache(
         self, key_service: KeyService, mock_session: AsyncMock, admin_user: CurrentUser, mock_redis: AsyncMock
@@ -354,10 +363,12 @@ class TestRevokeKey:
         vk = MagicMock(spec=VirtualKey)
         vk.key_value_encrypted = encrypted
         vk.user_id = uuid.uuid4()
+        vk.status = KeyStatus.ACTIVE
 
         with patch("app.services.key_service.KeyRepository") as MockRepo, \
              patch("app.services.key_service.UserRepository") as MockUserRepo:
             repo = MockRepo.return_value
+            repo.get_by_id = AsyncMock(return_value=vk)
             repo.revoke = AsyncMock(return_value=vk)
             MockUserRepo.return_value.get_user = AsyncMock(return_value=_stub_user(vk.user_id))
 
@@ -517,3 +528,221 @@ class TestForceReauthTeam:
 
         assert count == 2  # 성공한 2건만
         assert mock_revoke.call_count == 3  # 3건 모두 시도함
+
+
+class TestIssueKeyDedup:
+    """issue_key dedup — VK_DEDUP_SECONDS(5초) 안의 연속 발급은 기존 ACTIVE 키 재반환.
+
+    단, 기존 키가 **이번 요청의 유효 만료** (요청 expires_at, SSO 상한 적용 후) 를
+    넘지 않을 때만 재사용한다. 그렇지 않으면 세션/TTL 정책보다 오래 사는 키가
+    재사용되어 세션 종료 뒤에도 살아남는다 — 24h STS 키가 1h Cowork 세션에
+    재사용된 사고가 이 조건이 거꾸로였을 때 발생했다.
+    """
+
+    def _existing_vk(
+        self,
+        key_service: KeyService,
+        *,
+        age_s: float = 2.0,
+        ttl_h: float = 1.0,
+    ) -> tuple[MagicMock, str]:
+        now = datetime.now(timezone.utc)
+        raw_key = "vk-" + "b" * 64
+        vk = MagicMock(spec=VirtualKey)
+        vk.id = uuid.uuid4()
+        vk.key_value_encrypted = key_service._encryption.encrypt(raw_key)
+        vk.key_prefix = raw_key[:11]
+        vk.user_id = uuid.uuid4()
+        vk.status = KeyStatus.ACTIVE
+        vk.issued_at = now - timedelta(seconds=age_s)
+        vk.expires_at = now + timedelta(hours=ttl_h)
+        return vk, raw_key
+
+    async def test_dedup_returns_recent_key_within_effective_expiry(
+        self, key_service: KeyService, mock_session: AsyncMock, admin_user: CurrentUser
+    ):
+        """5초 내 연속 발급 + 기존 키가 유효 만료 안 → 새로 만들지 않고 재반환."""
+        user_id = uuid.uuid4()
+        existing, raw_key = self._existing_vk(key_service, age_s=2, ttl_h=1)
+
+        with patch("app.services.key_service.KeyRepository") as MockRepo:
+            repo = MockRepo.return_value
+            repo.list_active_for_user = AsyncMock(return_value=[existing])
+            repo.expire_and_create = AsyncMock()
+
+            result = await key_service.issue_key(
+                mock_session, user_id=user_id, actor=admin_user
+            )
+
+        repo.expire_and_create.assert_not_called()
+        assert result.virtual_key == raw_key
+        assert result.key_id == str(existing.id)
+        assert result.expires_at == existing.expires_at
+
+    async def _issue_and_get_repo(
+        self, key_service, mock_session, admin_user, user_id, existing, **issue_kwargs
+    ):
+        with patch("app.services.key_service.KeyRepository") as MockRepo, \
+             patch("app.services.key_service.UserRepository") as MockUserRepo, \
+             patch("app.services.key_service.UserAllowedModelRepository") as MockUam, \
+             patch("app.services.key_service.UserAllowedClientRepository") as MockUac, \
+             patch("app.services.key_service.audit_logger") as mock_audit:
+            repo = MockRepo.return_value
+            repo.list_active_for_user = AsyncMock(return_value=[existing])
+            repo.expire_and_create = AsyncMock(return_value=(0, uuid.uuid4()))
+            MockUserRepo.return_value.get_user = AsyncMock(
+                return_value=_stub_user(user_id, team_id=None)
+            )
+            MockUam.return_value.list_by_user = AsyncMock(return_value=[])
+            MockUac.return_value.list_by_user = AsyncMock(return_value=[])
+            mock_audit.log = AsyncMock()
+
+            result = await key_service.issue_key(
+                mock_session, user_id=user_id, actor=admin_user, **issue_kwargs
+            )
+        return repo, result
+
+    async def test_dedup_does_not_reuse_key_outliving_sso_session(
+        self, key_service: KeyService, mock_session: AsyncMock, admin_user: CurrentUser,
+        mock_redis: AsyncMock
+    ):
+        """거꾸로 된 조건의 회귀: 24h STS 키(2초 전 발급)가 있는데 1h SSO 세션으로
+        다시 요청하면 재사용하면 안 된다 — 세션 종료 뒤 23시간을 더 사니까."""
+        user_id = uuid.uuid4()
+        existing, _ = self._existing_vk(key_service, age_s=2, ttl_h=24)
+        sso = datetime.now(timezone.utc) + timedelta(hours=1)
+
+        repo, result = await self._issue_and_get_repo(
+            key_service, mock_session, admin_user, user_id, existing,
+            sso_session_expires_at=sso,
+        )
+
+        repo.expire_and_create.assert_called_once()
+        # 새 키는 SSO 세션 상한으로 제한됐어야 한다
+        assert result.expires_at <= sso
+        assert result.key_id != str(existing.id)
+
+    async def test_dedup_does_not_reuse_key_outliving_requested_ttl(
+        self, key_service: KeyService, mock_session: AsyncMock, admin_user: CurrentUser,
+        mock_redis: AsyncMock
+    ):
+        """호출자가 짧은 expires_at 을 명시해도 같은 규칙 — 그보다 오래 사는
+        기존 키는 재사용하지 않는다(dedup 창 안에서 expires_at 무시 금지)."""
+        user_id = uuid.uuid4()
+        existing, _ = self._existing_vk(key_service, age_s=2, ttl_h=24)
+        short_ttl = datetime.now(timezone.utc) + timedelta(hours=1)
+
+        repo, result = await self._issue_and_get_repo(
+            key_service, mock_session, admin_user, user_id, existing,
+            expires_at=short_ttl,
+        )
+
+        repo.expire_and_create.assert_called_once()
+        assert result.expires_at <= short_ttl
+
+    async def test_dedup_ignores_keys_older_than_window(
+        self, key_service: KeyService, mock_session: AsyncMock, admin_user: CurrentUser,
+        mock_redis: AsyncMock
+    ):
+        """dedup 창(5초)보다 오래된 키는 만료가 짧아도 재사용하지 않는다."""
+        user_id = uuid.uuid4()
+        existing, _ = self._existing_vk(key_service, age_s=60, ttl_h=1)
+
+        repo, _ = await self._issue_and_get_repo(
+            key_service, mock_session, admin_user, user_id, existing,
+        )
+
+        repo.expire_and_create.assert_called_once()
+
+
+class TestPendingRedisPublish:
+    """key_revoked 이벤트는 큐→drain 분리 — commit 성공 직후에만 Redis 로 나간다.
+
+    트랜잭션 안에서 바로 publish 하면 롤백 시 "취소된 폐기"의 알림이 나간다.
+    이 클래스는 (1) revoke_key 가 publish 를 부르지 않고 큐에만 쌓고,
+    (2) drain 이 큐를 비우며 publish 한다, (3) bulk 표시가 실린다,
+    (4) force_reauth 의 실패분 이벤트는 큐에서 걷어낸다 를 못 박는다.
+    """
+
+    def _active_vk(self, key_service: KeyService) -> MagicMock:
+        raw_key = "vk-" + "b" * 64
+        vk = MagicMock(spec=VirtualKey)
+        vk.id = uuid.uuid4()
+        vk.key_prefix = "vk-bbbb"
+        vk.key_value_encrypted = key_service._encryption.encrypt(raw_key)
+        vk.user_id = uuid.uuid4()
+        vk.status = KeyStatus.ACTIVE
+        return vk
+
+    async def test_revoke_queues_event_and_drain_publishes_after_commit(
+        self, key_service: KeyService, mock_session: AsyncMock,
+        admin_user: CurrentUser, mock_redis: AsyncMock,
+    ):
+        from app.core.db import PENDING_REDIS_KEY, drain_pending_redis
+
+        vk = self._active_vk(key_service)
+        mock_session.get = AsyncMock(return_value=vk)
+
+        with patch("app.services.key_service.KeyRepository") as MockRepo, \
+             patch("app.services.key_service.UserRepository") as MockUserRepo, \
+             patch("app.services.key_service.audit_logger") as mock_audit:
+            MockRepo.return_value.get_by_id = AsyncMock(return_value=vk)
+            MockRepo.return_value.revoke = AsyncMock(return_value=vk)
+            MockUserRepo.return_value.get_user = AsyncMock(return_value=_stub_user(vk.user_id))
+            mock_audit.log = AsyncMock()
+            await key_service.revoke_key(mock_session, key_id=vk.id, actor=admin_user)
+
+        # 커밋 전에는 아무것도 발행되지 않는다 — 큐에만 있다
+        mock_redis.publish.assert_not_called()
+        pending = mock_session.info[PENDING_REDIS_KEY]
+        assert len(pending) == 1
+        channel, payload_json = pending[0]
+        event = json.loads(payload_json)
+        assert channel == "notifications:key"
+        assert event["type"] == "key_revoked"
+        assert event["payload"]["bulk"] is False
+
+        # drain(= 커밋 성공 직후)에서만 publish — 큐는 비워진다
+        await drain_pending_redis(mock_session, redis=mock_redis)
+        mock_redis.publish.assert_called_once_with(channel, payload_json)
+        assert mock_session.info.get(PENDING_REDIS_KEY, []) == []
+
+        # 두 번째 drain 은 no-op — 이벤트 이중 발행 없음
+        await drain_pending_redis(mock_session, redis=mock_redis)
+        mock_redis.publish.assert_called_once()
+
+    async def test_force_reauth_marks_bulk_and_pops_failed_key_event(
+        self, key_service: KeyService, mock_session: AsyncMock,
+        admin_user: CurrentUser, mock_redis: AsyncMock,
+    ):
+        """force_reauth 는 bulk=true 를 싣고, SAVEPOINT 롤백된 키의 이벤트는
+        큐에서 걷어낸다 — 폐기되지 않은 키의 알림이 나가는 걸 막는다."""
+        from app.core.db import PENDING_REDIS_KEY
+
+        team_id = uuid.uuid4()
+        vk_ok = self._active_vk(key_service)
+        vk_fail = self._active_vk(key_service)
+        # 실패 키는 발행까지만 간 뒤 죽는다 — SAVEPOINT 롤백과 같은 상황 재현
+        failing_id = vk_fail.id
+
+        async def fake_revoke(session, *, key_id, actor, ip_address="", request_id="", bulk=False):
+            vk = vk_fail if key_id == failing_id else vk_ok
+            await key_service._publish_key_revoked(session, vk, actor, bulk=bulk)
+            if key_id == failing_id:
+                raise RuntimeError("audit insert failed mid-revoke")
+
+        with patch("app.services.key_service.KeyRepository") as KRepo, \
+             patch.object(key_service, "revoke_key", new=AsyncMock(side_effect=fake_revoke)), \
+             patch("app.services.key_service.audit_logger.log", new=AsyncMock()):
+            KRepo.return_value.list_keys = AsyncMock(return_value=[vk_ok, vk_fail])
+            count = await key_service.force_reauth_team(
+                mock_session, team_id=team_id, actor=admin_user
+            )
+
+        assert count == 1
+        pending = mock_session.info[PENDING_REDIS_KEY]
+        assert len(pending) == 1  # 실패분 이벤트는 걷어내져 성공한 키 것만 남는다
+        channel, payload_json = pending[0]
+        event = json.loads(payload_json)
+        assert event["payload"]["bulk"] is True
+        assert event["payload"]["key_id"] == str(vk_ok.id)

@@ -61,6 +61,12 @@ class RecipientResolver:
         if role == RecipientRole.TEAM_LEADER:
             return await self._resolve_team_leader(payload, session)
         if role == RecipientRole.ADMIN:
+            # 일괄 작업(force_reauth 등)이 멤버마다 이벤트를 쏘면 admin 은
+            # N 통씩 받는다 — 발행자가 이미 작업을 아는 자리라 bulk 표시 이벤트의
+            # admin 역할은 생략한다(affected_user/team_leader 는 그대로).
+            if payload.get("bulk"):
+                logger.debug("admin_recipients_skipped_bulk")
+                return []
             return await self._resolve_admins(session)
         logger.warning("unknown_recipient_role", role=role)
         return []

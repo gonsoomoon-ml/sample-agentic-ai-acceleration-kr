@@ -119,6 +119,11 @@ class _CountingRepo:
             raise outcome
         return outcome
 
+    async def list_active_for_user(self, user_id):
+        # VK dedup(VK_DEDUP_SECONDS)이 발급 전에 최근 ACTIVE 키를 조회한다.
+        # 빈 리스트 = 최근 키 없음 → 테스트 대상인 expire_and_create 경로로 진행.
+        return []
+
 
 @contextlib.contextmanager
 def _isolated(repo, user_id):

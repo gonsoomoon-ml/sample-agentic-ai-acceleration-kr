@@ -42,6 +42,8 @@ class FakeSession:
         self.commits = 0
         self.rollbacks = 0
         self._in_transaction = True
+        # 실물 AsyncSession.info — 커밋 후 Redis 발행 대기열이 쌓이는 평범한 dict.
+        self.info: dict[str, list] = {}
 
     def in_transaction(self) -> bool:
         return self._in_transaction

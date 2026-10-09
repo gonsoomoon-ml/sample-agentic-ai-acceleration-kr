@@ -148,6 +148,9 @@ def _mock_session(request: Request):
     session.get = AsyncMock(return_value=None)
     session.add = MagicMock()
     session.flush = AsyncMock()
+    # session.info 는 실물에서 평범한 dict — AsyncMock 에 두면 커밋 후 발행 대기열
+    # (drain_pending_redis) pop 이 코루틴을 돌려준다.
+    session.info = {}
     open_tx = {"value": True}
     session.in_transaction = MagicMock(side_effect=lambda: open_tx["value"])
 

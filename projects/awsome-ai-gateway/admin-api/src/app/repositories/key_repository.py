@@ -19,8 +19,14 @@ class KeyRepository:
         await self._session.flush()
         return vk
 
-    async def get_by_id(self, key_id: uuid.UUID) -> VirtualKey | None:
-        return await self._session.get(VirtualKey, key_id)
+    async def get_by_id(self, key_id: uuid.UUID, *, for_update: bool = False) -> VirtualKey | None:
+        # for_update 면 populate_existing 도 함께 — identity map 에 이미 올라온
+        # 행(list_keys 로 적재)을 잠글 때 속성이 stale 하면(status=ACTIVE 그대로)
+        # 잠금 획득 후에도 갱신된 상태를 못 보고 중복 revoke 로 진행할 수 있다.
+        return await self._session.get(
+            VirtualKey, key_id,
+            with_for_update=for_update, populate_existing=for_update,
+        )
 
     async def expire_active_keys(self, user_id: uuid.UUID) -> int:
         stmt = (

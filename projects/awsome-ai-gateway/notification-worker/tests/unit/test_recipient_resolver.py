@@ -141,6 +141,8 @@ async def test_resolve_unknown_role_returns_empty() -> None:
         payload={},
     )
     assert recipients == []
+
+
 async def test_resolve_team_leader_returns_all_leaders() -> None:
     """리더가 여러 명이면 전원에게 간다 — Team.leader_user_id 는 가장 최근 지정을
     가리키는 표시용 포인터라 그걸 따라가면 나머지 리더는 메일을 못 받는다."""
@@ -182,3 +184,14 @@ async def test_resolve_team_leader_no_leaders_returns_empty() -> None:
     )
     assert recipients == []
 
+
+async def test_resolve_admin_skipped_on_bulk_events() -> None:
+    """bulk 표시 이벤트(force_reauth 등)는 admin 역할을 생략한다 — 멤버 N명
+    이벤트가 관리자에게 N 통 fan-out 되는 걸 막는다."""
+    session = AsyncMock()
+    resolver = RecipientResolver(_make_factory(session))
+    recipients = await resolver.resolve(
+        roles=[RecipientRole.ADMIN], payload={"bulk": True}
+    )
+    assert recipients == []
+    session.execute.assert_not_called()
