@@ -9,8 +9,11 @@ Claude Code 는 요청마다 `anthropic-beta` 헤더로 쓰고 싶은 beta 기�
 gateway-proxy 설정 `BEDROCK_FORWARD_BETAS` 의 기본값입니다.
 
 ```text
-dangerous-tool-use-2026-09-03:safeguards,per-turn-control-2026-07-01
+dangerous-tool-use-2026-09-03:safeguards,per-turn-control-2026-07-01,
+inline-tools-2026-09-15,thinking-display-updates-2026-08-18
 ```
+
+실제 값은 쉼표로 이은 한 줄입니다. 뒤의 두 개는 gateway-proxy `1.0.85-betas` 부터입니다.
 
 - `이름:필드` 는 그 beta 를 본문 필드(`safeguards`)가 있을 때만, 그 필드와 함께 넘긴다는 뜻입니다.
 - 빈 값이면 모두 버리는 이전 동작으로 돌아갑니다(재빌드 불필요). 절차는 [8-A 7절](../ops/8-A-automode-server.md#7-되돌리기)에 있습니다.
@@ -32,8 +35,8 @@ Claude Code 가 게이트웨이(`ANTHROPIC_BASE_URL`)로 보낸 beta 입니다. 
 | `mid-conversation-tool-changes-2026-07-01` | 200 | 버림 | 2026-10-05 |
 | `effort-2025-11-24` | 200 | 버림 (beta 없이도 같음) | 2026-10-05 |
 | `afk-mode-2026-01-31` | 200 | 버림 (서버 판정에 불필요) | 2026-10-05 |
-| `inline-tools-2026-09-15` | 200 | 버림 → `tool_addition` 블록이 400 | 2026-10-09 |
-| `thinking-display-updates-2026-08-18` | 200 | 버림 → `display: "updates"` 가 400 | 2026-10-09 |
+| `inline-tools-2026-09-15` | 200 | 넘김 (advisor 를 가리키는 블록은 지움, `1.0.85-betas` 부터) | 2026-10-09 |
+| `thinking-display-updates-2026-08-18` | 200 | 넘김 (`1.0.85-betas` 부터) | 2026-10-09 |
 | `advisor-tool-2026-03-01` | 400 | 버림 (advisor 도구도 지움) | 2026-10-09 |
 | `redact-thinking-2026-02-12` | 400 | 버림 | 2026-10-09 |
 | `structured-outputs-2025-12-15` | 200 | 버림 (영향 미확인) | 2026-10-09 |
