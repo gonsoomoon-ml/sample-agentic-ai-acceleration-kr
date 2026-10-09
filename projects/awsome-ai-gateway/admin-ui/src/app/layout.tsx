@@ -17,6 +17,7 @@ const pretendard = localFont({
   weight: '45 920', // variable axis 범위
 });
 import { parseJWT, isSessionExpired } from '@/lib/auth';
+import { resolveLocale } from '@/i18n/locale';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { ToastProvider } from '@/components/common/ToastProvider';
@@ -55,7 +56,8 @@ export default async function RootLayout({
   }
 
   const messages = await getMessages();
-  const locale = cookieStore.get('locale')?.value || 'ko';
+  // request.ts 와 같은 규칙 — 쿠키 원시값을 그대로 쓰면 lang="fr" + ko 메시지 조합이 된다.
+  const locale = resolveLocale(cookieStore.get('locale')?.value);
 
   return (
     <html
