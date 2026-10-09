@@ -193,7 +193,7 @@ variable "cognito_logout_urls" {
 }
 
 variable "cognito_groups" {
-  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩."
+  description = "User groups. Claude_<team> 은 Default Department 하위 팀, Claude_<dept>_<team> 은 dept 자동 생성 후 team 매핑, ClaudeAdmin 은 admin 부트스트랩. team_leader 는 Cognito 그룹이 아니라 admin-ui 에서 지정(PUT /admin/teams/{id}/leader)."
   type        = list(string)
   default     = ["Claude_AI-Center_S/W-Culture-Office", "Claude_test-department_aws-test", "ClaudeAdmin"]
 }

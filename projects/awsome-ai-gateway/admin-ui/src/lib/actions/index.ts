@@ -22,5 +22,6 @@ export {
   createTeamAction,
   assignUserTeamAction,
   setTeamLeaderAction,
+  unsetTeamLeaderAction,
   forceReauthTeamAction,
 } from './users';

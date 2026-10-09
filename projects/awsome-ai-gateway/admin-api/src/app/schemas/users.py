@@ -113,6 +113,7 @@ class OrgNodeMeta(BaseModel):
     #: 하위 팀 수. DEPARTMENT / ORGANIZATION 에서만 채운다. TEAM·USER 는 None.
     team_count: int | None = None
     leader_name: str | None = None
+    leader_user_id: str | None = None
     email: str | None = None
     role: UserRole | None = None
     team_name: str | None = None
