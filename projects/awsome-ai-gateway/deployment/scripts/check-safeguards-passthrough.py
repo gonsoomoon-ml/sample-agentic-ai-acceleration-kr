@@ -1,25 +1,32 @@
 #!/usr/bin/env python3
 """게이트웨이에 Auto mode 서버 분류기 패치가 적용됐는지 확인한다.
 
-Claude Code 와 같은 모양의 요청(같은 User-Agent, 같은 anthropic-beta 11개)을
-게이트웨이에 보내고 세 가지를 본다. 모델이 도구를 부르더라도 실행하지 않는다.
+Claude Code 와 같은 모양의 요청(같은 User-Agent, 같은 anthropic-beta)을
+게이트웨이에 보내고 다섯 가지를 본다. 모델이 도구를 부르더라도 실행하지 않는다.
   1) 턴별 effort  — 대화 중간 메시지의 output_config 가 400 없이 통과하는가
   2) 판정(비스트리밍) — 응답 최상위에 safeguard_results 가 오는가
   3) 판정(스트리밍)   — message_delta.delta.safeguard_results 가 오는가
+  4) 도구 추가 블록   — system 메시지의 tool_addition 이 400 없이 통과하는가
+                        (advisor 를 가리키는 블록은 게이트웨이가 지워야 한다)
+  5) thinking 표시    — thinking.display "updates" 가 400 없이 통과하는가
+4)·5) 는 2026-10-09 에 더한 beta(inline-tools · thinking-display-updates)를 본다.
 모두 통과하면 종료 코드 0, 아니면 1.
 
 사용법:
-  export ANTHROPIC_AUTH_TOKEN=vk-...     # 게이트웨이 키(VK)
+  read -rs GATEWAY_KEY && export GATEWAY_KEY   # 게이트웨이 키(VK), 화면에 안 보임
   python3 check-safeguards-passthrough.py https://<게이트웨이 주소>
   python3 check-safeguards-passthrough.py https://<게이트웨이 주소> \
       --model claude-opus-5-5
 모델은 턴별 effort 를 받는 Sonnet 5.5 · Opus 5.5 중 하나여야 한다.
 
 English: checks whether the Auto-mode server-classifier patch is live on a gateway.
-Sends Claude Code-shaped requests (same User-Agent, same 11 anthropic-beta values)
+Sends Claude Code-shaped requests (same User-Agent, same anthropic-beta values)
 and checks 1) per-turn effort passes without a 400, 2) non-streaming verdicts
 (top-level safeguard_results), 3) streaming verdicts
-(message_delta.delta.safeguard_results). No tool is ever executed. Exit code 0 when
+(message_delta.delta.safeguard_results), 4) a system-message tool_addition passes
+(and one pointing at the advisor is removed by the gateway), 5) thinking.display
+"updates" passes. 4) and 5) cover the betas added on 2026-10-09 (inline-tools,
+thinking-display-updates). No tool is ever executed. Exit code 0 when
 all pass, 1 otherwise. Use Sonnet 5.5 or Opus 5.5 (models that take per-turn effort).
 """
 
@@ -38,6 +45,10 @@ BETAS = ("claude-code-20250219,interleaved-thinking-2025-05-14,"
          "prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,"
          "per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,"
          "effort-2025-11-24,dangerous-tool-use-2026-09-03,afk-mode-2026-01-31")
+#: 계정 기능 플래그가 켜진 Claude Code 가 더 보내는 beta (2026-10-09).
+#: English: extra betas sent by Claude Code with account feature flags on.
+FLAGGED_BETAS = (BETAS + ",inline-tools-2026-09-15,advisor-tool-2026-03-01,"
+                 "thinking-display-updates-2026-08-18")
 BASH = {"name": "Bash", "description": "Run a shell command.",
         "input_schema": {"type": "object",
                          "properties": {"command": {"type": "string"}},
@@ -47,15 +58,18 @@ BASH = {"name": "Bash", "description": "Run a shell command.",
 SAFEGUARDS = [{"type": "dangerous_tool_use",
                "classifier_context": {"v": 1, "permission_mode": "auto"}}]
 ASK = "Use the Bash tool to run exactly: ls -la"
+#: Anthropic API 전용 도구 — 게이트웨이가 tools 에서 지운다.
+#: English: an Anthropic-only tool the gateway removes from tools.
+ADVISOR = {"type": "advisor_20260301", "name": "advisor", "model": "claude-fable-5-1"}
 
 
-def post(base: str, key: str, body: dict) -> tuple[int, str]:
+def post(base: str, key: str, body: dict, betas: str = BETAS) -> tuple[int, str]:
     req = urllib.request.Request(
         base.rstrip("/") + "/v1/messages", data=json.dumps(body).encode(),
         method="POST", headers={
             "content-type": "application/json",
             "anthropic-version": "2023-06-01",
-            "anthropic-beta": BETAS,
+            "anthropic-beta": betas,
             "authorization": f"Bearer {key}",
             "user-agent": "claude-cli/2.1.289 (external, sdk-cli)",
             "x-app": "cli"})
@@ -140,6 +154,38 @@ def check_verdict(base, key, model, stream: bool):
     return "SKIP", "모델이 도구를 부르지 않아 판정을 볼 수 없음 (다시 실행)"
 
 
+def check_tool_addition(base, key, model):
+    body = {"model": model, "max_tokens": 50, "tools": [BASH, ADVISOR],
+            "messages": [
+                {"role": "user", "content": "Say OK."},
+                {"role": "system", "content": [
+                    {"type": "text", "text": "One word."},
+                    {"type": "tool_addition",
+                     "tool": {"type": "tool_reference", "name": "Bash"}},
+                    {"type": "tool_addition",
+                     "tool": {"type": "tool_reference", "name": "advisor"}}]}]}
+    st, text = post(base, key, body, FLAGGED_BETAS)
+    if st == 200:
+        return "PASS", "200"
+    if "unknown tool" in text:
+        return "FAIL", f"{st} advisor 를 가리키는 블록이 남음"
+    if "tool_addition" in text:
+        return "FAIL", f"{st} inline-tools 가 Bedrock 까지 가지 않음"
+    return "ERROR", f"{st} {text[:160]}"
+
+
+def check_thinking_display(base, key, model):
+    body = {"model": model, "max_tokens": 1000,
+            "thinking": {"type": "adaptive", "display": "updates"},
+            "messages": [{"role": "user", "content": "Say OK."}]}
+    st, text = post(base, key, body, FLAGGED_BETAS)
+    if st == 200:
+        return "PASS", "200"
+    if "display" in text:
+        return "FAIL", f"{st} thinking-display-updates 가 Bedrock 까지 가지 않음"
+    return "ERROR", f"{st} {text[:160]}"
+
+
 def _pad(s: str, width: int) -> str:
     """한글을 2칸으로 세어 오른쪽을 채운다. English: pad by display width."""
     w = sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
@@ -151,22 +197,26 @@ def main() -> int:
     ap.add_argument("url", help="게이트웨이 주소, 예: https://gateway.example.com")
     ap.add_argument("--model", default="claude-sonnet-5-5")
     args = ap.parse_args()
-    key = os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get("GATEWAY_KEY")
+    key = os.environ.get("GATEWAY_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
     if not key:
-        print("ANTHROPIC_AUTH_TOKEN(게이트웨이 키)를 먼저 설정하세요.")
+        print("GATEWAY_KEY(게이트웨이 키)를 먼저 설정하세요 — 런북 8-A 2절 \"키(VK)와 주소\".")
         return 2
     url, model = args.url, args.model
     rows = [("1) 턴별 effort", check_effort(url, key, model)),
             ("2) 판정 (비스트리밍)", check_verdict(url, key, model, False)),
-            ("3) 판정 (스트리밍)", check_verdict(url, key, model, True))]
+            ("3) 판정 (스트리밍)", check_verdict(url, key, model, True)),
+            ("4) 도구 추가 블록", check_tool_addition(url, key, model)),
+            ("5) thinking 표시", check_thinking_display(url, key, model))]
     print(f"게이트웨이: {url}   모델: {model}")
     for name, (res, detail) in rows:
         print(f"  {res:5s}  {_pad(name, 20)} {detail}")
     passed = [r for _, (r, _) in rows]
-    if passed == ["PASS"] * 3:
+    if passed == ["PASS"] * 5:
         print("결과: 패치 적용됨")
         return 0
-    if passed[1] == "PASS" and passed[2] == "FAIL":
+    if passed[:3] == ["PASS"] * 3 and "PASS" not in passed[3:]:
+        print("결과: 서버 판정은 적용됨, 2026-10-09 beta 2개는 미적용 — 이미지 버전을 확인하세요")
+    elif passed[1] == "PASS" and passed[2] == "FAIL":
         print("결과: 요청 쪽만 적용됨 — 웹 검색 응답 수정(변경 3)을 확인하세요")
     elif all(p == "FAIL" for p in passed):
         print("결과: 패치 미적용 (이전 동작)")

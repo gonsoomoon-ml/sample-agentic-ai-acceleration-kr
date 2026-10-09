@@ -33,6 +33,16 @@ they cannot be forwarded wholesale. Forwarding exactly ``dangerous-tool-use``
 classifier verdicts, no 400 and no billing notice in a real Claude Code 2.1.289
 session. The list comes from settings (``BEDROCK_FORWARD_BETAS``).
 
+2026-10-09(US) 대화 중간 도구 추가(``tool_addition``, beta ``inline-tools``)에도 같은
+틈이 있다. Claude Code 는 advisor 를 ``tools`` 에 넣고 system 메시지에서 이름으로
+가리키는데, ``tools`` 에서만 지우면 "references unknown tool 'advisor'" 400 이다. 그래서
+지운 도구를 가리키는 추가·제거 블록도 함께 지운다.
+
+English: 2026-10-09 (US): mid-conversation tool changes (``tool_addition``, beta
+``inline-tools``) hit the same gap. Claude Code lists the advisor in ``tools`` and points at
+it by name from a system message; removing it from ``tools`` only is a 400 ("references
+unknown tool 'advisor'"), so tool-change blocks that point at a removed tool go too.
+
 Not handled here: the native ``web_search_*`` tool (the web-search loop replaces it with the
 gateway's own search) and replayed web-search blocks (``web_search_loop``).
 """
@@ -49,6 +59,11 @@ logger = structlog.get_logger(__name__)
 #: Shown in place of an assistant message that held nothing but blocks of a removed tool
 #: (an empty content list is a 400).
 _REMOVED_NOTE = "[a server tool result that this endpoint cannot replay was removed]"
+#: 지운 도구의 추가·제거 블록만 있던 system 메시지 자리에 남기는 문구(빈 content 는 400).
+#: English: stands in for a system message that held only tool changes of a removed tool.
+_REMOVED_TOOL_CHANGE_NOTE = "[a tool change that this endpoint cannot apply was removed]"
+#: 대화 중간 도구 변경 블록. English: mid-conversation tool change blocks.
+_TOOL_CHANGE_BLOCKS = ("tool_addition", "tool_removal")
 
 
 def unsupported_tool_prefixes(raw: str | None) -> tuple[str, ...]:
@@ -63,6 +78,46 @@ def _family(tool_type: str) -> str:
     return head if head and tail.isdigit() else tool_type
 
 
+def _tool_change_target(block: Any) -> tuple[str | None, str | None]:
+    """``tool_addition`` / ``tool_removal`` 블록이 가리키는 도구의 ``(name, type)``.
+
+    English: ``(name, type)`` of the tool a ``tool_addition`` / ``tool_removal`` block points
+    at — a ``tool_reference`` carries only the name, a ``tool_definition`` the whole tool.
+    """
+    if not (isinstance(block, dict) and block.get("type") in _TOOL_CHANGE_BLOCKS):
+        return None, None
+    tool = block.get("tool")
+    if not isinstance(tool, dict):
+        return None, None
+    if tool.get("type") == "tool_definition":
+        d = tool.get("definition")
+        if isinstance(d, dict):
+            t = d.get("type")
+            return d.get("name"), t if isinstance(t, str) else None
+        return None, None
+    return tool.get("name"), None
+
+
+def _inline_removed_types(messages: Any, prefixes: tuple[str, ...]) -> list[dict]:
+    """system 메시지의 ``tool_addition`` 이 직접 실은, 지울 타입의 도구 정의들.
+
+    English: tool definitions of a removed type carried inline by ``tool_addition`` blocks in
+    system messages (the tool need not be in ``tools`` at all).
+    """
+    found: list[dict] = []
+    if not isinstance(messages, list):
+        return found
+    for m in messages:
+        if not (isinstance(m, dict) and m.get("role") == "system"
+                and isinstance(m.get("content"), list)):
+            continue
+        for b in m["content"]:
+            name, ttype = _tool_change_target(b)
+            if ttype and ttype.startswith(prefixes):
+                found.append({"type": ttype, "name": name})
+    return found
+
+
 def strip_unsupported_server_tools(body: Any, prefixes: tuple[str, ...]) -> tuple[Any, list[str]]:
     """Remove tools whose ``type`` starts with one of ``prefixes``.
 
@@ -74,30 +129,50 @@ def strip_unsupported_server_tools(body: Any, prefixes: tuple[str, ...]) -> tupl
     a removed tool — ``server_tool_use`` naming it and ``<family>_tool_result`` blocks. A
     ``tool_choice`` that names a removed tool becomes ``auto``; with no tool left, ``tools``
     and ``tool_choice`` are dropped (a tool choice without tools is rejected).
+
+    2026-10-09: also ``tool_addition`` / ``tool_removal`` blocks (mid-conversation tool
+    changes, beta ``inline-tools``) that point at a removed tool — by name, or by an inline
+    ``tool_definition`` of a removed type, which counts as removed even when the tool is not in
+    ``tools``. Left in place they are a 400 ("references unknown tool 'advisor'"). A removed
+    block's ``cache_control`` moves to the message's last remaining block (not onto thinking,
+    which cannot carry one), so the cache breakpoints keep their count and position.
     """
     if not prefixes or not isinstance(body, dict):
         return body, []
     tools = body.get("tools")
-    if not isinstance(tools, list):
-        return body, []
-    gone = [t for t in tools
-            if isinstance(t, dict) and isinstance(t.get("type"), str)
-            and t["type"].startswith(prefixes)]
-    if not gone:
+    gone = ([t for t in tools
+             if isinstance(t, dict) and isinstance(t.get("type"), str)
+             and t["type"].startswith(prefixes)]
+            if isinstance(tools, list) else [])
+    inline = _inline_removed_types(body.get("messages"), prefixes)
+    if not gone and not inline:
         return body, []
 
     out = dict(body)
-    kept = [t for t in tools if not any(t is g for g in gone)]
-    names = {g.get("name") for g in gone if g.get("name")}
-    result_types = {f"{_family(g['type'])}_tool_result" for g in gone}
-    if kept:
+    kept = tools
+    if gone:
+        kept = [t for t in tools if not any(t is g for g in gone)]
+    names = {g.get("name") for g in gone + inline if g.get("name")}
+    result_types = {f"{_family(g['type'])}_tool_result" for g in gone + inline}
+    tool_names = {g.get("name") for g in gone if g.get("name")}
+    if gone and kept:
         out["tools"] = kept
         tc = out.get("tool_choice")
-        if isinstance(tc, dict) and tc.get("type") == "tool" and tc.get("name") in names:
+        if isinstance(tc, dict) and tc.get("type") == "tool" and tc.get("name") in tool_names:
             out["tool_choice"] = {"type": "auto"}
-    else:
+    elif gone:
         out.pop("tools", None)
         out.pop("tool_choice", None)
+
+    def _drop(b: Any) -> bool:
+        if not isinstance(b, dict):
+            return False
+        if b.get("type") == "server_tool_use" and b.get("name") in names:
+            return True
+        if b.get("type") in result_types:
+            return True
+        name, ttype = _tool_change_target(b)
+        return bool((name and name in names) or (ttype and ttype.startswith(prefixes)))
 
     msgs = body.get("messages")
     if isinstance(msgs, list):
@@ -108,23 +183,28 @@ def strip_unsupported_server_tools(body: Any, prefixes: tuple[str, ...]) -> tupl
             if not isinstance(content, list):
                 new_msgs.append(m)
                 continue
-            keep = [b for b in content if not (
-                isinstance(b, dict) and (
-                    (b.get("type") == "server_tool_use" and b.get("name") in names)
-                    or b.get("type") in result_types))]
+            keep = [b for b in content if not _drop(b)]
             if len(keep) == len(content):
                 new_msgs.append(m)
                 continue
             changed = True
-            new_msgs.append({**m, "content": keep or [{"type": "text", "text": _REMOVED_NOTE}]})
+            cache = next((b["cache_control"] for b in content
+                          if _drop(b) and isinstance(b.get("cache_control"), dict)), None)
+            if not keep:
+                note = _REMOVED_TOOL_CHANGE_NOTE if m.get("role") == "system" else _REMOVED_NOTE
+                keep = [{"type": "text", "text": note}]
+            last = keep[-1]
+            if (cache is not None and isinstance(last, dict) and "cache_control" not in last
+                    and last.get("type") not in ("thinking", "redacted_thinking")):
+                keep[-1] = {**last, "cache_control": cache}
+            new_msgs.append({**m, "content": keep})
         if changed:
             out["messages"] = new_msgs
 
-    removed = [g["type"] for g in gone]
+    removed = list(dict.fromkeys(g["type"] for g in gone + inline))
     logger.info("upstream_compat.unsupported_server_tool_stripped", tool_types=removed,
-                tools_left=len(kept))
+                tools_left=len(kept) if isinstance(kept, list) else 0)
     return out, removed
-
 
 #: 한 번만 기록할 이름 수의 상한 — 헤더 값은 클라이언트가 정하기 때문이다.
 #: English: cap on names remembered for the log-once message — the header is

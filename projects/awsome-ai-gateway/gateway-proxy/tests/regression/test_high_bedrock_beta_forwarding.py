@@ -91,8 +91,12 @@ def _fresh_log_once(monkeypatch):
 
 
 # ── settings / parsers ───────────────────────────────────────────────────────
-def test_settings_default_forwards_the_two_measured_betas():
-    assert _fmap() == {DTU: "safeguards", PTC: None}
+def test_settings_default_forwards_the_measured_betas():
+    # inline-tools · thinking-display-updates 는 2026-10-09 추가(test_high_inline_tools_forwarding).
+    # English: the last two were added on 2026-10-09 (see test_high_inline_tools_forwarding).
+    assert _fmap() == {DTU: "safeguards", PTC: None,
+                       "inline-tools-2026-09-15": None,
+                       "thinking-display-updates-2026-08-18": None}
 
 
 def test_blank_setting_is_off(monkeypatch):

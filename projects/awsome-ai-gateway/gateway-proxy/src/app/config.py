@@ -295,6 +295,11 @@ class Settings(BaseSettings):
     #: - per-turn-control: Claude Code 2.1.289 이상이 대화 중간 메시지에 붙이는
     #:   ``messages[].output_config``(턴별 effort)를 연다. 없으면 세션 첫
     #:   요청이 400 이다.
+    #: - inline-tools (2026-10-09): system 메시지의 ``tool_addition`` /
+    #:   ``tool_removal`` 블록(대화 중간 도구 추가·제거)을 연다. 지운 도구를
+    #:   가리키는 블록은 upstream_compat 가 함께 지운다(advisor).
+    #: - thinking-display-updates (2026-10-09): ``thinking.display: "updates"``
+    #:   를 연다. 없으면 그 대화의 첫 요청이 400 이다(2026-10-08 US dev).
     #: 빈 값 = 아무것도 넘기지 않음(이전 동작) — 끄기 스위치다. beta 추가가
     #: 설정 변경만으로 되는 것은 그 필드와 응답이 웹 검색 루프·사용량 집계·
     #: 폴백과 얽히지 않을 때뿐이고, 그 밖에는 코드 변경이 필요하다.
@@ -311,12 +316,19 @@ class Settings(BaseSettings):
     #: - per-turn-control: opens ``messages[].output_config`` (per-turn effort)
     #:   that Claude Code 2.1.289+ puts on mid-conversation messages; without it
     #:   a session's first request is a 400.
+    #: - inline-tools (2026-10-09): opens ``tool_addition`` / ``tool_removal``
+    #:   blocks in system messages (tools added or removed mid-conversation);
+    #:   blocks that point at a removed tool (advisor) are removed by
+    #:   upstream_compat.
+    #: - thinking-display-updates (2026-10-09): opens ``thinking.display:
+    #:   "updates"``; without it a conversation's first request is a 400.
     #: Blank = forward nothing (the previous behaviour) — this is a kill switch.
     #: Adding a beta is only a config change when its field and response do not
     #: touch the web-search loop, usage accounting or fallback; otherwise it
     #: needs a code change. See services/upstream_compat.py.
     bedrock_forward_betas: str = (
-        "dangerous-tool-use-2026-09-03:safeguards,per-turn-control-2026-07-01"
+        "dangerous-tool-use-2026-09-03:safeguards,per-turn-control-2026-07-01,"
+        "inline-tools-2026-09-15,thinking-display-updates-2026-08-18"
     )
 
 
