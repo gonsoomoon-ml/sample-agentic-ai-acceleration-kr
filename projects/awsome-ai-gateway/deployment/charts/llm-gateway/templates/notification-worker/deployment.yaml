@@ -101,6 +101,12 @@ spec:
               value: {{ .Values.notificationWorker.email.smtp.host | quote }}
             - name: SMTP_PORT
               value: {{ .Values.notificationWorker.email.smtp.port | quote }}
+            {{- if kindIs "bool" .Values.notificationWorker.email.smtp.useTls }}
+            # useTls 미설정(null)이면 env 를 내리지 않는다 — worker 가 포트로 자동
+            # 판정(465=implicit TLS, 그 외=startTls 기준). bool 명시 시에만 렌더한다.
+            - name: SMTP_USE_TLS
+              value: {{ .Values.notificationWorker.email.smtp.useTls | quote }}
+            {{- end }}
             - name: SMTP_STARTTLS
               value: {{ .Values.notificationWorker.email.smtp.startTls | quote }}
             - name: EMAIL_SENDER_ADDRESS
@@ -117,6 +123,14 @@ spec:
                   name: {{ .Values.notificationWorker.email.smtp.credentialsSecretName }}
                   key: password
             {{- end }}
+            {{- else if eq .Values.notificationWorker.email.provider "ses" }}
+            - name: AWS_SES_REGION
+              # 비우면 배포 리전(aws.region) — identity 가 다른 리전이면 명시한다.
+              value: {{ default .Values.aws.region .Values.notificationWorker.email.ses.region | quote }}
+            - name: EMAIL_SENDER_ADDRESS
+              value: {{ .Values.notificationWorker.email.ses.fromAddress | quote }}
+            - name: EMAIL_SENDER_NAME
+              value: {{ .Values.notificationWorker.email.ses.fromName | quote }}
             {{- end }}
             {{- include "llm-gateway.downwardApiEnv" . | nindent 12 }}
             {{- range $key, $value := .Values.notificationWorker.env }}

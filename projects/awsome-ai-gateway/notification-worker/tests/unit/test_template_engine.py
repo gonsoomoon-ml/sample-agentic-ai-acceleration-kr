@@ -111,15 +111,15 @@ def test_build_context_structure() -> None:
 
     event = NotificationEvent(
         event_id="e1",
-        type=EventType.KEY_EXPIRING,
+        type=EventType.AUTH_FAILURE_SPIKE,
         timestamp="2026-04-10T12:00:00+00:00",  # type: ignore[arg-type]
         source=ServiceSource.ADMIN_API,
-        payload={"days_until_expiry": 7},
+        payload={"source_ip": "10.0.0.1", "failure_count": 10},
     )
     ctx = TemplateEngine.build_context(event, "Alice", "alice@example.com")
 
     assert ctx["event"] is event
-    assert ctx["payload"] == {"days_until_expiry": 7}
+    assert ctx["payload"] == {"source_ip": "10.0.0.1", "failure_count": 10}
     assert ctx["recipient_name"] == "Alice"
     assert ctx["recipient_email"] == "alice@example.com"
     assert "timestamp_kr" in ctx

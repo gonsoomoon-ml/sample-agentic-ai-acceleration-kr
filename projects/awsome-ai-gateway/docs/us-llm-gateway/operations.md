@@ -28,6 +28,7 @@
 | §8-H | ALB HTTPS — 커스텀 도메인 + ACM (방식 A → B) | 도메인이 있을 때 (US-06, 선택 · 운영이면 강력 권장) | [ops/8-H-alb-https.md](ops/8-H-alb-https.md) |
 | §8-I | admin ALB 2개를 internal 로 (고객사 최종형) | S2S VPN 개통 후 (US-07, 선택) | [ops/8-I-admin-internal.md](ops/8-I-admin-internal.md) |
 | §8-V | 본문 로깅 활성화 (요청/응답 전문 → S3) | 감사·디버깅이 필요할 때 (선택 · 프라이버시 검토 필수) | [ops/8-V-body-logging.md](ops/8-V-body-logging.md) |
+| §8-W | notification 메일 발송 채널 변경 | 알림 메일을 실제로 보낼 때 (선택) | [ops/8-W-notifications.md](ops/8-W-notifications.md) |
 | §8-T | teardown (과금 중단 · 초기화) | 과금 중단 | [아래](#8-t-teardown-과금-중단--초기화) |
 | §8-Z | 토큰 TTL 조절 | 토큰 수명 바꿀 때 (US-15, 선택) | [ops/8-Z-token-ttl.md](ops/8-Z-token-ttl.md) |
 | §8-P | dev → prod 승격 — 별도 계정에 prod 스택 신설 | prod 승격 (US-08) | [ops/8-P-prod.md](ops/8-P-prod.md) |
@@ -132,6 +133,22 @@ bash 20-enable-body-logging.sh verify            # 버킷/스트림/env 검증
 ```
 
 → **[ops/8-V-body-logging.md](ops/8-V-body-logging.md)**
+
+---
+
+### 8-W. notification 메일 발송 채널 변경
+
+선택 — 기본 `mock` 은 메일을 보내지 않는다. 실제 발송은 `notificationWorker.email.provider` 를 `internal_api`·`smtp`·`ses` 중 하나로 전환해야 한다. values 파일은 `update-scripts/21-set-notification-provider.sh` 가 스코프 편집으로 채우고(수동 grep/sed 금지 — 주석·서식이 날아간다), `ses` 선택 시 IAM/IRSA 는 `update-scripts/22-setup-notification-ses-irsa.sh` 가 만든다.
+
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 21-set-notification-provider.sh                       # 현재 상태
+bash 21-set-notification-provider.sh <provider> --apply    # mock|internal-api|smtp|ses
+cd ~/awsome-ai-gateway                                     # install-eks.sh 는 repo 루트에서
+bash deployment/scripts/install-eks.sh dev                 # 실제 반영은 install-eks.sh
+```
+
+상세 절차·제약·수동 설정 → **[ops/8-W-notifications.md](ops/8-W-notifications.md)**
 
 ---
 
