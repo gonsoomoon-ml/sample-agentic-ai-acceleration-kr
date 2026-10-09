@@ -801,6 +801,10 @@ adminUi:
     #                          # 정확히 일치해야 할 때만 명시한다.
     # OIDC_SCOPES: ""          # 기본 "openid email profile"
     # OIDC_COOKIE_TOKEN: ""    # "access_token" 이면 access_token 을 쿠키에 넣는다. 기본은 id_token.
+    # OIDC_LOGOUT_URL: ""      # 비면 authorize URL 오리진의 /logout 을 유도하되, 그 규약은
+    #                          # Cognito 에만 맞아 amazoncognito.com 일 때만 유도한다. Cognito 가
+    #                          # 아닌 IdP 는 여기에 로그아웃 엔드포인트를 명시해야 세션까지 닫힌다.
+    #                          # "off" 는 IdP 로그아웃을 끈다 — 로컬 쿠키만 지우고 IdP 세션은 남긴다.
     #
     # ⚠️ OIDC_CLIENT_SECRET 은 **여기에 절대 쓰지 않는다**. 이 차트의 시크릿 경로는
     #    templates/common/secret.yaml 의 `{{ fullname }}-app` Secret 이다

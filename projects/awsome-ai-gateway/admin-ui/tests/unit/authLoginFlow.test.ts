@@ -23,6 +23,7 @@ import { NextRequest } from 'next/server';
 import { GET as loginGET } from '@/app/api/auth/login/route';
 import { GET as callbackGET } from '@/app/api/auth/callback/route';
 import { GET as devLoginGET, POST as devLoginPOST } from '@/app/api/auth/dev-login/route';
+import { POST as logoutPOST } from '@/app/api/auth/logout/route';
 import { middleware } from '@/middleware';
 
 // ───────────────────────── helpers ─────────────────────────
@@ -35,6 +36,7 @@ const OIDC_VARS = [
   'OIDC_REDIRECT_URI',
   'OIDC_SCOPES',
   'OIDC_COOKIE_TOKEN',
+  'OIDC_LOGOUT_URL',
   'DEV_LOGIN_ENABLED',
 ] as const;
 
@@ -846,5 +848,84 @@ describe('/api/auth/dev-login — 켜져 있을 때는 오늘과 동일 (dev 무
       }),
     );
     expect(res.status).toBe(400);
+  });
+});
+
+// ───────────────────────── logout (IdP 세션 종료) ─────────────────────────
+
+describe('logout /api/auth/logout', () => {
+  const COGNITO_AUTH = 'https://nds-dev.auth.us-west-2.amazoncognito.com/oauth2/authorize';
+
+  function postLogout(headers: Record<string, string> = {}) {
+    return logoutPOST(
+      new NextRequest('http://admin.test/api/auth/logout', {
+        method: 'POST',
+        headers: { host: 'admin.test', ...headers },
+      }),
+    );
+  }
+
+  it('OIDC 미구성 → 상대 리다이렉트 + admin_jwt 만료 쿠키', async () => {
+    const res = await postLogout();
+    expect(res.status).toBe(303);
+    // 상대 Location — 허용 목록(redirect.test.ts)의 한 곳
+    const loc = res.headers.get('location')!;
+    expect(loc).toBe('/');
+    const jar = setCookies(res);
+    expect(jar['admin_jwt']).toMatch(/Max-Age=0/i);
+  });
+
+  it('Cognito OIDC → /logout 으로 303, logout_uri 는 OIDC_REDIRECT_URI 오리진(내부 Host 무시)', async () => {
+    configureOidc({
+      OIDC_AUTHORIZE_URL: COGNITO_AUTH,
+      OIDC_REDIRECT_URI: 'https://admin.public.example/api/auth/callback',
+    });
+    // CloudFront 뒤에서 앱이 받는 Host 는 ALB 내부 이름일 수 있다 — 그 값이
+    // Cognito 의 Allowed sign-out URLs 와 어긋나 400 이 난다. 콜백과 같은
+    // 공개 오리진이어야 한다.
+    const res = await postLogout({
+      host: 'internal-alb-123.ap-northeast-2.elb.amazonaws.com',
+      'x-forwarded-proto': 'https',
+    });
+    expect(res.status).toBe(303);
+    const loc = new URL(res.headers.get('location')!);
+    expect(loc.origin).toBe('https://nds-dev.auth.us-west-2.amazoncognito.com');
+    expect(loc.pathname).toBe('/logout');
+    expect(loc.searchParams.get('client_id')).toBe('admin-ui-client');
+    expect(loc.searchParams.get('logout_uri')).toBe('https://admin.public.example/');
+    expect(setCookies(res)['admin_jwt']).toMatch(/Max-Age=0/i);
+  });
+
+  it('OIDC_REDIRECT_URI 없으면 logout_uri 는 proto://host 폴백', async () => {
+    configureOidc({ OIDC_AUTHORIZE_URL: COGNITO_AUTH });
+    const res = await postLogout({ 'x-forwarded-proto': 'https' });
+    const loc = new URL(res.headers.get('location')!);
+    expect(loc.searchParams.get('logout_uri')).toBe('https://admin.test/');
+  });
+
+  it('OIDC_LOGOUT_URL 명시 → 그대로 쓴다(Cognito 판정 생략)', async () => {
+    configureOidc({ OIDC_LOGOUT_URL: 'https://idp.example.test/session/end' });
+    const res = await postLogout();
+    const loc = new URL(res.headers.get('location')!);
+    expect(loc.origin + loc.pathname).toBe('https://idp.example.test/session/end');
+  });
+
+  it('Cognito 아닌 IdP + OIDC_LOGOUT_URL 없음 → 상대 리다이렉트(유도 안 함)', async () => {
+    configureOidc({ OIDC_REDIRECT_URI: 'https://admin.public.example/api/auth/callback' });
+    const res = await postLogout({ 'x-forwarded-proto': 'https' });
+    expect(res.headers.get('location')).toBe('/');
+    expect(setCookies(res)['admin_jwt']).toMatch(/Max-Age=0/i);
+  });
+
+  it('OIDC_LOGOUT_URL=off → Cognito 여도 IdP 로그아웃을 건너뛴다(배포 순서 비상 스위치)', async () => {
+    // 새 UI 가 sign-out URL 등록(19번 스크립트)보다 먼저 배포되면 Cognito /logout 은
+    // 미등록 logout_uri 로 400 을 낸다 — "off" 는 그 기간에 IdP 로그아웃을 끄는 스위치.
+    configureOidc({
+      OIDC_AUTHORIZE_URL: COGNITO_AUTH,
+      OIDC_LOGOUT_URL: 'off',
+    });
+    const res = await postLogout();
+    expect(res.headers.get('location')).toBe('/');
+    expect(setCookies(res)['admin_jwt']).toMatch(/Max-Age=0/i);
   });
 });
