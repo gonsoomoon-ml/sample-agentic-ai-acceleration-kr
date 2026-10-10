@@ -19,6 +19,7 @@
 | §8-D | upstream 동기화 배포 (코드·스키마·단가 일괄) | upstream 을 크게 들여왔을 때 (US-10 · US-18) | [ops/8-D-upstream-sync.md](ops/8-D-upstream-sync.md) |
 | §8-M | 모델 추가와 교체 | 모델 추가·교체 | [ops/8-M-models.md](ops/8-M-models.md) |
 | §8-R | 모델 단가 맞추기 (AWS 실제 청구와 같게) | 단가가 바뀔 때마다 · upstream 동기화 직후 (US-11) | [ops/8-R-pricing.md](ops/8-R-pricing.md) |
+| §8-Q | Bedrock Marketplace 구독 (AccessDenied 해결) | 신형 모델이 AccessDenied aws-marketplace 로 거절될 때 | [ops/8-Q-marketplace.md](ops/8-Q-marketplace.md) |
 | §8-Y | 직원 온보딩 — Cognito 사용자 추가 | 직원 추가 시 | [ops/8-Y-onboarding.md](ops/8-Y-onboarding.md) |
 | §8-S | 배포 후 보안 하드닝 (직원 오픈 전 필수) | 직원 오픈 전 1회 | [ops/8-S-hardening.md](ops/8-S-hardening.md) |
 | §8-L | admin 콘솔 Cognito 로그인 | admin 콘솔을 계정으로 막을 때 (US-12, 선택 · 권장) | [ops/8-L-admin-login.md](ops/8-L-admin-login.md) |
@@ -27,6 +28,8 @@
 | §8-E | EKS 버전 업그레이드 (1.31 → 1.34) | EKS 버전 올릴 때 (US-05) | [ops/8-E-eks-upgrade.md](ops/8-E-eks-upgrade.md) |
 | §8-H | ALB HTTPS — 커스텀 도메인 + ACM (방식 A → B) | 도메인이 있을 때 (US-06, 선택 · 운영이면 강력 권장) | [ops/8-H-alb-https.md](ops/8-H-alb-https.md) |
 | §8-I | admin ALB 2개를 internal 로 (고객사 최종형) | S2S VPN 개통 후 (US-07, 선택) | [ops/8-I-admin-internal.md](ops/8-I-admin-internal.md) |
+| §8-V | 본문 로깅 활성화 (요청/응답 전문 → S3) | 감사·디버깅이 필요할 때 (선택 · 프라이버시 검토 필수) | [ops/8-V-body-logging.md](ops/8-V-body-logging.md) |
+| §8-W | notification 메일 발송 채널 변경 | 알림 메일을 실제로 보낼 때 (선택) | [ops/8-W-notifications.md](ops/8-W-notifications.md) |
 | §8-T | teardown (과금 중단 · 초기화) | 과금 중단 | [아래](#8-t-teardown-과금-중단--초기화) |
 | §8-Z | 토큰 TTL 조절 | 토큰 수명 바꿀 때 (US-15, 선택) | [ops/8-Z-token-ttl.md](ops/8-Z-token-ttl.md) |
 | §8-P | dev → prod 승격 — 별도 계정에 prod 스택 신설 | prod 승격 (US-08) | [ops/8-P-prod.md](ops/8-P-prod.md) |
@@ -59,6 +62,13 @@ upstream 을 통째로 들여온 뒤 배포 EC2 에서 명령만 위에서 아�
 
 비용·예산은 DB 의 단가 × 토큰이다 — 단가가 청구와 다르면 조용히 틀린다. 단가 표는 `update-scripts/pricing.tsv` 하나, 적용은 `08-set-model-pricing.sh`. ⚠️ upstream 마이그레이션이 글로벌 단가를 다시 넣으므로 동기화 뒤에는 꼭 한 번 더.
 → **[ops/8-R-pricing.md](ops/8-R-pricing.md)**
+
+---
+
+### 8-Q. Bedrock Marketplace 구독 (AccessDenied 해결)
+
+Anthropic 신형 모델은 계정별 **AWS Marketplace 구독**이 필요하다 — §8-M 등록만으로는 부족하고, 구독이 없으면 호출이 `AccessDeniedException … aws-marketplace:Subscribe` 로 떨어진다. 콘솔 주체에 마켓플레이스 권한 → Marketplace/Bedrock에서 수동 구독 → ~2분 전파. prod·멀티계정도 계정마다 동일 절차.
+→ **[ops/8-Q-marketplace.md](ops/8-Q-marketplace.md)**
 
 ---
 
@@ -115,6 +125,36 @@ Claude Code 의 Auto mode 판정을 Bedrock 이 하도록 beta 2개와 `safeguar
 
 `US-07` 선택 — 전제 S2S VPN. values 주석 2곳 해제 → `install-eks.sh`(ALB 재생성) → admin SG·CNAME 교체. VPN 없이 적용하면 VK 발급이 끊겨 게이트웨이 사용 불가. terraform 무변경. 신규 설치는 `US-01` 때 values 로 포함.
 → **[ops/8-I-admin-internal.md](ops/8-I-admin-internal.md)**
+
+---
+
+### 8-V. 본문 로깅 활성화 (요청/응답 전문 → S3)
+
+선택 — ⚠️ 켜면 요청 JSON·응답 전문이 **마스킹 없이** S3 에 저장된다. 잠금이 두 겹: ① terraform sink + `gatewayProxy.env` (`update-scripts/20-enable-body-logging.sh` 가 여는 쪽), ② `/monitoring` 런타임 토글(기본 OFF). `env --apply` + install-eks.sh 후에도 수집은 꺼져 있다.
+
+```bash
+bash 20-enable-body-logging.sh                  # 상태 (읽기 전용)
+bash 20-enable-body-logging.sh tfvars --apply    # tfvars 편집 → 운영자가 terraform apply
+bash 20-enable-body-logging.sh env --apply       # values env 주입 → 운영자가 install-eks.sh
+bash 20-enable-body-logging.sh verify            # 버킷/스트림/env 검증
+```
+
+→ **[ops/8-V-body-logging.md](ops/8-V-body-logging.md)**
+
+---
+
+### 8-W. notification 메일 발송 채널 변경
+
+선택 — 기본 `mock` 은 메일을 보내지 않는다. 실제 발송은 `notificationWorker.email.provider` 를 `internal_api`·`smtp`·`ses` 중 하나로 전환해야 한다. values 파일은 `update-scripts/21-set-notification-provider.sh` 가 스코프 편집으로 채우고(수동 grep/sed 금지 — 주석·서식이 날아간다), `ses` 선택 시 IAM/IRSA 는 `update-scripts/22-setup-notification-ses-irsa.sh` 가 만든다.
+
+```bash
+cd docs/us-llm-gateway/update-scripts
+bash 21-set-notification-provider.sh                       # 현재 상태
+bash 21-set-notification-provider.sh <provider> --apply    # mock|internal-api|smtp|ses
+./deployment/scripts/install-eks.sh dev                    # 실제 반영은 install-eks.sh
+```
+
+상세 절차·제약·수동 설정 → **[ops/8-W-notifications.md](ops/8-W-notifications.md)**
 
 ---
 

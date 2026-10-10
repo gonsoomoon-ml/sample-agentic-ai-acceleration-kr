@@ -801,6 +801,9 @@ adminUi:
     #                          # 정확히 일치해야 할 때만 명시한다.
     # OIDC_SCOPES: ""          # 기본 "openid email profile"
     # OIDC_COOKIE_TOKEN: ""    # "access_token" 이면 access_token 을 쿠키에 넣는다. 기본은 id_token.
+    # OIDC_LOGOUT_URL: ""      # 비면 authorize URL 오리진의 /logout 을 유도하되, 그 규약은
+    #                          # Cognito 에만 맞아 amazoncognito.com 일 때만 유도한다. Cognito 가
+    #                          # 아닌 IdP 는 여기에 로그아웃 엔드포인트를 명시해야 세션까지 닫힌다.
     #
     # ⚠️ OIDC_CLIENT_SECRET 은 **여기에 절대 쓰지 않는다**. 이 차트의 시크릿 경로는
     #    templates/common/secret.yaml 의 `{{ fullname }}-app` Secret 이다
@@ -950,9 +953,9 @@ notificationWorker:
     OTEL_SERVICE_NAME: "notification-worker"
     # REPORTING_TIMEZONE(이메일 발송시각 표시)은 공통 ConfigMap에서 주입됨.
 
-  # 이메일 발송 설정 — 고객 내부 메일 API / SMTP / mock
+  # 이메일 발송 설정 — 고객 내부 메일 API / SMTP / SES / mock
   email:
-    provider: "internal_api"  # "internal_api" | "smtp" | "mock"
+    provider: "internal_api"  # "internal_api" | "smtp" | "ses" | "mock"
     internalApi:
       url: ""                 # 고객 내부 메일 API URL (예: http://mail-api.internal/send)
       fromAddress: "no-reply@llm-gateway.local"
@@ -960,9 +963,17 @@ notificationWorker:
     smtp:
       host: ""
       port: 587
-      startTls: true
+      useTls: ~               # implicit TLS — 비워두면 포트로 자동 (465=true, 그 외=startTls 기준).
+                              # 465 포트 서버만 true 로 명시 (startTls 와 상호배타)
+      startTls: true          # STARTTLS — 587 등 일반 submission 포트
       fromAddress: ""
       credentialsSecretName: ""
+    ses:
+      region: ""              # 비우면 aws.region 을 쓴다. SES 검증 신원(identity)이 있는
+                              # 리전 — IAM policy 의 identity ARN 리전과 반드시 같아야
+                              # 발송이 통과한다 (docs/us-llm-gateway/ops/8-W-ses.md)
+      fromAddress: "no-reply@llm-gateway.local"
+      fromName: "LLM Gateway"
 
 # ----------------------------------------------------------------------------
 # Cost Recorder Worker — Redis Stream → DB batch flusher (FR-3.3 critical path)

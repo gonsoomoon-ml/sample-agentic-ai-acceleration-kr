@@ -17,7 +17,7 @@ class RecipientResolver:
 
     역할 → 사용자 매핑:
     - affected_user: payload.user_id → auth.users 조회
-    - team_leader:   payload.team_id (또는 user의 team_id) → auth.teams.leader_user_id → auth.users 조회
+    - team_leader:   payload.team_id (또는 user의 team_id) → role=TEAM_LEADER 인 활성 멤버 전원
     - admin:         auth.users에서 roles 배열에 'ADMIN' 포함 전체 조회
 
     중복 이메일 제거 후 반환 (BR-RCP-03).
@@ -61,6 +61,12 @@ class RecipientResolver:
         if role == RecipientRole.TEAM_LEADER:
             return await self._resolve_team_leader(payload, session)
         if role == RecipientRole.ADMIN:
+            # 일괄 작업(force_reauth 등)이 멤버마다 이벤트를 쏘면 admin 은
+            # N 통씩 받는다 — 발행자가 이미 작업을 아는 자리라 bulk 표시 이벤트의
+            # admin 역할은 생략한다(affected_user/team_leader 는 그대로).
+            if payload.get("bulk"):
+                logger.debug("admin_recipients_skipped_bulk")
+                return []
             return await self._resolve_admins(session)
         logger.warning("unknown_recipient_role", role=role)
         return []
@@ -102,21 +108,31 @@ class RecipientResolver:
         result = await session.execute(select(Team).where(Team.id == str(team_id)))
         team = result.scalar_one_or_none()
 
-        if team is None or team.leader_user_id is None:
+        if team is None:
+            logger.debug("team_not_found", team_id=team_id)
+            return []
+
+        # 리더는 role 로 판정한다 — 팀에 리더가 여러 명일 수 있고(admin-ui 복수
+        # 지정), Team.leader_user_id 는 "가장 최근 지정" 표시용 포인터라 일부
+        # 리더만 메일을 받거나 스테일 포인터가 탈퇴자를 가리키는 함정이 있다.
+        result = await session.execute(
+            select(User).where(
+                User.team_id == team.id,
+                User.role == "TEAM_LEADER",
+                User.is_active.is_(True),
+            )
+        )
+        leaders = result.scalars().all()
+
+        if not leaders:
             # leader 미지정 팀은 오류 아님 (BR-RCP-04)
             logger.debug("team_leader_not_set", team_id=team_id)
             return []
 
-        result = await session.execute(
-            select(User).where(User.id == team.leader_user_id, User.is_active.is_(True))
-        )
-        leader = result.scalar_one_or_none()
-
-        if leader is None:
-            logger.warning("team_leader_user_not_found", leader_user_id=team.leader_user_id)
-            return []
-
-        return [Recipient(email=leader.email, name=leader.display_name, user_id=leader.id, role=RecipientRole.TEAM_LEADER)]
+        return [
+            Recipient(email=u.email, name=u.display_name, user_id=u.id, role=RecipientRole.TEAM_LEADER)
+            for u in leaders
+        ]
 
     async def _resolve_admins(self, session: AsyncSession) -> list[Recipient]:
         result = await session.execute(

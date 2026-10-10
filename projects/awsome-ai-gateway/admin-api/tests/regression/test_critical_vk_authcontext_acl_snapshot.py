@@ -216,6 +216,9 @@ async def _issue(
          patch("app.services.key_service.UserAllowedClientRepository") as MockUac, \
          patch("app.services.key_service.audit_logger") as mock_audit:
         MockRepo.return_value.expire_and_create = AsyncMock(return_value=(0, uuid.uuid4()))
+        # VK dedup(VK_DEDUP_SECONDS)이 발급 전 최근 ACTIVE 키를 조회한다 — 빈 리스트면
+        # dedup 없이 expire_and_create 경로로 진행한다.
+        MockRepo.return_value.list_active_for_user = AsyncMock(return_value=[])
         MockUserRepo.return_value.get_user = AsyncMock(
             return_value=_stub_user(user_id, team_id)
         )

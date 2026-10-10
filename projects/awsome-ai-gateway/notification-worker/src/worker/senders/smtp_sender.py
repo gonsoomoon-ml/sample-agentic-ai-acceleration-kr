@@ -27,6 +27,20 @@ class SMTPEmailSender:
 
         self._host = settings.smtp_host
         self._port = settings.smtp_port or 587
+        # implicit TLS(465) 와 STARTTLS(587 등) 는 상호배타 — use_tls 가 켜지면
+        # start_tls 는 무의미하므로 내려주지 않는다. smtp_use_tls 미설정(None)은
+        # 포트로 자동 판정한다: 465 면 implicit TLS, 아니면 STARTTLS — values 의
+        # useTls 를 비워두면(기본) 이 규칙이 일반적인 두 배포를 다 맞춘다.
+        if settings.smtp_use_tls is None:
+            self._use_tls = self._port == 465
+            self._starttls = settings.smtp_starttls and not self._use_tls
+        else:
+            self._use_tls = settings.smtp_use_tls
+            self._starttls = settings.smtp_starttls and not settings.smtp_use_tls
+        self._username = settings.smtp_username
+        self._password = (
+            settings.smtp_password.get_secret_value() if settings.smtp_password else None
+        )
         self._sender_address = settings.email_sender_address
         self._sender_name = settings.email_sender_name
 
@@ -47,7 +61,10 @@ class SMTPEmailSender:
                 msg,
                 hostname=self._host,
                 port=self._port,
-                use_tls=True,
+                username=self._username,
+                password=self._password,
+                use_tls=self._use_tls,
+                start_tls=self._starttls,
             )
         except aiosmtplib.SMTPRecipientsRefused as exc:
             raise EmailSendError(str(exc), retryable=False) from exc

@@ -3,11 +3,15 @@
 # Build stage
 FROM public.ecr.aws/docker/library/python:3.11-slim AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.9.17 /uv /usr/local/bin/uv
 WORKDIR /app
 
 COPY pyproject.toml uv.lock* ./
-RUN uv sync --frozen --no-dev --extra http 2>/dev/null || uv sync --no-dev --extra http
+# --frozen 이 실패하면 uv.lock 이 없거나 오래된 것 — 그 경우만 비고정으로 간다
+# (조용한 폴백이 lockfile drift 를 숨기지 않도록 로그를 남긴다).
+RUN uv sync --frozen --no-dev --extra http --extra ses --extra smtp || \
+    { echo "WARN: uv sync --frozen failed — syncing without lockfile" >&2; \
+      uv sync --no-dev --extra http --extra ses --extra smtp; }
 
 # Runtime stage
 FROM public.ecr.aws/docker/library/python:3.11-slim

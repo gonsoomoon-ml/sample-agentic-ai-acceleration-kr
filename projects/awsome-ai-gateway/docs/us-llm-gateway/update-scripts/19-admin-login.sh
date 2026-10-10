@@ -5,8 +5,8 @@
 # WHAT: turn on Cognito sign-in for the admin console (admin-ui), then turn
 #       dev-login off — US-12, docs/us-llm-gateway/ops/8-L-admin-login.md.
 #         (no step)      status: what is done, what is next (reads the DB)
-#         callback       add the admin-ui callback URL to terraform.tfvars
-#                        (terraform plan/apply stays a manual step)
+#         callback       add the admin-ui callback + sign-out URLs to
+#                        terraform.tfvars (terraform plan/apply stays manual)
 #         login          put OIDC_* (4 keys) under adminUi.env in values
 #         dev-login-off  DEV_LOGIN_ENABLED "false" under adminApi.env AND adminUi.env
 #         verify         probe the login redirect from inside the cluster,
@@ -86,6 +86,10 @@ UI_CERT=$(kubectl get ingress "$ING_ADMIN_UI" -n "$NS" \
      Cognito accepts http callbacks only for localhost — do US-06 (ops/8-H-alb-https.md) first."
 
 CALLBACK="https://$UI_HOST/api/auth/callback"
+# IdP 로그아웃 후 복귀 URL — admin-ui 의 /api/auth/logout 가 Cognito /logout 의
+# logout_uri 로 보낸다(route.ts 가 OIDC_REDIRECT_URI 의 오리진을 쓴다). 이 값이
+# Allowed sign-out URLs 에 없으면 로그아웃이 Cognito 400 에서 멈춘다.
+LOGOUT_URL="https://$UI_HOST/"
 AUTHORIZE_URL="https://$HOSTED/oauth2/authorize"
 TOKEN_URL="https://$HOSTED/oauth2/token"
 LOGIN_KEYS=(OIDC_CLIENT_ID OIDC_AUTHORIZE_URL OIDC_TOKEN_URL OIDC_REDIRECT_URI)
@@ -111,10 +115,12 @@ API_BUMP_HINT="bash 13-bump-image-tags.sh $DEPLOY_ENV --apply, then bash deploym
 
 # A failed read must stop the script, never look like "no callbacks".
 CB_JSON=$(aws cognito-idp describe-user-pool-client --user-pool-id "$POOL_ID" --client-id "$CLIENT_ID" \
-          --query 'UserPoolClient.CallbackURLs' --output json 2>&1) \
+          --query 'UserPoolClient.{cb:CallbackURLs,lo:LogoutURLs}' --output json 2>&1) \
   || die "cannot read Cognito app client $CLIENT_ID: $CB_JSON"
-LIVE_CB=$(jq -r '.[]?' <<<"$CB_JSON") || die "unexpected describe-user-pool-client output: $CB_JSON"
+LIVE_CB=$(jq -r '.cb[]?' <<<"$CB_JSON") || die "unexpected describe-user-pool-client output: $CB_JSON"
+LIVE_LO=$(jq -r '.lo[]?' <<<"$CB_JSON" 2>/dev/null) || LIVE_LO=""
 CB_LIVE=0; [[ $'\n'"$LIVE_CB"$'\n' == *$'\n'"$CALLBACK"$'\n'* ]] && CB_LIVE=1
+LO_LIVE=0; [[ $'\n'"$LIVE_LO"$'\n' == *$'\n'"$LOGOUT_URL"$'\n'* ]] && LO_LIVE=1
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 # Effective var.cognito_callback_urls, one per line. terraform parses the
@@ -123,6 +129,32 @@ tf_var_callbacks() {
   local out
   out=$(echo 'jsonencode(var.cognito_callback_urls)' | terraform -chdir="$TF_DIR" console 2>/dev/null | tail -1)
   jq -er 'fromjson | .[]' <<<"$out" 2>/dev/null
+}
+tf_var_logouts() {
+  local out
+  out=$(echo 'jsonencode(var.cognito_logout_urls)' | terraform -chdir="$TF_DIR" console 2>/dev/null | tail -1)
+  jq -er 'fromjson | .[]' <<<"$out" 2>/dev/null
+}
+# A tfvars attribute is a top-level `name =`; a second assignment is a
+# terraform error. Fail before writing when any var file already sets it —
+# the operator adds the URL to that list by hand.
+guard_tfvar_unset() {
+  local f
+  for f in "$TFVARS" "$TF_DIR"/*.auto.tfvars; do
+    [ -f "$f" ] || continue
+    if command grep -Eq "^[[:space:]]*$1[[:space:]]*=" "$f"; then
+      die "$(basename "$f") already sets $1 — add this line to that list by hand:
+       \"$2\",
+     then: terraform plan (expect 1 in-place change) → apply"
+    fi
+  done
+}
+# '<var> = [ <existing…>, <new>, ]\n' block text. Caller adds the banner.
+tfvar_list_block() {  # <var> <existing-lines> <new-url>
+  local block="$1 = ["$'\n' u
+  while IFS= read -r u; do [ -n "$u" ] && block+="  \"$u\","$'\n'; done <<<"$2"
+  block+="  \"$3\","$'\n'"]"$'\n'
+  printf '%s' "$block"
 }
 
 # "deploy<TAB>KEY<TAB>value" for admin-ui / admin-api container env, from the
@@ -369,15 +401,25 @@ step_status() {
   local l_api="${LV[admin-api/DEV_LOGIN_ENABLED]:-unset}" l_ui="${LV[admin-ui/DEV_LOGIN_ENABLED]:-unset}"
   local next=""
 
-  hdr "① callback (Cognito app client)"
-  if [ "$CB_LIVE" = 1 ]; then ok "registered"
+  hdr "① callback + sign-out URL (Cognito app client)"
+  if [ "$CB_LIVE" = 1 ]; then ok "callback registered"
   else
     local tfv; tfv=$(tf_var_callbacks) || { bad "terraform console could not read var.cognito_callback_urls"; tfv=""; }
     if [[ $'\n'"$tfv"$'\n' == *$'\n'"$CALLBACK"$'\n'* ]]; then
-      warn "in terraform.tfvars, not applied — terraform plan / apply in $TF_DIR"
+      warn "callback in terraform.tfvars, not applied — terraform plan / apply in $TF_DIR"
       next="terraform plan → apply ($TF_DIR)"
     else
-      bad "not registered"; next="bash $(basename "$0") callback"
+      bad "callback not registered"; next="bash $(basename "$0") callback"
+    fi
+  fi
+  if [ "$LO_LIVE" = 1 ]; then ok "sign-out URL registered"
+  else
+    local tfv_lo; tfv_lo=$(tf_var_logouts) || { bad "terraform console could not read var.cognito_logout_urls"; tfv_lo=""; }
+    if [[ $'\n'"$tfv_lo"$'\n' == *$'\n'"$LOGOUT_URL"$'\n'* ]]; then
+      warn "sign-out URL in terraform.tfvars, not applied — terraform plan / apply in $TF_DIR"
+      : "${next:=terraform plan → apply ($TF_DIR)}"
+    else
+      bad "sign-out URL not registered — Cognito 로그아웃이 400 으로 멈춘다"; : "${next:=bash $(basename "$0") callback}"
     fi
   fi
 
@@ -412,51 +454,60 @@ step_status() {
 }
 
 step_callback() {
-  if [ "$CB_LIVE" = 1 ]; then ok "callback already registered on client $CLIENT_ID — nothing to do"; echo; exit 0; fi
-  local tfv; tfv=$(tf_var_callbacks) \
-    || die "terraform console could not read var.cognito_callback_urls in $TF_DIR"
-  if [[ $'\n'"$tfv"$'\n' == *$'\n'"$CALLBACK"$'\n'* ]]; then
-    ok "terraform.tfvars already has it — only terraform plan / apply is left"; echo; exit 0
+  if [ "$CB_LIVE" = 1 ] && [ "$LO_LIVE" = 1 ]; then
+    ok "callback·sign-out URL already registered on client $CLIENT_ID — nothing to do"; echo; exit 0
   fi
-  # A tfvars attribute is a top-level `name =`; a second assignment is a
-  # terraform error, which the check after writing would catch anyway.
-  local f
-  for f in "$TFVARS" "$TF_DIR"/*.auto.tfvars; do
-    [ -f "$f" ] || continue
-    if command grep -Eq '^[[:space:]]*cognito_callback_urls[[:space:]]*=' "$f"; then
-      die "$(basename "$f") already sets cognito_callback_urls — add this line to that list by hand:
-       \"$CALLBACK\",
-     then: terraform plan (expect 1 in-place change) → apply"
-    fi
-  done
+  local tfv tfv_lo
+  tfv=$(tf_var_callbacks) \
+    || die "terraform console could not read var.cognito_callback_urls in $TF_DIR"
+  tfv_lo=$(tf_var_logouts) \
+    || die "terraform console could not read var.cognito_logout_urls in $TF_DIR"
+  local cb_tfv=0 lo_tfv=0
+  [[ $'\n'"$tfv"$'\n' == *$'\n'"$CALLBACK"$'\n'* ]] && cb_tfv=1
+  [[ $'\n'"$tfv_lo"$'\n' == *$'\n'"$LOGOUT_URL"$'\n'* ]] && lo_tfv=1
+  if [ "$cb_tfv" = 1 ] && [ "$lo_tfv" = 1 ]; then
+    ok "terraform.tfvars already has both — only terraform plan / apply is left"; echo; exit 0
+  fi
 
-  local block u
+  local block
   block=$'\n'"# US-12 admin 콘솔 Cognito 로그인 — 19-admin-login.sh callback (${TS})"$'\n'
-  block+="# 기존 항목(gateway-cli login 의 localhost 콜백)은 지우지 말 것 — 직원 로그인이 깨진다"$'\n'
-  block+="cognito_callback_urls = ["$'\n'
-  while IFS= read -r u; do [ -n "$u" ] && block+="  \"$u\","$'\n'; done <<<"$tfv"
-  block+="  \"$CALLBACK\","$'\n'"]"$'\n'
+  block+="# 기존 항목(gateway-cli login 의 localhost 콜백/로그아웃)은 지우지 말 것 — 직원 로그인이 깨진다"$'\n'
+  if [ "$cb_tfv" = 0 ]; then
+    guard_tfvar_unset cognito_callback_urls "$CALLBACK"
+    block+=$(tfvar_list_block cognito_callback_urls "$tfv" "$CALLBACK")$'\n'
+  fi
+  if [ "$lo_tfv" = 0 ]; then
+    guard_tfvar_unset cognito_logout_urls "$LOGOUT_URL"
+    # logout_uri 는 오리진 루트 — admin-ui logout route 가 OIDC_REDIRECT_URI 의
+    # 오리진을내므로 값은 반드시 https://<ui-host>/ 다.
+    block+=$(tfvar_list_block cognito_logout_urls "$tfv_lo" "$LOGOUT_URL")
+  fi
 
   hdr "Planned change — append to $(basename "$TFVARS")"
   local shown=${block#$'\n'}; sed 's/^/  + /' <<<"${shown%$'\n'}"
   if [ "$APPLY" = 0 ]; then
     printf '\n  Nothing written yet. Apply:  bash %s callback --apply\n\n' "$(basename "$0")"; exit 0
   fi
-  confirm "Appending cognito_callback_urls to $TFVARS (backup kept in $SNAP_DIR)."
+  confirm "Appending cognito URL lists to $TFVARS (backup kept in $SNAP_DIR)."
   local bak="$SNAP_DIR/${TS}-tfvars-$DEPLOY_ENV-19-callback.bak"
   cp "$TFVARS" "$bak" || die "backup failed"
   [ -z "$(tail -c1 "$TFVARS")" ] || echo >> "$TFVARS"
   printf '%s' "$block" >> "$TFVARS"
+  # $(tfvar_list_block …) 가 끝 개행을 떼므로, 마지막 블록 하나만 쓴 경우
+  # 파일이 개행 없이 끝날 수 있다 — 뒤에 다른 도구가 append 하면 같은 줄에 붙는다.
+  [ -z "$(tail -c1 "$TFVARS")" ] || echo >> "$TFVARS"
 
-  local want got
-  want=$(printf '%s\n%s' "$tfv" "$CALLBACK" | sed '/^$/d')
+  local want want_lo got got_lo
+  want=$(printf '%s\n%s' "$tfv" "$([ "$cb_tfv" = 0 ] && echo "$CALLBACK")" | sed '/^$/d')
+  want_lo=$(printf '%s\n%s' "$tfv_lo" "$([ "$lo_tfv" = 0 ] && echo "$LOGOUT_URL")" | sed '/^$/d')
   got=$(tf_var_callbacks) || true
-  if [ "$got" != "$want" ]; then
+  got_lo=$(tf_var_logouts) || true
+  if [ "$got" != "$want" ] || [ "$got_lo" != "$want_lo" ]; then
     cp "$bak" "$TFVARS"
-    die "terraform does not read the new list back (got: ${got:-nothing}) — tfvars restored from $bak
+    die "terraform does not read the new lists back — tfvars restored from $bak
      (a *.auto.tfvars overriding it, or the state locked by another terraform run?)"
   fi
-  ok "terraform.tfvars updated — terraform reads $(wc -l <<<"$want") callback URLs"
+  ok "terraform.tfvars updated — callback $(wc -l <<<"$want") · sign-out $(wc -l <<<"$want_lo") URLs"
   note "backup: $bak"
   hdr "Next — terraform (you run it, in $TF_DIR)"
   cat <<EOT
@@ -474,6 +525,9 @@ EOT
 step_login() {
   [ "$CB_LIVE" = 1 ] || die "the callback is not registered on Cognito client $CLIENT_ID yet.
      Run: bash $(basename "$0") callback --apply, then terraform plan / apply in $TF_DIR"
+  [ "$LO_LIVE" = 1 ] || die "the sign-out URL ($LOGOUT_URL) is not registered on Cognito client $CLIENT_ID yet —
+     logout would land on a Cognito 400. Run: bash $(basename "$0") callback --apply,
+     then terraform plan / apply in $TF_DIR"
   hdr "admin-api version (needs $MIN_API_TAG or later)"
   show_api_version
   case "$(api_tag_state "$API_VALUES")" in

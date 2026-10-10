@@ -348,6 +348,69 @@ probe_us07() {
   raw "${ev%$'\n'}"
 }
 
+# ── notification worker email / SES IRSA ────────────────────────────────────
+# 메일 provider 판정 — mock 이면 실제 발송이 없다는 걸 먼저 알리고, ses 면 IRSA
+# role·ServiceAccount annotation 정합까지 본다. 스크립트 번호(21/22)는 US 번호가
+# 아니라 이 디렉터리의 실행 순서 번호다.
+probe_notif_ses() {
+  local role sa_name arn sa_arn role_state sa_state sender
+  role="llm-gateway-${DEPLOY_ENV}-notification-worker-ses"
+  role_state="ok"
+  sa_state="ok"
+
+  sender=$(kubectl get deploy "${HELM_RELEASE}-notification-worker" -n "$NS" \
+    -o jsonpath='{.spec.template.spec.containers[?(@.name=="notification-worker")].env[?(@.name=="EMAIL_SENDER_TYPE")].value}' 2>/dev/null) \
+    || { row warn "SES" "Notification worker — deployment 조회 실패 (kubectl)"; return; }
+  # SA 이름은 하드코딩하지 않는다 — serviceAccount.name override 가 있으면
+  # trust policy sub 와 이 조회가 같이 어긋난다. deployment 가 실제로 쓰는
+  # SA 를 읽고, 못 읽으면 차트 기본값으로 떨어진다.
+  sa_name=$(kubectl get deploy "${HELM_RELEASE}-notification-worker" -n "$NS" \
+    -o jsonpath='{.spec.template.spec.serviceAccountName}' 2>/dev/null || true)
+  sa_name="${sa_name:-notification-worker}"
+  raw "sender=$sender"
+
+  # mock 이면 이메일이 실제 발송되지 않는다 — 알림은 선택 기능이라 warn/TODO 가
+  # 아니라 정보 행으로 내린다(mock 으로 두는 배포에서는 "모두 적용"이 영영
+  # 나오지 않는다). IRSA 상태와 무관하게 먼저 알리고 돌아간다.
+  if [ -z "$sender" ] || [ "$sender" = "mock" ]; then
+    row skip "SES" "Notification email — 미사용 (provider=${sender:-unknown}, 선택 기능)"
+    detail "메일이 필요하면 21-set-notification-provider.sh 로 internal_api / smtp / ses 를 선택"
+    return
+  fi
+
+  # smtp/internal_api 는 IRSA 가 필요 없다
+  if [ "$sender" != "ses" ]; then
+    row ok "SES" "Notification worker ($sender)"
+    detail "provider=$sender"
+    return
+  fi
+
+  # role 유무와 무관하게 SA 어노테이션은 읽는다 — role 이 없어도 SA 에
+  # 옛 ARN 이 남아 있으면 "annotation 달림 ≠ 권한 있음"을 구분해서 보여줘야 한다.
+  sa_arn=$(kubectl get sa "$sa_name" -n "$NS" -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' 2>/dev/null)
+  if ! aws iam get-role --role-name "$role" >/dev/null 2>&1; then
+    role_state="missing"
+    arn=""
+    if [ -n "$sa_arn" ]; then sa_state="mismatch"; else sa_state="missing"; fi
+  else
+    arn=$(aws iam get-role --role-name "$role" --query 'Role.Arn' --output text 2>/dev/null)
+    if [ -z "$sa_arn" ]; then sa_state="missing"
+    elif [ "$sa_arn" != "$arn" ]; then sa_state="mismatch"; fi
+  fi
+
+  if [ "$role_state" = "ok" ] && [ "$sa_state" = "ok" ]; then
+    row ok "SES" "Notification worker (ses) + IRSA"
+    detail "role=$role  SA=$sa_name"
+  else
+    row warn "SES" "Notification worker (ses) + IRSA — 미적용"
+    [ "$role_state" = "missing" ] && detail "IAM role $role not found"
+    [ "$sa_state" = "mismatch" ] && detail "ServiceAccount annotation($sa_arn) != role(${arn:-missing})"
+    [ "$sa_state" = "missing" ]  && detail "ServiceAccount $sa_name not annotated"
+    TODO+=("bash 22-setup-notification-ses-irsa.sh --apply   # SES 사용 시 IRSA")
+  fi
+  raw "role=$role arn=$arn sa=$sa_name sa_arn=$sa_arn"
+}
+
 # ── US-12 — admin console Cognito login (optional) ──────────────────────────
 # The evidence is the running Deployments' env, not the values file (values can
 # be edited and not yet rolled out). Cognito login is live when admin-ui carries
@@ -573,6 +636,7 @@ info_rows "US-14" "Claude Code Windows 설치 파일 — 직원 PC 쪽 (이 스�
 probe_us15
 probe_us16
 probe_us18
+probe_notif_ses
 
 echo
 if [ "${#TODO[@]}" -eq 0 ]; then

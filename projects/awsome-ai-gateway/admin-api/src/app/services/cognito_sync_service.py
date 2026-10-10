@@ -22,6 +22,11 @@ import structlog
 from app.core.config import get_settings
 from app.models.auth import Department, Team, User, UserRole
 from app.repositories.user_repository import UserRepository
+from app.services.user_team_service import (
+    _repoint_leader,
+    release_stale_leader_pointer,
+    repoint_inactive_leader_pointers,
+)
 
 logger = structlog.get_logger()
 
@@ -29,16 +34,42 @@ BATCH_SIZE = 500  # 유저 upsert 배치 commit 단위. 초과 시 commit + expu
                   # identity map 을 비워 sync_all 메모리 상한을 확보한다.
 
 
+def _effective_role(
+    existing_role: UserRole | None,
+    existing_team_id,
+    derived_role: UserRole,
+    new_team_id,
+) -> UserRole:
+    """TEAM_LEADER 는 Cognito 그룹이 아니라 admin-ui("팀 리더 지정")에서만 부여되므로
+    (``_derive_role`` 는 ADMIN/DEVELOPER 만 반환), sync/재로그인이 이를 DEVELOPER 로
+    되돌리지 않도록 보존한다. ADMIN_GROUPS 승격/강등은 그대로 반영된다.
+
+    ``_needs_update`` (gate) 와 ``_upsert_one_user`` (실제 upsert) 양쪽이 반드시 이
+    함수를 통해서만 role 을 비교/대입해야 결과가 일치한다.
+    """
+    if existing_role == UserRole.TEAM_LEADER:
+        if existing_team_id != new_team_id:
+            # 팀 리더십은 팀별 속성: 이관되면 DEVELOPER 로 강등
+            return UserRole.DEVELOPER
+        if derived_role == UserRole.DEVELOPER:
+            return UserRole.TEAM_LEADER
+    return derived_role
+
+
 def _needs_update(
     snap: dict, *, email: str, name: str, team_id, role, enabled: bool
 ) -> bool:
     """prefetch gate 판정. _upsert_one_user 의 update 분기와 1:1 동일 조건이어야 한다.
-    (email 이 truthy 이고 다르면) OR display_name/team_id/role/is_active 변경."""
+    (email 이 truthy 이고 다르면) OR display_name/team_id/role/is_active 변경.
+
+    role 비교는 ``_effective_role`` 로 보존된 값 기준 — 안 그러면 팀 리더는 실제로
+    아무것도 안 바뀌어도 매번 "role 이 다르다"고 오판해 불필요한 upsert 를 탄다."""
     return (
         (bool(email) and snap["email"] != email)
         or snap["display_name"] != name
         or snap["team_id"] != team_id
-        or snap["role"] != role
+        or snap["role"]
+        != _effective_role(snap["role"], snap.get("team_id"), role, team_id)
         or snap["is_active"] != enabled
     )
 
@@ -205,7 +236,7 @@ class CognitoSyncService:
                 # 유지된다 → 이후 배치/잔여 commit + reconcile/stale-team 이 정상 수행.
                 async with session.begin_nested():
                     await self._upsert_one_user(
-                        repo, sub=sub, email=email, name=name, enabled=enabled,
+                        repo, session, sub=sub, email=email, name=name, enabled=enabled,
                         team_id=team_id, role=role, result=result,
                     )
             except Exception as e:
@@ -230,6 +261,17 @@ class CognitoSyncService:
                 await session.commit()
             except Exception as e:
                 result.errors.append(f"Failed to deactivate missing users: {e}")
+            # bulk UPDATE 라 사용자별 포인터 정리를 못 돌렸다 — 비활성이 된 사람을
+            # 가리키는 leader_user_id 를 한 번에 재지정한다. 비활성화 커밋과
+            # 분리한다 — 포인터 정리가 실패해도 offboarding 결과는 남게.
+            try:
+                await repoint_inactive_leader_pointers(session)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                logger.warning(
+                    "cognito_sync.leader_pointer_repoint_failed", exc_info=True
+                )
 
         # 5. Cognito 에 없는 팀 정리 — 멤버 이동을 위해 members 포함 조회 유지.
         synced_team_ids = set(group_team_id.values())
@@ -241,8 +283,18 @@ class CognitoSyncService:
                 if team.id in synced_team_ids:
                     continue
                 moved = [m for m in (team.members or []) if m.is_active]
+                moved_ids = {m.id for m in moved}
                 for member in moved:
                     member.team_id = default_team_id
+                    # 팀 이동 시 TEAM_LEADER 는 다른 이동 경로(_effective_role·
+                    # transfer_user)와 같은 불변식으로 강등한다 — 그대로 두면
+                    # default 팀에 대해 리더 권한(role+team_id 기반 판정)을 얻는다.
+                    if member.role == UserRole.TEAM_LEADER:
+                        member.role = UserRole.DEVELOPER
+                # 옮겨간 사람을 가리키는 leader_user_id 도 정리한다 — 사라질 팀
+                # 이라 표시만의 문제지만 남은 활성 리더로는 맞춰 둔다.
+                if team.leader_user_id in moved_ids:
+                    _repoint_leader(team, exclude_user_id=team.leader_user_id)
                 if moved:
                     result.teams_deleted += 1
         except Exception as e:
@@ -268,7 +320,7 @@ class CognitoSyncService:
     # 단일 엔티티는 전체 그림이 없어 그 단계를 돌리면 무관한 유저를 대량 비활성화한다.
 
     async def _upsert_one_user(
-        self, repo: UserRepository, *, sub: str, email: str, name: str,
+        self, repo: UserRepository, session, *, sub: str, email: str, name: str,
         enabled: bool, team_id: uuid.UUID, role: UserRole, result: SyncResult,
     ) -> User:
         """단일 사용자 upsert. sync_all 의 163-217 블록과 동일 규약(get_by_sso_subject
@@ -310,6 +362,7 @@ class CognitoSyncService:
             if existing.display_name != name:
                 existing.display_name = name
                 updated = True
+            role = _effective_role(existing.role, existing.team_id, role, team_id)
             if existing.team_id != team_id:
                 existing.team_id = team_id
                 updated = True
@@ -320,6 +373,28 @@ class CognitoSyncService:
                 existing.is_active = enabled
                 updated = True
             if updated:
+                # 팀 이동·강등·비활성화로 리더 자격을 잃었는데 옛 팀의
+                # leader_user_id 가 이 사람을 계속 가리키는 스테일 포인터를
+                # 정리한다 — 그대로 두면 탈퇴/비활성 사람이 팀 리더로 표시되고
+                # unset 으로도 지울 수 없다. 표시용 포인터라 정리 실패가 sync
+                # 자체를 깨면 안 된다(최선노력). id 는 try 전에 빼둔다 —
+                # 보류 변경의 flush 실패로 세션이 죽으면 except 안의 속성 접근이
+                # PendingRollbackError 로 다시 터진다.
+                uid = existing.id
+                try:
+                    await release_stale_leader_pointer(
+                        session,
+                        user_id=uid,
+                        team_id=existing.team_id,
+                        role=existing.role,
+                        is_active=existing.is_active,
+                    )
+                except Exception:
+                    logger.warning(
+                        "cognito_sync.stale_leader_pointer_cleanup_failed",
+                        user_id=str(uid),
+                        exc_info=True,
+                    )
                 # Flush pending mutations so a failure (e.g. UNIQUE email
                 # collision) raises HERE, before we count. If it raises, the
                 # exception propagates to the caller's try/except (recorded in
@@ -413,7 +488,7 @@ class CognitoSyncService:
 
         try:
             user = await self._upsert_one_user(
-                repo, sub=sub, email=email, name=name, enabled=enabled,
+                repo, session, sub=sub, email=email, name=name, enabled=enabled,
                 team_id=team_id, role=role, result=result,
             )
             result.user_id = str(user.id)
@@ -452,6 +527,23 @@ class CognitoSyncService:
         if user.provider == settings.OIDC_PROVIDER_NAME and user.is_active:
             user.is_active = False
             result.users_deactivated += 1
+            # 비활성화된 사람을 가리키는 leader_user_id 도 함께 정리 — 그대로 두면
+            # 비활성 사용자가 팀 리더로 계속 표시된다(표시용 포인터, 최선노력).
+            uid = user.id
+            try:
+                await release_stale_leader_pointer(
+                    session,
+                    user_id=uid,
+                    team_id=user.team_id,
+                    role=user.role,
+                    is_active=False,
+                )
+            except Exception:
+                logger.warning(
+                    "cognito_sync.stale_leader_pointer_cleanup_failed",
+                    user_id=str(uid),
+                    exc_info=True,
+                )
             await session.commit()
             logger.info(
                 "cognito_sync.user_deactivated",
@@ -514,7 +606,7 @@ class CognitoSyncService:
             # 전체 그룹 기준 role 을 정밀 보정). 여기선 team 배정이 주목적.
             try:
                 await self._upsert_one_user(
-                    repo, sub=sub, email=email, name=name, enabled=enabled,
+                    repo, session, sub=sub, email=email, name=name, enabled=enabled,
                     team_id=team_id, role=self._derive_role(email, [group_name]),
                     result=result,
                 )
@@ -721,6 +813,11 @@ class CognitoSyncService:
         """ADMIN_EMAILS / ADMIN_GROUPS 매칭 시 ADMIN.
 
         user_groups 는 해당 사용자가 속한 Cognito 그룹 이름 목록.
+
+        TEAM_LEADER 는 여기서 부여하지 않는다 — admin-ui 의 "팀 리더 지정"
+        (``UserTeamService.set_team_leader``)으로만 설정되며, ``_upsert_one_user``
+        가 sync 때 그 값을 DEVELOPER 로 덮어쓰지 않도록 보존한다 (oidc_service.py
+        의 ``_derive_role``/``_upsert_user`` 와 동일한 정책).
         """
         settings = get_settings()
         admin_emails = {e.lower() for e in settings.ADMIN_EMAILS}

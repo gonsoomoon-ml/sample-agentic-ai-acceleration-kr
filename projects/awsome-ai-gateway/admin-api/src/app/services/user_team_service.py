@@ -5,12 +5,14 @@ from __future__ import annotations
 import uuid
 
 import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.models.auth import Department, Team, User, UserRole
 from app.models.budget import BudgetScope
 from app.models.model import RateLimitScope
@@ -29,6 +31,86 @@ from app.schemas.users import (
 from app.services.key_service import KeyService
 
 logger = structlog.get_logger()
+
+
+def _repoint_leader(team: Team, *, exclude_user_id: uuid.UUID) -> None:
+    """leader_user_id 를 남은 TEAM_LEADER 멤버 중 한 명으로 옮기고, 없으면 비운다."""
+    remaining = next(
+        (
+            m for m in team.members
+            if m.id != exclude_user_id and m.role == UserRole.TEAM_LEADER and m.is_active
+        ),
+        None,
+    )
+    team.leader_user_id = remaining.id if remaining else None
+
+
+async def release_stale_leader_pointer(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    team_id: uuid.UUID | None,
+    role: UserRole,
+    is_active: bool = True,
+) -> int:
+    """``leader_user_id`` 가 ``user_id`` 를 가리키는 팀 중, 더 이상 유효하지 않은
+    포인터를 정리한다 — ``(team_id, role, is_active)`` 는 호출자가 방금 확정한
+    새 상태다.
+
+    Cognito sync·OIDC 로그인이 팀/역할을 바꾸거나 비활성화하는 경로는
+    ``transfer_user`` 를 거치지 않아 옛 팀의 표시용 포인터가 스테일로 남았다 —
+    탈퇴한 사람이 팀 리더로 표시되고(team_leader 알림의 폴백 근거),
+    unset_team_leader 도 ValidationError 로 못 지운다. 같은 팀의 활성
+    TEAM_LEADER 를 가리키는 유효한 포인터는 건너뛰고, 정리한 팀 수를 돌려준다.
+    """
+    # SAVEPOINT 로 이 함수의 SELECT·포인터 UPDATE 를 격리한다 — 이 안의 문장이
+    # 실패하면 savepoint 만 롤백되고 외부 트랜잭션은 산다. 단, 호출자의 보류
+    # 변경은 SAVEPOINT 생성 시점(begin_nested 내부 flush)에 먼저 나간다 — 그
+    # flush 실패는 savepoint 이전이라 격리할 수 없지만, 그 변경은 호출자 소유라
+    # 어차피 호출자의 flush/commit 에서 실패할 운명이었다.
+    async with session.begin_nested():
+        teams = (
+            await session.execute(select(Team).where(Team.leader_user_id == user_id))
+        ).scalars().all()
+        fixed = 0
+        for team in teams:
+            if team.id == team_id and role == UserRole.TEAM_LEADER and is_active:
+                continue  # 아직 유효한 포인터
+            _repoint_leader(team, exclude_user_id=user_id)
+            fixed += 1
+        return fixed
+
+
+async def repoint_inactive_leader_pointers(session: AsyncSession) -> int:
+    """비활성 사용자를 가리키는 ``leader_user_id`` 를 일괄 정리한다.
+
+    bulk 비활성화(``deactivate_missing_oidc_users``)는 ORM 을 거치지 않는 단일
+    UPDATE 라 사용자별 ``release_stale_leader_pointer`` 를 못 돌린다 — 이
+    헬퍼로 포인터가 가리키는 사람이 비활성인 팀만 골라 한 번에 재지정한다.
+    정리한 팀 수를 돌려준다.
+    """
+    # begin_nested — 호출자 트랜잭션에 pending 변경이 있으면 SELECT 의 autoflush
+    # 실패가 호출 트랜잭션까지 좀비로 만든다. release_stale_leader_pointer 와
+    # 같은 이유로 savepoint 안에서 돌린다.
+    async with session.begin_nested():
+        # populate_existing — bulk UPDATE(synchronize_session=False)가 identity map 의
+        # 로드된 User 를 갱신하지 않아, 방금 비활성화된 리더가 is_active=True 로 남아
+        # 재지정 후보로 뽑히는 걸 막는다.
+        teams = (
+            await session.execute(
+                select(Team)
+                .options(selectinload(Team.members))
+                .where(
+                    Team.leader_user_id.in_(
+                        select(User.id).where(User.is_active.is_(False))
+                    )
+                )
+                .execution_options(populate_existing=True)
+            )
+        ).scalars().all()
+        for team in teams:
+            _repoint_leader(team, exclude_user_id=team.leader_user_id)
+    return len(teams)
 
 
 class UserTeamService:
@@ -133,14 +215,36 @@ class UserTeamService:
         ip_address: str = "0.0.0.0",
         request_id: str = "",
     ) -> TeamResponse:
+        """팀원 한 명을 팀 리더로 지정한다.
+
+        팀 하나에 여러 명이 리더일 수 있다 — 이미 리더인 다른 사람을 내리지 않는다
+        (role=TEAM_LEADER 는 팀당 배타적 단일값이 아니라 팀원 각자의 속성).
+        ``Team.leader_user_id`` 는 "가장 최근에 지정된 리더"를 가리키는 표시용
+        포인터일 뿐, 실제 권한(``require_team_leader_of`` 등)은 각 사용자의
+        ``role``+``team_id`` 로 판정되므로 이 값과 무관하게 정상 동작한다.
+        """
         repo = UserRepository(session)
 
-        team = await repo.set_leader(team_id, user_id)
+        team = await repo.get_team(team_id)
         if team is None:
             raise NotFoundError("Team", str(team_id))
 
-        # Update user role to TEAM_LEADER
-        await repo.update_user_role(user_id, UserRole.TEAM_LEADER)
+        target_user = await repo.get_user(user_id)
+        if target_user is None:
+            raise NotFoundError("User", str(user_id))
+        if target_user.team_id != team_id:
+            raise ValidationError(
+                f"User {user_id} does not belong to team {team_id} — transfer them first."
+            )
+
+        if target_user.role == UserRole.ADMIN:
+            raise ValidationError("Admin users cannot be set as a team leader.")
+        updated = await repo.update_user_role(user_id, UserRole.TEAM_LEADER)
+        if updated is None:
+            # get_user 와 update 사이에 삭제된 경우 — 포인터가 없는 행을 가리키는
+            # FK 위반(500) 대신 404 로 끝낸다.
+            raise NotFoundError("User", str(user_id))
+        team.leader_user_id = user_id
 
         await audit_logger.log(
             session,
@@ -150,6 +254,81 @@ class UserTeamService:
             resource_type="Team",
             resource_id=str(team_id),
             changes={"after": {"leader_user_id": str(user_id)}},
+            ip_address=ip_address,
+            request_id=request_id,
+        )
+
+        return TeamResponse(
+            id=str(team.id),
+            name=team.name,
+            department_id=str(team.dept_id),
+            leader_user_id=str(team.leader_user_id) if team.leader_user_id else None,
+            created_at=team.created_at,
+        )
+
+    async def unset_team_leader(
+        self,
+        session: AsyncSession,
+        *,
+        team_id: uuid.UUID,
+        user_id: uuid.UUID,
+        actor: CurrentUser,
+        ip_address: str = "0.0.0.0",
+        request_id: str = "",
+    ) -> TeamResponse:
+        """팀 리더 지정 해제(한 명) — 그 사람의 role 만 DEVELOPER 로 되돌린다.
+
+        팀에 리더가 여러 명일 수 있으므로 어느 사용자를 해제할지 반드시 지정해야
+        한다. ``Team.leader_user_id`` (표시용 포인터)가 이 사람을 가리키고 있었다면
+        남은 리더 중 한 명으로 옮기고, 아무도 없으면 비운다.
+
+        ADMIN 은 영향받지 않는다(_derive_role 이 ADMIN_GROUPS 로 별도 판정) — 여기서
+        DEVELOPER 로 되돌려도 그 사람이 ClaudeAdmin 이면 다음 Cognito 로그인 때 다시
+        ADMIN 으로 복원된다.
+        """
+        repo = UserRepository(session)
+
+        team = await repo.get_team(team_id)
+        if team is None:
+            raise NotFoundError("Team", str(team_id))
+
+        target_user = await repo.get_user(user_id)
+        if target_user is None:
+            raise NotFoundError("Team leader", str(user_id))
+        if target_user.team_id != team_id or target_user.role != UserRole.TEAM_LEADER:
+            # 스테일 포인터 정리 경로 — 포인터가 이 사람을 가리키는데 더 이상 이
+            # 팀의 유효한 리더가 아니면(팀 이동·Cognito sync 강등·직접 수정 등)
+            # 오류 대신 포인터만 다시 맞춘다. 이 경로가 없으면 깨진 포인터를
+            # 되돌릴 API 가 없다.
+            if team.leader_user_id == user_id:
+                _repoint_leader(team, exclude_user_id=user_id)
+                return TeamResponse(
+                    id=str(team.id),
+                    name=team.name,
+                    department_id=str(team.dept_id),
+                    leader_user_id=str(team.leader_user_id) if team.leader_user_id else None,
+                    created_at=team.created_at,
+                )
+            if target_user.team_id != team_id:
+                raise NotFoundError("Team leader", str(user_id))
+            raise ValidationError(f"User {user_id} is not currently a team leader of this team.")
+
+        await repo.update_user_role(user_id, UserRole.DEVELOPER)
+
+        if team.leader_user_id == user_id:
+            _repoint_leader(team, exclude_user_id=user_id)
+
+        await audit_logger.log(
+            session,
+            actor_user_id=actor.user_id,
+            actor_role=actor.role.value,
+            action="UNSET_TEAM_LEADER",
+            resource_type="Team",
+            resource_id=str(team_id),
+            changes={
+                "before": {"leader_user_id": str(user_id)},
+                "after": {"leader_user_id": str(team.leader_user_id) if team.leader_user_id else None},
+            },
             ip_address=ip_address,
             request_id=request_id,
         )
@@ -178,6 +357,21 @@ class UserTeamService:
         if user is None:
             raise NotFoundError("User", str(user_id))
         old_team_id = user.team_id
+
+        # 팀 리더십은 팀별 속성이라 이관되지 않는다 — 그대로 두면 옛 팀의 leader_user_id
+        # 가 이제 그 팀 소속도 아닌 사람을 계속 가리키고(스테일 포인터), 동시에
+        # require_team_leader_of(role+team_id 로만 판정)가 새 팀에서 이 사람을
+        # 명시적 지정 없이 리더로 인가해버리는 의도치 않은 권한 상승이 발생한다.
+        # 호출 경로는 OIDC 로그인 시 팀 동기화와 관리자 이관 API 뿐이고, Cognito sync
+        # 는 같은 정책을 cognito_sync_service._effective_role 에서 별도로 적용한다.
+        # 같은 팀으로의 no-op 호출(new_team_id == old_team_id)까지 강등시키지 않도록
+        # 실제로 팀이 바뀌는 경우에만 적용한다.
+        if user.role == UserRole.TEAM_LEADER and new_team_id != old_team_id:
+            await repo.update_user_role(user_id, UserRole.DEVELOPER)
+            if old_team_id is not None:
+                old_team = await repo.get_team(old_team_id)
+                if old_team is not None and old_team.leader_user_id == user_id:
+                    _repoint_leader(old_team, exclude_user_id=user_id)
 
         # BR-BUD-04: Deactivate existing user budget configs
         budget_repo = BudgetRepository(session)
@@ -370,6 +564,7 @@ class UserTeamService:
                             # TEAM 은 팀이 아니라 사람을 담는다 — 팀 수는 의미가 없다.
                             team_count=None,
                             leader_name=leader.display_name if leader else None,
+                            leader_user_id=str(team.leader_user_id) if team.leader_user_id else None,
                             email=leader.email if leader else None,
                             role=None,
                             team_name=None,

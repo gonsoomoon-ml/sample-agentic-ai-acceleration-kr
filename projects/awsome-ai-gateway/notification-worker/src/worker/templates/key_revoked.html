@@ -17,7 +17,7 @@
   {% if payload.reason %}
   <tr>
     <td>사유</td>
-    <td>{{ payload.reason | default('') }}</td>
+    <td>{{ payload.reason | default('', true) }}</td>
   </tr>
   {% endif %}
 </table>

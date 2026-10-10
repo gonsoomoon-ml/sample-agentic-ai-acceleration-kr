@@ -123,6 +123,32 @@ export async function setTeamLeaderAction(
   }
 }
 
+// ─── unsetTeamLeaderAction ────────────────────────────────────────────────────
+// DELETE /admin/teams/{teamId}/leaders/{userId} — 리더 해제(그 사람만 DEVELOPER 로).
+// PUT 과 마찬가지로 현재 UI 컴포넌트 호출자는 없고 API 표면만 대칭으로 둔다.
+
+export async function unsetTeamLeaderAction(
+  userId: string,
+  teamId: string
+): Promise<ActionResult<void>> {
+  if (!userId) {
+    return { success: false, error: 'User ID is required' };
+  }
+  if (!teamId) {
+    return { success: false, error: 'Team ID is required' };
+  }
+
+  try {
+    await withRetry(() =>
+      adminAPI.delete(`/admin/teams/${teamId}/leaders/${userId}`)
+    );
+    revalidatePath('/users');
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: toErrorMessage(err) };
+  }
+}
+
 // ─── forceReauthTeamAction ────────────────────────────────────────────────────
 // 팀 멤버 전원의 ACTIVE VK 일괄 revoke. 오프보딩/보안 사고/즉시 정책 반영 용도.
 // 사용자는 다음 호출 시 401 → Claude Code 재실행 필요 (UI 에서 명시).

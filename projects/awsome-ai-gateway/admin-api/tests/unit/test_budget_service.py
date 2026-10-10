@@ -357,6 +357,93 @@ class TestGetBudgetSummary:
         assert team_ids == {str(own_team_id)}
         assert user_ids == {str(own_user.id)}
 
+    @pytest.mark.asyncio
+    async def test_budget_summary_cluster_uses_mget_nonatomic(
+        self, budget_service: BudgetService, mock_session: AsyncMock, admin_user: CurrentUser
+    ):
+        """prod 는 RedisCluster — 카운터 키의 해시태그 {sid} 가 대상마다 달라
+        multi-key mget 은 CROSSSLOT 으로 실패하므로 클러스터 클라이언트에서는
+        mget_nonatomic(fan-out)으로 읽어야 한다. standalone 경로는 mget 을 유지."""
+        from redis.asyncio.cluster import RedisCluster
+
+        user_id = uuid.uuid4()
+        user_cfg = MagicMock(spec=BudgetConfig)
+        user_cfg.scope = BudgetScope.USER
+        user_cfg.scope_id = user_id
+        user_cfg.max_budget_usd = Decimal("100")
+        user_cfg.max_requests = None
+        user_cfg.enabled = True
+
+        user_obj = MagicMock()
+        user_obj.id = user_id
+        user_obj.display_name = "Alice"
+        user_obj.email = "a@b"
+
+        cluster = MagicMock(spec=RedisCluster)
+        cluster.mget = AsyncMock(side_effect=AssertionError("mget called on cluster"))
+        cluster.mget_nonatomic = AsyncMock(return_value=[b"7.50"])
+
+        execute_result = MagicMock()
+        execute_result.scalar_one = MagicMock(return_value="0")
+        mock_session.execute = AsyncMock(return_value=execute_result)
+
+        with patch("app.services.budget_service.BudgetRepository") as BRepo, \
+             patch("app.repositories.user_repository.UserRepository") as URepo:
+            BRepo.return_value.list_configs = AsyncMock(return_value=[user_cfg])
+            URepo.return_value.iter_all_users = AsyncMock(return_value=[user_obj])
+            URepo.return_value.list_all_teams = AsyncMock(return_value=[])
+
+            result = await budget_service.get_budget_summary(
+                mock_session, scope=None, target_id=None, period="2026-04",
+                actor=admin_user, redis=cluster,
+            )
+
+        cluster.mget_nonatomic.assert_awaited_once()
+        cluster.mget.assert_not_called()
+        row = next(i for i in result.summary if i.target_id == str(user_id))
+        assert row.used_usd == Decimal("7.50")
+
+    @pytest.mark.asyncio
+    async def test_budget_summary_standalone_still_uses_mget(
+        self, budget_service: BudgetService, mock_session: AsyncMock, admin_user: CurrentUser
+    ):
+        """standalone Redis(및 기존 테스트의 평범한 Mock)은 한 번의 mget 유지 —
+        클러스터 분기가 회귀로 퍼지지 않는지 가드."""
+        user_id = uuid.uuid4()
+        user_cfg = MagicMock(spec=BudgetConfig)
+        user_cfg.scope = BudgetScope.USER
+        user_cfg.scope_id = user_id
+        user_cfg.max_budget_usd = Decimal("100")
+        user_cfg.max_requests = None
+        user_cfg.enabled = True
+
+        user_obj = MagicMock()
+        user_obj.id = user_id
+        user_obj.display_name = "Bob"
+        user_obj.email = "b@c"
+
+        standalone = MagicMock()  # spec 없음 → isinstance(RedisCluster) False
+        standalone.mget = AsyncMock(return_value=["2.25"])
+
+        execute_result = MagicMock()
+        execute_result.scalar_one = MagicMock(return_value="0")
+        mock_session.execute = AsyncMock(return_value=execute_result)
+
+        with patch("app.services.budget_service.BudgetRepository") as BRepo, \
+             patch("app.repositories.user_repository.UserRepository") as URepo:
+            BRepo.return_value.list_configs = AsyncMock(return_value=[user_cfg])
+            URepo.return_value.iter_all_users = AsyncMock(return_value=[user_obj])
+            URepo.return_value.list_all_teams = AsyncMock(return_value=[])
+
+            result = await budget_service.get_budget_summary(
+                mock_session, scope=None, target_id=None, period="2026-04",
+                actor=admin_user, redis=standalone,
+            )
+
+        standalone.mget.assert_awaited_once()
+        row = next(i for i in result.summary if i.target_id == str(user_id))
+        assert row.used_usd == Decimal("2.25")
+
 
 @pytest.mark.asyncio
 async def test_sync_redis_thresholds_sets_5min_ttl(budget_service):
@@ -449,3 +536,79 @@ async def test_warm_team_budget_cache_empty_returns_zero(
 
     assert count == 0
     fake_redis.set.assert_not_called()
+
+
+class TestGetBudgetSummaryUsage:
+    """예산 미설정 대상의 사용액 집계($0.00 버그 수정)와 Redis MGET 경로."""
+
+    async def test_no_config_target_gets_real_usage(
+        self, budget_service: BudgetService, mock_session: AsyncMock, admin_user: CurrentUser
+    ):
+        """BudgetConfig 없는 사용자도 usage_logs 실사용액이 표시된다 — 이전엔
+        cfg 없음 → used=0 하드코딩으로 사용액이 있어도 $0.00 으로 나왔다."""
+        user_id = uuid.uuid4()
+
+        user_obj = MagicMock()
+        user_obj.id = user_id
+        user_obj.display_name = "Alice"
+        user_obj.email = "a@b"
+        user_obj.is_active = True
+        user_obj.team_id = None
+
+        # usage GROUP BY 결과 — 사용자 행만, 팀 행은 없음
+        usage_rows = MagicMock()
+        usage_rows.all = MagicMock(return_value=[(user_id, "12.50")])
+
+        with patch("app.services.budget_service.BudgetRepository") as BRepo, \
+             patch("app.repositories.user_repository.UserRepository") as URepo:
+            BRepo.return_value.list_configs = AsyncMock(return_value=[])
+            URepo.return_value.iter_all_users = AsyncMock(return_value=[user_obj])
+            URepo.return_value.list_all_teams = AsyncMock(return_value=[])
+            mock_session.execute = AsyncMock(return_value=usage_rows)
+
+            result = await budget_service.get_budget_summary(
+                mock_session, scope="user", target_id=None, period="2026-04",
+                actor=admin_user, redis=None,
+            )
+
+        row = next(i for i in result.summary if i.target_id == str(user_id))
+        assert row.used_usd == Decimal("12.50")
+        assert row.limit_usd is None  # 미설정 — 하지만 사용액은 실값
+
+    async def test_redis_mget_single_call_beats_per_target_get(
+        self, budget_service: BudgetService, mock_session: AsyncMock, admin_user: CurrentUser
+    ):
+        """대상마다 개별 GET 이 아니라 MGET 한 번으로 enforcement 카운터를 읽는다."""
+        user_id = uuid.uuid4()
+
+        user_obj = MagicMock()
+        user_obj.id = user_id
+        user_obj.display_name = "Alice"
+        user_obj.email = "a@b"
+        user_obj.is_active = True
+        user_obj.team_id = None
+
+        redis = MagicMock()
+        redis.mget = AsyncMock(return_value=[b"7.25"])
+        redis.get = AsyncMock()
+
+        # Redis 가 전부 커버 → SQL 미스분 없음(execute 는 호출돼도 빈 집계 경로)
+        empty_rows = MagicMock()
+        empty_rows.all = MagicMock(return_value=[])
+
+        with patch("app.services.budget_service.BudgetRepository") as BRepo, \
+             patch("app.repositories.user_repository.UserRepository") as URepo:
+            BRepo.return_value.list_configs = AsyncMock(return_value=[])
+            URepo.return_value.iter_all_users = AsyncMock(return_value=[user_obj])
+            URepo.return_value.list_all_teams = AsyncMock(return_value=[])
+            mock_session.execute = AsyncMock(return_value=empty_rows)
+
+            result = await budget_service.get_budget_summary(
+                mock_session, scope="user", target_id=None, period="2026-04",
+                actor=admin_user, redis=redis,
+            )
+
+        redis.mget.assert_awaited_once()
+        redis.get.assert_not_called()
+        row = next(i for i in result.summary if i.target_id == str(user_id))
+        assert row.used_usd == Decimal("7.25")

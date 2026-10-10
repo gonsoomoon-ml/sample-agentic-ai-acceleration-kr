@@ -64,6 +64,9 @@ def mock_session() -> AsyncMock:
     # ⚠️ `begin_nested` 는 실물에서 **동기 호출**이고 async context manager 를 돌려준다.
     #    AsyncMock 기본값은 코루틴을 돌려주므로 `async with` 가 TypeError 로 터진다.
     wire_savepoint(session)
+    # ⚠️ `session.info` 는 실물에서 평범한 dict 다(commit 후 Redis 발행 대기열이
+    #    여기 쌓인다). AsyncMock 에 두면 setdefault 가 코루틴을 돌려준다.
+    session.info = {}
     return session
 
 

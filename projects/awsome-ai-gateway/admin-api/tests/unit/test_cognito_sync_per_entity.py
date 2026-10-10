@@ -21,6 +21,15 @@ from app.models.auth import UserRole
 from app.services.cognito_sync_service import CognitoSyncService
 
 
+def _session():
+    """AsyncMock 세션 — begin_nested 만 실제 async CM(MagicMock)으로 둔다.
+    그냥 AsyncMock 이면 begin_nested() 가 코루틴을 반환해 async with 에서
+    TypeError + never-awaited 경고가 난다."""
+    session = AsyncMock()
+    session.begin_nested = MagicMock(return_value=MagicMock())
+    return session
+
+
 def _settings(monkeypatch):
     s = MagicMock()
     s.COGNITO_USER_POOL_ID = "pool-1"
@@ -69,7 +78,7 @@ def _admin_get_user(sub, email, name="N", enabled=True):
 async def test_sync_user_creates_when_absent(monkeypatch):
     """DB 에 없는 사용자 → 신규 생성 (고객 핵심 요구)."""
     s = _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     repo = MagicMock()
     repo.get_by_sso_subject = AsyncMock(return_value=None)
     repo.get_by_email = AsyncMock(return_value=None)  # DB 에 전혀 없음
@@ -103,7 +112,7 @@ async def test_sync_user_creates_when_absent(monkeypatch):
 async def test_sync_user_updates_existing(monkeypatch):
     """sso_subject hit → 기존 row update, create 안 함."""
     s = _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     existing = MagicMock()
     existing.id = uuid.uuid4(); existing.sso_subject = "SUB-1"
     existing.email = "old@x.com"; existing.display_name = "Old"
@@ -135,7 +144,7 @@ async def test_sync_user_updates_existing(monkeypatch):
 async def test_sync_user_reconciles_recreated_sub(monkeypatch):
     """재생성(새 sub, 같은 email): create 안 하고 기존 row 의 sso_subject 갱신."""
     s = _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     existing = MagicMock()
     existing.id = uuid.uuid4(); existing.sso_subject = "OLD-SUB"
     existing.email = "a@x.com"; existing.display_name = "A"
@@ -165,7 +174,7 @@ async def test_sync_user_deactivates_oidc_user_when_missing_in_cognito(monkeypat
     """Cognito 에 없는 username(=삭제됨) + DB 에 활성 OIDC 유저 → is_active False,
     user_id 반환, users_deactivated=1, 에러 아님 (고객 항목1 핵심)."""
     s = _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     existing = MagicMock()
     existing.id = uuid.uuid4()
     existing.provider = s.OIDC_PROVIDER_NAME
@@ -194,7 +203,7 @@ async def test_sync_user_deactivates_oidc_user_when_missing_in_cognito(monkeypat
 async def test_sync_user_missing_in_cognito_and_db_is_noop(monkeypatch):
     """Cognito 에도 DB 에도 없음 → no-op. user_id=None, deactivated=0, 에러 아님."""
     _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     repo = MagicMock()
     repo.get_by_email = AsyncMock(return_value=None)
     repo.create_user = AsyncMock()
@@ -218,7 +227,7 @@ async def test_sync_user_missing_in_cognito_skips_non_oidc(monkeypatch):
     """Cognito 없음 + DB 유저가 비-OIDC(수동/서비스 계정) → 비활성화 안 함.
     단 찾았으므로 user_id 는 반환(email 충돌 사고 방지 안전장치)."""
     _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     existing = MagicMock()
     existing.id = uuid.uuid4()
     existing.provider = "manual"  # 비-OIDC
@@ -243,7 +252,7 @@ async def test_sync_user_missing_in_cognito_skips_non_oidc(monkeypatch):
 async def test_sync_user_missing_in_cognito_already_inactive(monkeypatch):
     """Cognito 없음 + 이미 비활성 OIDC 유저 → deactivated 카운트 안 올림, user_id 반환."""
     s = _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     existing = MagicMock()
     existing.id = uuid.uuid4()
     existing.provider = s.OIDC_PROVIDER_NAME
@@ -267,7 +276,7 @@ async def test_sync_user_missing_in_cognito_already_inactive(monkeypatch):
 async def test_sync_user_returns_user_id_on_create(monkeypatch):
     """정상 경로(생성) → 생성된 유저의 user_id 를 응답에 담는다(후속 처리용)."""
     s = _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     created = {}
 
     async def _capture_create(user):
@@ -297,7 +306,7 @@ async def test_sync_user_returns_user_id_on_create(monkeypatch):
 async def test_sync_user_returns_user_id_on_update(monkeypatch):
     """정상 경로(갱신) → 기존 유저의 user_id 를 응답에 담는다."""
     s = _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     existing = MagicMock()
     existing.id = uuid.uuid4(); existing.sso_subject = "SUB-1"
     existing.email = "old@x.com"; existing.display_name = "Old"
@@ -325,7 +334,7 @@ async def test_sync_user_returns_user_id_on_update(monkeypatch):
 async def test_sync_group_upserts_members_no_global_cleanup(monkeypatch):
     """그룹 sync: 팀 확보 + 멤버 upsert. 전역 정리(list_all_teams sweep) 미수행."""
     s = _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     team = MagicMock(); team.id = uuid.uuid4()
     repo = MagicMock()
     repo.get_by_sso_subject = AsyncMock(return_value=None)
@@ -371,7 +380,7 @@ async def test_sync_group_upserts_members_no_global_cleanup(monkeypatch):
 async def test_sync_user_resolves_teams_through_the_cache(monkeypatch):
     """sync_user 가 캐시를 만들어 그룹 해석에 넘기는지 — 그룹당 재조회가 아니어야 한다."""
     _settings(monkeypatch)
-    session = AsyncMock()
+    session = _session()
     repo = MagicMock()
     repo.get_by_sso_subject = AsyncMock(return_value=None)
     repo.get_by_email = AsyncMock(return_value=None)
@@ -431,3 +440,134 @@ def test_the_no_cache_fallback_is_preserved():
     assert sig.parameters["cache"].default is None, (
         "cache 가 기본값 None 이 아니다 — 기존 호출부가 깨진다"
     )
+
+
+# ── _effective_role: admin-ui 수동 지정 TEAM_LEADER 보존 ──────────────────────
+# TEAM_LEADER 는 Cognito 그룹이 아니라 admin-ui 에서만 부여된다(_derive_role 은
+# ADMIN/DEVELOPER 만 반환). sync/재로그인이 그 값을 DEVELOPER 로 덮어쓰지 않도록
+# 보존하되, ADMIN 승격/강등과 팀 이관 강등은 그대로 반영한다.
+
+def test_effective_role_preserves_team_leader_on_sync():
+    from app.services.cognito_sync_service import _effective_role
+
+    team_id = uuid.uuid4()
+    # 같은 팀에서 재동기화 — derived DEVELOPER 가 수동 지정 TEAM_LEADER 를 지우지 않는다
+    assert _effective_role(
+        UserRole.TEAM_LEADER, team_id, UserRole.DEVELOPER, team_id
+    ) == UserRole.TEAM_LEADER
+
+
+def test_effective_role_demotes_team_leader_on_team_change():
+    """팀 리더십은 팀별 속성 — Cognito 그룹 재배정으로 팀이 바뀌면 강등."""
+    from app.services.cognito_sync_service import _effective_role
+
+    assert _effective_role(
+        UserRole.TEAM_LEADER, uuid.uuid4(), UserRole.DEVELOPER, uuid.uuid4()
+    ) == UserRole.DEVELOPER
+
+
+def test_effective_role_admin_promotion_still_applies():
+    """ADMIN_GROUPS 매칭 승격은 TEAM_LEADER 보존보다 우선한다."""
+    from app.services.cognito_sync_service import _effective_role
+
+    team_id = uuid.uuid4()
+    assert _effective_role(
+        UserRole.TEAM_LEADER, team_id, UserRole.ADMIN, team_id
+    ) == UserRole.ADMIN
+
+
+def test_effective_role_admin_demotion_still_applies():
+    """ADMIN_GROUPS 에서 빠진 ADMIN 은 그대로 강등된다."""
+    from app.services.cognito_sync_service import _effective_role
+
+    team_id = uuid.uuid4()
+    assert _effective_role(
+        UserRole.ADMIN, team_id, UserRole.DEVELOPER, team_id
+    ) == UserRole.DEVELOPER
+
+
+def test_needs_update_does_not_flag_preserved_team_leader():
+    """TEAM_LEADER 보존자를 매번 "role 다름"으로 오판해 불필요 upsert 를 타지 않도록
+    _needs_update 도 _effective_role 기준으로 비교한다."""
+    from app.services.cognito_sync_service import _needs_update
+
+    team_id = uuid.uuid4()
+    snap = {
+        "email": "dev@test.com",
+        "display_name": "Dev",
+        "team_id": team_id,
+        "role": UserRole.TEAM_LEADER,
+        "is_active": True,
+    }
+    # Cognito 파생값은 DEVELOPER 지만 effective role 은 TEAM_LEADER — 변경 없음
+    assert not _needs_update(
+        snap, email="dev@test.com", name="Dev",
+        team_id=team_id, role=UserRole.DEVELOPER, enabled=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_upsert_one_user_releases_stale_pointer_with_session(monkeypatch):
+    """회귀: _upsert_one_user 가 session 을 받아 release_stale_leader_pointer 를
+    실제 호출한다. session 파라미터가 빠지면 NameError 가 except 에 삼켜져
+    정리 경로가 dead code 가 되고 sync 마다 warning 만 쌓인다."""
+    _settings(monkeypatch)
+    session = MagicMock()
+    old_team, new_team = uuid.uuid4(), uuid.uuid4()
+    existing = MagicMock()
+    existing.id = uuid.uuid4(); existing.sso_subject = "SUB-1"
+    existing.email = "a@x.com"; existing.display_name = "A"
+    existing.role = UserRole.TEAM_LEADER; existing.team_id = old_team
+    existing.is_active = True
+    repo = MagicMock()
+    repo.get_by_sso_subject = AsyncMock(return_value=existing)
+    repo.get_by_email = AsyncMock(return_value=None)
+    repo.flush = AsyncMock()
+
+    import app.services.cognito_sync_service as mod
+    release = AsyncMock(return_value=1)
+    monkeypatch.setattr(mod, "release_stale_leader_pointer", release)
+
+    svc = CognitoSyncService(MagicMock())
+    result = mod.SyncResult()
+    await svc._upsert_one_user(
+        repo, session, sub="SUB-1", email="a@x.com", name="A",
+        enabled=True, team_id=new_team, role=UserRole.DEVELOPER, result=result,
+    )
+
+    release.assert_awaited_once()
+    args, kwargs = release.await_args
+    assert args[0] is session
+    assert kwargs["user_id"] == existing.id
+    assert kwargs["team_id"] == new_team  # 옛 팀이 아니라 확정된 새 상태
+    assert result.users_updated == 1
+
+
+@pytest.mark.asyncio
+async def test_deactivate_missing_user_clears_leader_pointer(monkeypatch):
+    """비활성화된 사용자를 가리키는 leader_user_id 도 함께 정리한다."""
+    s = _settings(monkeypatch)
+    session = _session()
+    existing = MagicMock()
+    existing.id = uuid.uuid4()
+    existing.email = "gone@x.com"
+    existing.role = UserRole.TEAM_LEADER
+    existing.team_id = uuid.uuid4()
+    existing.is_active = True
+    existing.provider = s.OIDC_PROVIDER_NAME
+    repo = MagicMock()
+    repo.get_by_email = AsyncMock(return_value=existing)
+
+    import app.services.cognito_sync_service as mod
+    release = AsyncMock(return_value=1)
+    monkeypatch.setattr(mod, "release_stale_leader_pointer", release)
+
+    svc = CognitoSyncService(MagicMock())
+    result = mod.SyncResult()
+    await svc._deactivate_missing_user(repo, session, "gone@x.com", result)
+
+    assert existing.is_active is False
+    release.assert_awaited_once()
+    _, kwargs = release.await_args
+    assert kwargs["is_active"] is False
+    assert result.users_deactivated == 1

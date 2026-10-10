@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit_logger
 from app.core.auth import CurrentUser
 from app.core.cache_invalidation import CacheInvalidationManager
+from app.core.db import PENDING_REDIS_KEY, enqueue_redis_publish
 from app.core.encryption import AESEncryptionService
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.models.auth import KeyStatus, User, VirtualKey
 from app.repositories.key_repository import KeyRepository
 from app.repositories.model_repository import TeamAllowedModelRepository
@@ -31,6 +32,7 @@ VK_PREFIX = "vk-"
 VK_RANDOM_BYTES = 32  # 32 bytes = 64 hex chars → total 67 chars with prefix
 VK_AUTH_CACHE_TTL = 300  # gateway-proxy auth_service.VK_CACHE_TTL와 일치
 VK_DEFAULT_TTL_HOURS = 24  # 호출자가 expires_at 을 지정하지 않은 경우의 기본값
+VK_DEDUP_SECONDS = 5  # 같은 사용자의 연속 issue_key 호출 중복 방지
 
 
 class KeyService:
@@ -62,13 +64,6 @@ class KeyService:
         """
         repo = KeyRepository(session)
 
-        # Generate VK: vk- + 32-byte random hex (먼저 생성 — CTE 한 번에 expire+insert)
-        raw_key = VK_PREFIX + secrets.token_hex(VK_RANDOM_BYTES)
-        key_prefix = raw_key[:11]  # "vk-a3b9c1d2"
-
-        # AES-256-GCM encrypt
-        encrypted = self._encryption.encrypt(raw_key)
-
         if expires_at is None:
             expires_at = datetime.now(timezone.utc) + timedelta(hours=VK_DEFAULT_TTL_HOURS)
 
@@ -88,6 +83,44 @@ class KeyService:
                 expires_at=expires_at.isoformat(),
                 sso_session_expires_at=sso_session_expires_at.isoformat() if sso_session_expires_at else None,
             )
+
+        # ── Deduplicate rapid issue calls for the same user ──
+        # 클라이언트(CLI)가 짧은 시간 안에 같은 사용자로 여러 번 issue_key 호출 시
+        # (예: claude-code API key helper 재시도) 기존 ACTIVE 키를 재반환합니다.
+        #
+        # 재사용은 기존 키가 이번 요청의 유효 만료(위에서 계산된 expires_at)를 넘지
+        # 않을 때만 — 그러면 세션/TTL 정책보다 오래 사는 키가 재사용되어, 세션이
+        # 끝난 뒤에도 키가 살아남는다(24h STS 키가 1h Cowork 세션에 재사용되는 사고).
+        # 만료 계산보다 먼저 검사하면 dedup 창 안에서 요청한 expires_at 가 무시된다.
+        dedup_now = datetime.now(timezone.utc)
+        if VK_DEDUP_SECONDS > 0:
+            for existing in await repo.list_active_for_user(user_id):
+                age_s = (dedup_now - existing.issued_at).total_seconds()
+                if age_s <= VK_DEDUP_SECONDS and existing.expires_at <= expires_at:
+                    logger.info(
+                        "key.dedup_returned_recent",
+                        user_id=str(user_id),
+                        key_id=str(existing.id),
+                        age_s=age_s,
+                        request_id=request_id,
+                    )
+                    raw_key = self._encryption.decrypt(existing.key_value_encrypted)
+                    return KeyCreateResponse(
+                        key_id=str(existing.id),
+                        key_prefix=existing.key_prefix,
+                        user_id=str(user_id),
+                        status=existing.status,
+                        created_at=existing.issued_at,
+                        expires_at=existing.expires_at,
+                        virtual_key=raw_key,
+                    )
+
+        # Generate VK: vk- + 32-byte random hex (먼저 생성 — CTE 한 번에 expire+insert)
+        raw_key = VK_PREFIX + secrets.token_hex(VK_RANDOM_BYTES)
+        key_prefix = raw_key[:11]  # "vk-a3b9c1d2"
+
+        # AES-256-GCM encrypt
+        encrypted = self._encryption.encrypt(raw_key)
 
         # issued_at: CTE path uses raw SQL (no ORM refresh), so set explicitly.
         # ORM `repo.create()` path would auto-fill from server_default; here we don't.
@@ -248,6 +281,35 @@ class KeyService:
             virtual_key=raw_key,
         )
 
+    async def _publish_key_revoked(
+        self, session: AsyncSession, vk: VirtualKey, actor: CurrentUser, *, bulk: bool = False
+    ) -> None:
+        """VK 폐기 시 notification-worker에 key_revoked 이벤트 발행.
+
+        즉시 publish 하지 않고 세션 대기열에 넣는다 — 커밋 실패로 롤백되면
+        "폐기되지 않은 키의 폐기 알림"이 나가는 걸 막기 위해 발행은
+        커밋 성공 직후(app.core.db.drain_pending_redis)에 한다.
+        """
+        if self._cache_mgr._redis is None:
+            return
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "type": "key_revoked",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": "admin-api",
+            "payload": {
+                "user_id": str(vk.user_id),
+                "key_id": str(vk.id),
+                "key_prefix": vk.key_prefix,
+                "revoked_by": actor.role.value,
+                "reason": None,
+                # 일괄 폐기(force_reauth) 표시 — worker 는 bulk 이벤트에서
+                # admin 역할 수신자를 생략한다(멤버 N명 → admin N통 fan-out 방지).
+                "bulk": bulk,
+            },
+        }
+        enqueue_redis_publish(session, "notifications:key", json.dumps(event, default=str))
+
     async def revoke_key(
         self,
         session: AsyncSession,
@@ -256,11 +318,22 @@ class KeyService:
         actor: CurrentUser,
         ip_address: str = "0.0.0.0",
         request_id: str = "",
+        bulk: bool = False,
     ) -> None:
         repo = KeyRepository(session)
-        vk = await repo.revoke(key_id, actor.user_id)
+        # FOR UPDATE 로 잠근다 — 동시 폐기 두 건이 ACTIVE 체크를 둘 다 통과해
+        # audit·메일이 이중 발행되는 걸 막는다(뒤 요청은 잠금 해제 후 REVOKED
+        # 상태를 보고 ValidationError 로 끝난다).
+        vk = await repo.get_by_id(key_id, for_update=True)
         if vk is None:
             raise NotFoundError("VirtualKey", str(key_id))
+        if vk.status != KeyStatus.ACTIVE:
+            raise ValidationError(
+                f"Only ACTIVE virtual keys can be revoked (status: {vk.status.value})"
+            )
+
+        original_status = vk.status
+        await repo.revoke(key_id, actor.user_id)
 
         # Invalidate Redis cache
         # We need the hash of the raw key, but we only have encrypted.
@@ -291,10 +364,20 @@ class KeyService:
             action="REVOKE_KEY",
             resource_type="VirtualKey",
             resource_id=str(key_id),
-            changes={"before": {"status": "ACTIVE"}, "after": {"status": "REVOKED"}},
+            changes={
+                "before": {"status": original_status.value},
+                "after": {"status": KeyStatus.REVOKED.value},
+            },
             ip_address=ip_address,
             request_id=request_id,
         )
+
+        # notification-worker 에 key_revoked 발행. force_reauth_team 도 이 경로를
+        # 쓰지만 사용자당 ACTIVE 키는 부분 유니크 인덱스로 1개뿐이라 멤버당
+        # 최대 메일 1통이다 — 폐기된 사용자에게 재실행 안내가 가는 의도된 동작.
+        # bulk=True 이면 admin 수신자는 생략돼 팀 단위 폐기가 admin 메일 폭풍이
+        # 되지 않는다(affected_user 안내 메일은 그대로 간다).
+        await self._publish_key_revoked(session, vk, actor, bulk=bulk)
 
     async def list_keys(
         self,
@@ -394,20 +477,32 @@ class KeyService:
 
         revoked = 0
         for vk in keys:
+            # SAVEPOINT 롤백은 DB 만 되돌린다 — 이미 큐에 들어간 발행 이벤트는
+            # 직접 걷어내야 한다(안 그러면 폐기되지 않은 키의 폐기 알림이 나간다).
+            pending_before = len(session.info.get(PENDING_REDIS_KEY, ()))
+            # nested 롤백은 vk 를 만료시켜 except 에서 vk.id 를 읽으면 비동기
+            # lazy refresh(MissingGreenlet)가 터진다 — try 전에 값으로 빼둔다.
+            vk_id = vk.id
             try:
-                await self.revoke_key(
-                    session,
-                    key_id=vk.id,
-                    actor=actor,
-                    ip_address=ip_address,
-                    request_id=request_id,
-                )
+                # 키별 SAVEPOINT — 폐기가 중간에 실패해도(row 반변경·audit 오류)
+                # 그 키만 원상태로 돌리고 나머지는 진행한다. 반쪽 커밋(상태만
+                # REVOKED 에 audit/event 누락)을 막는다.
+                async with session.begin_nested():
+                    await self.revoke_key(
+                        session,
+                        key_id=vk_id,
+                        actor=actor,
+                        ip_address=ip_address,
+                        request_id=request_id,
+                        bulk=True,
+                    )
                 revoked += 1
             except Exception:
+                del session.info.setdefault(PENDING_REDIS_KEY, [])[pending_before:]
                 logger.exception(
                     "force_reauth_team.revoke_failed",
                     team_id=str(team_id),
-                    key_id=str(vk.id),
+                    key_id=str(vk_id),
                 )
                 # 한 건 실패해도 나머지 계속 처리
 

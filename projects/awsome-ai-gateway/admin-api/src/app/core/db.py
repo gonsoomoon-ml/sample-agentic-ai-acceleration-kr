@@ -18,6 +18,48 @@ logger = structlog.get_logger()
 # CommittingRoute 가 읽는다 — 커밋 시점을 응답 생성 **전**으로 옮기기 위한 유일한 연결점.
 SESSION_STATE_ATTR = "db_session"
 
+# session.info 키 — 커밋 성공 후에야 Redis 로 나가야 하는 이벤트 대기열.
+# 서비스가 트랜잭션 안에서 publish 하면 커밋 실패(롤백) 시 "취소된 쓰기의
+# 알림"이 나간다(key_revoked 메일이 대표적). (channel, payload_json) 튜플 목록.
+PENDING_REDIS_KEY = "pending_redis_publishes"
+
+
+def enqueue_redis_publish(session: AsyncSession, channel: str, payload: str) -> None:
+    """커밋 성공 시 발행할 이벤트를 세션 대기열에 넣는다.
+
+    ⚠️ drain 은 요청 스코프(CommittingRoute · get_db_session)에만 있다 —
+       요청 밖의 세션(스케줄러·직접 ``AsyncSessionLocal()``)이 커밋하면 대기열은
+       아무 데도 가지 않고 세션과 함께 조용히 버려진다. 그런 호출자는 커밋 후
+       ``drain_pending_redis(session, redis=...)`` 를 직접 불러야 한다.
+    """
+    session.info.setdefault(PENDING_REDIS_KEY, []).append((channel, payload))
+
+
+async def drain_pending_redis(
+    session: AsyncSession, request: Request | None = None, *, redis=None
+) -> None:
+    """커밋 **성공 직후** 대기열의 Redis publish 를 실행한다. 발송은 최선노력.
+
+    ``redis`` 를 넘기면 request 없이도 쓸 수 있다 — 스케줄러 등 요청 밖 호출자용.
+    """
+    # 실물 AsyncSession.info 는 항상 평범한 dict 다. 테스트 double(AsyncMock·
+    # FakeSession)은 dict 가 아니거나 attr 자체가 없을 수 있으니 방어한다 —
+    # 이 경우 대기열에 들어갔을 이벤트도 없으니 무시해도 안전하다.
+    info = getattr(session, "info", None)
+    pending = info.pop(PENDING_REDIS_KEY, None) if isinstance(info, dict) else None
+    if not pending:
+        return
+    if redis is None and request is not None:
+        redis = getattr(request.app.state, "redis", None)
+    if redis is None:
+        logger.warning("pending_redis_publish_skipped", count=len(pending), reason="no redis")
+        return
+    for channel, payload in pending:
+        try:
+            await redis.publish(channel, payload)
+        except Exception:
+            logger.warning("pending_redis_publish_failed", channel=channel, exc_info=True)
+
 
 def create_engine():
     settings = get_settings()
@@ -72,6 +114,7 @@ async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession, None]
                         exc_info=True,
                     )
                     raise
+                await drain_pending_redis(session, request)
 
 
 class CommittingRoute(APIRoute):
@@ -106,6 +149,7 @@ class CommittingRoute(APIRoute):
             except Exception:
                 await session.rollback()
                 raise  # 아직 응답 전이므로 예외 핸들러가 정상적으로 500 봉투를 만든다
+            await drain_pending_redis(session, request)
 
             return response
 

@@ -41,7 +41,11 @@ from app.services.fallback_loop import (
 from app.services.fallback_resolver import make_same_provider
 from app.services.router_service import RouterService
 from app.services.streaming import bedrock_anthropic_sse_stream
-from app.services.thinking_normalizer import normalize_thinking, sanitize_output_config
+from app.services.thinking_normalizer import (
+    normalize_thinking,
+    sanitize_bedrock_messages,
+    sanitize_output_config,
+)
 from app.services.tool_filter import strip_unsupported_tools
 from app.services.upstream_compat import (
     apply_forwarded_betas,
@@ -209,18 +213,27 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
         model_alias = req_data.get("model", "")
         is_stream = req_data.get("stream", False)
 
+        # ⚠️ 정규화는 여기서 하지 않는다 — 모델 해석(아래 resolve_*) 전이라 alias
+        #    밖에 모르는데, alias 추정이 실제 모델을 오판하면 필드를 잘못 지운다.
+        #    이 본문은 body-logging 의 request_body 용이라 해석된 pmid 로 아래서
+        #    다시 정규화한다(실제 wire body 는 _build_candidate_body 가 만든다).
         bedrock_body = {k: v for k, v in req_for_bedrock.items() if k in _BEDROCK_ALLOWED_FIELDS}
         bedrock_body["anthropic_version"] = "bedrock-2023-05-31"
-        sanitize_output_config(bedrock_body, alias=model_alias, request_id=request_id)
         if auth_context and auth_context.sso_subject:
             bedrock_body["metadata"] = {"user_id": auth_context.sso_subject}
         cache_ttl_1h = _has_1h_cache_control(req_data)
-        body = json.dumps(bedrock_body).encode()
     except Exception:
         return JSONResponse(
             status_code=400,
             content={"error": {"type": "invalid_request_error", "message": "Invalid JSON body"}},
         )
+
+    # 클라이언트가 보낸 anthropic-beta 와 넘길 목록은 요청마다 한 번만 읽는다.
+    # _build_candidate_body 는 폴백 후보·웹 검색 턴마다 불리므로 그 안에서 읽지 않는다.
+    # English: read the client's anthropic-beta and the forward list once per request;
+    # _build_candidate_body runs once per fallback candidate and per web-search turn.
+    _client_betas = client_betas(request.headers.getlist("anthropic-beta"))
+    _fwd_map = forward_beta_map(get_settings().bedrock_forward_betas)
 
     if not model_alias:
         return JSONResponse(
@@ -282,6 +295,7 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
         mantle_body = {k: v for k, v in req_for_bedrock.items() if k in _BEDROCK_ALLOWED_FIELDS}
         mantle_body.pop("anthropic_version", None)
         sanitize_output_config(mantle_body, call_model_id, alias=model_alias, request_id=request_id)
+        sanitize_bedrock_messages(mantle_body, call_model_id, alias=model_alias, request_id=request_id)
         mantle_body["model"] = call_model_id
         # Carry user attribution metadata, same as the Bedrock path (line ~138).
         if auth_context and auth_context.sso_subject:
@@ -315,6 +329,25 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
         call_model_id = _rewrite_model_id_for_region(
             model_config.provider_model_id, region=_region_for_rewrite
         )
+        # body-logging 의 request_body — 실제 wire body(_build_candidate_body)와
+        # 같은 판정(해석된 pmid + 실제 전달될 beta)으로 정규화해야 로그가 보낸
+        # 내용과 일치한다. 해석 전의 alias 추정으로 미리 지우면 잘못 삭제된 필드를
+        # 되살릴 수 없으므로 여기서 한 번만 한다.
+        sanitize_output_config(
+            bedrock_body, model_config.provider_model_id,
+            alias=model_alias, request_id=request_id,
+        )
+        sanitize_bedrock_messages(
+            bedrock_body, model_config.provider_model_id,
+            alias=model_alias, request_id=request_id,
+            forwarded_betas=[b for b in _client_betas if b in _fwd_map
+                             and (_fwd_map[b] is None or _fwd_map[b] in req_for_bedrock)],
+        )
+        body = json.dumps(
+            normalize_thinking(
+                bedrock_body, model_config.provider_model_id, request_id=request_id
+            )
+        ).encode()
         stream_kwargs = {"path_suffix": "invoke-with-response-stream"}
         nonstream_kwargs = {"path_suffix": "invoke"}
 
@@ -372,13 +405,6 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
 
     is_mantle = decision.provider == ProviderType.BEDROCK_MANTLE
 
-    # 클라이언트가 보낸 anthropic-beta 와 넘길 목록은 요청마다 한 번만 읽는다.
-    # _build_candidate_body 는 폴백 후보·웹 검색 턴마다 불리므로 그 안에서 읽지 않는다.
-    # English: read the client's anthropic-beta and the forward list once per request;
-    # _build_candidate_body runs once per fallback candidate and per web-search turn.
-    _client_betas = client_betas(request.headers.getlist("anthropic-beta"))
-    _fwd_map = forward_beta_map(get_settings().bedrock_forward_betas)
-
     def _build_candidate_body(
         req_d: dict, cand_config: ModelConfigSchema, streaming: bool
     ) -> tuple[bytes, dict, dict]:
@@ -395,6 +421,7 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
             mantle_b = {k: v for k, v in req_d.items() if k in _BEDROCK_ALLOWED_FIELDS}
             mantle_b.pop("anthropic_version", None)
             sanitize_output_config(mantle_b, cand_config.provider_model_id, request_id=request_id)
+            sanitize_bedrock_messages(mantle_b, cand_config.provider_model_id, request_id=request_id)
             mantle_b["model"] = cand_config.provider_model_id
             if auth_context and auth_context.sso_subject:
                 mantle_b["metadata"] = {"user_id": auth_context.sso_subject}
@@ -423,6 +450,13 @@ async def messages(request: Request) -> StreamingResponse | JSONResponse:
             # ⚠️ Cowork 의 `output_config.format`(구조화 출력)은 Bedrock 이 거부한다
             #    — effort 만 남긴다(haiku 는 지원하므로 그대로).
             sanitize_output_config(bedrock_b, cand_config.provider_model_id, request_id=request_id)
+            # 그 필드를 여는 beta 가 실제로 전달될 것만 넘긴다 — 전달되면 후보 모델이
+            # 쓸 수 있으므로 정규화가 지우면 안 된다(apply_forwarded_betas 와 같은 판정).
+            sanitize_bedrock_messages(
+                bedrock_b, cand_config.provider_model_id, request_id=request_id,
+                forwarded_betas=[b for b in _client_betas
+                                 if b in _fwd_map
+                                 and (_fwd_map[b] is None or _fwd_map[b] in req_d)])
             if auth_context and auth_context.sso_subject:
                 bedrock_b["metadata"] = {"user_id": auth_context.sso_subject}
             # ⚠️ `thinking` 의 형태를 **후보 모델이 받는 형태로** 맞춘다.
@@ -900,11 +934,12 @@ async def count_tokens(request: Request) -> JSONResponse:
         model_alias = req_data.get("model", "")
         bedrock_body = {k: v for k, v in req_data.items() if k in _BEDROCK_ALLOWED_FIELDS}
         bedrock_body["anthropic_version"] = "bedrock-2023-05-31"
-        sanitize_output_config(bedrock_body, alias=model_alias)
+        # 정규화는 모델 해석(resolve_bedrock_model) 뒤에 한다 — alias 추정이 실제
+        # 모델을 오판하면 필드가 잘못 지워져 카운트가 틀어진다(팀-haiku alias +
+        # opus 대상 → effort 유실, sonnet-4-6 alias + 5-5 대상 → 신형 필드 유실).
         # Bedrock CountTokens requires max_tokens in the wrapped Anthropic body
         # even though it doesn't generate output; inject a placeholder when absent.
         bedrock_body.setdefault("max_tokens", 1)
-        body = json.dumps(bedrock_body).encode()
     except Exception:
         return JSONResponse(
             status_code=400,
@@ -962,6 +997,20 @@ async def count_tokens(request: Request) -> JSONResponse:
     # CountTokens rejects cross-region inference profile IDs (global./us./apac./eu.)
     # — use the base foundation-model ID instead.
     count_tokens_model_id = _strip_region_prefix(model_config.provider_model_id)
+
+    # 해석된 실제 모델로 정규화한다 — invoke 의 _build_candidate_body 와 같은 규약.
+    # forwarded_betas 는 비워 둔다: CountTokens 요청엔 beta 필드를 주입하지 않으므로
+    # (apply_forwarded_betas 를 타지 않는 경로) 필드가 "열리지" 않아, beta 로 열리는
+    # 필드는 지우는 게 상류 400 을 막는 방향과 일치한다.
+    sanitize_output_config(
+        bedrock_body, model_config.provider_model_id, alias=model_alias
+    )
+    sanitize_bedrock_messages(
+        bedrock_body, model_config.provider_model_id, alias=model_alias
+    )
+    body = json.dumps(
+        normalize_thinking(bedrock_body, model_config.provider_model_id)
+    ).encode()
 
     # cross-account(claude-code→374): invoke 와 동일 계정에서 CountTokens 실행 → 계정 스플릿 방지.
     # account_role_arn NULL(codex/기본)이면 in-account adapter 그대로(무회귀). assume 실패 시 859 폴백.

@@ -11,6 +11,18 @@ from worker.senders.base import EmailSendError
 logger = structlog.get_logger(__name__)
 
 
+def _mask_email(address: str) -> str:
+    """로그용 이메일 마스킹 — PII(수신자 주소)를 로그에 평문으로 남기지 않는다.
+
+    도메인은 운영 디버깅(사내/외부 도메인 구분)에 필요해 보존하고,
+    로컬 파트만 첫 글자 + *** 로 가린다.
+    """
+    local, _, domain = address.partition("@")
+    if not domain:
+        return "***"
+    return f"{local[:1]}***@{domain}"
+
+
 class SESEmailSender:
     """AWS SES를 통한 이메일 전송 (Post-MVP, optional-deps: boto3).
 
@@ -33,8 +45,14 @@ class SESEmailSender:
         import asyncio
 
         source = f"{self._sender_name} <{self._sender_address}>"
+        logger.info(
+            "ses_send_started",
+            recipient=_mask_email(email.recipient.email),
+            subject=email.subject,
+            sender=source,
+        )
         try:
-            await asyncio.get_event_loop().run_in_executor(
+            response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self._client.send_email(
                     Source=source,
@@ -44,6 +62,11 @@ class SESEmailSender:
                         "Body": {"Html": {"Data": email.html_body, "Charset": "UTF-8"}},
                     },
                 ),
+            )
+            logger.info(
+                "ses_send_succeeded",
+                recipient=_mask_email(email.recipient.email),
+                message_id=response.get("MessageId"),
             )
         except Exception as exc:
             error_code = getattr(getattr(exc, "response", {}).get("Error", {}), "get", lambda k: None)("Code")

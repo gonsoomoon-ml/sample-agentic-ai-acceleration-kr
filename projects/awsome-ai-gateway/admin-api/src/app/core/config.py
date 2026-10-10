@@ -150,6 +150,13 @@ class Settings(BaseSettings):
     ADMIN_EMAILS: Annotated[list[str], NoDecode] = []
     ADMIN_GROUPS: Annotated[list[str], NoDecode] = []
 
+    # TEAM_LEADER 는 Cognito 그룹으로 부트스트랩하지 않는다 (의도적). "역할" 과 "어느
+    # 팀" 두 가지를 그룹명만으로 모호함 없이 표현하려면 팀 매핑 그룹과 별도로 또 하나의
+    # 그룹에 동시 가입해야 해 운영 부담이 크다. 대신 admin-ui 에서 관리자가 팀원 한 명을
+    # 리더로 지정한다 (PUT /admin/teams/{id}/leader) — 팀이 고정되어 있어 모호하지 않다.
+    # oidc_service._upsert_user / cognito_sync_service._upsert_one_user 가 이 수동
+    # 지정을 Cognito 재로그인/재동기화 때 덮어쓰지 않도록 보존한다.
+
     # ── Auto-provisioning Defaults ──
     # 기본 시드 (db/init/03_seed_data.sql) 의 UUID 와 정확히 일치해야 함.
     DEFAULT_TEAM_ID: str = "00000000-0000-4000-a000-000000000003"  # "Default Team"
@@ -221,6 +228,10 @@ class Settings(BaseSettings):
     # ── Scheduler ──
     ROI_AGGREGATION_CRON: str = "*/15 * * * *"
     KEY_EXPIRY_CRON: str = "0 * * * *"
+    # 되돌릴 수 없는 물리 DELETE 라 기본 OFF — 운영 검토 후 명시적으로 켠다.
+    KEY_PURGE_ENABLED: bool = False
+    KEY_PURGE_CRON: str = "30 3 * * *"
+    KEY_PURGE_RETENTION_DAYS: int = 90
     # DAILY_USAGE_AGG_CRON: 2026-04-21 cost-recorder-worker 로 이관됨. 이 setting
     # 은 worker 서비스 환경변수로 관리.
 

@@ -29,7 +29,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
 from app.core.config import get_settings
-from app.core.exceptions import ForbiddenError
 from app.core.oidc_identity import derive_role
 from app.core.oidc_verifier import OIDCConfigError, OIDCVerifier, OIDCVerifyError
 from app.models.auth import Department, Team, User, UserRole
@@ -39,7 +38,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.cli import VirtualKeyIssueResponse
 from app.services.cli_service import CLIService
 from app.services.key_service import KeyService
-from app.services.user_team_service import UserTeamService
+from app.services.user_team_service import UserTeamService, release_stale_leader_pointer
 
 logger = structlog.get_logger()
 
@@ -389,6 +388,15 @@ class OIDCService:
            admin_jwt(리소스 서버) 경로와 조용히 어긋난다 — 그 부류의 사고가 이미
            한 번 있었다(oidc_identity 모듈 docstring 참조). 이 래퍼는 기존 호출부와
            테스트를 유지하기 위해서만 남긴다.
+
+        TEAM_LEADER 는 Cognito 그룹으로 부트스트랩하지 않는다 — "어느 팀"의
+        리더인지까지 그룹명만으로 명확히 표현하려면 팀 매핑용 그룹과 별도로 또
+        하나의 그룹(예: ClaudeTeamLeader)에 동시 가입해야 해서 운영 부담이 크고,
+        두 그룹 매핑이 어긋나면 엉뚱한 팀의 리더가 될 위험도 있다. 대신 관리자가
+        admin-ui 에서 팀원 한 명을 리더로 지정한다 (``PUT /admin/teams/{id}/leader``,
+        ``UserTeamService.set_team_leader``) — 팀이 명확히 고정되어 모호함이 없다.
+        ``_upsert_user`` 가 이 수동 지정을 Cognito 재로그인/재동기화 때 덮어쓰지
+        않도록 보존한다.
         """
         return derive_role(email, groups)
 
@@ -466,8 +474,14 @@ class OIDCService:
         if existing.email != email and (not incoming_is_synthetic or existing_is_synthetic):
             existing.email = email
         existing.display_name = display_name
-        # role 변경은 admin 권한 변동이므로 명시 로그
-        if existing.role != role:
+        # role 변경은 admin 권한 변동이므로 명시 로그.
+        # TEAM_LEADER 는 Cognito 그룹이 아니라 admin-ui("팀 리더 지정")에서만 설정되므로
+        # (_derive_role 은 ADMIN/DEVELOPER 만 반환), Cognito 재로그인 때 DEVELOPER 로
+        # 되돌아가지 않도록 보존한다. ADMIN_GROUPS 매칭(승격) / 제외(강등)는 그대로 반영.
+        if existing.role == UserRole.TEAM_LEADER and role == UserRole.DEVELOPER:
+            role = UserRole.TEAM_LEADER
+        role_changed = existing.role != role
+        if role_changed:
             logger.info(
                 "oidc.user_role_changed",
                 user_id=str(existing.id),
@@ -475,4 +489,27 @@ class OIDCService:
                 new_role=role.value,
             )
             existing.role = role
+        # 팀/역할이 바뀌면서 옛 팀의 leader_user_id 가 이 사람을 계속 가리키는
+        # 스테일 포인터를 정리한다 — 승격(ADMIN)·그룹 변경 강등·팀 이동 경로.
+        # 변동 없는 로그인마다 savepoint+SELECT 를 타지 않도록 변경 시에만 돌린다
+        # — 이 경로는 issue_key 의 10k boot storm 에 맞춰 튜닝된 핫 패스다.
+        # 과거에 남은 스테일 포인터는 DELETE /teams/{id}/leaders/{uid} 로 정리.
+        # 표시용 포인터라 정리 실패가 로그인 자체를 깨면 안 된다(최선노력).
+        # id 는 try 전에 빼둔다 — 세션이 깨진 뒤 속성 접근이 다시 터질 수 있다.
+        if team_changed or role_changed or not existing.is_active:
+            uid = existing.id
+            try:
+                await release_stale_leader_pointer(
+                    session,
+                    user_id=uid,
+                    team_id=existing.team_id,
+                    role=existing.role,
+                    is_active=existing.is_active,
+                )
+            except Exception:
+                logger.warning(
+                    "oidc.stale_leader_pointer_cleanup_failed",
+                    user_id=str(uid),
+                    exc_info=True,
+                )
         return existing, False, team_changed

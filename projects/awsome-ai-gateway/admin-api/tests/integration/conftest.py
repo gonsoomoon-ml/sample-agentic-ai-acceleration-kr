@@ -15,6 +15,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from tests.session_double import wire_savepoint
+
+
+def _session() -> AsyncMock:
+    """AsyncMock 세션 — begin_nested 는 wire_savepoint 가 실물과 같은
+    sync 호출 → async CM 으로 다시 배선한다(그 전에 쓰이는 경로용 안전값)."""
+    session = AsyncMock()
+    session.begin_nested = MagicMock(return_value=MagicMock())
+    return session
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 
@@ -146,7 +154,7 @@ async def _mock_get_db_session(request: Request):
        도 실제 세션처럼 커밋/롤백 뒤 False 로 떨어지게 해서, 승격된 라우트가 커밋한
        세션을 종료 블록이 또 커밋하지 않는지까지 같은 배선으로 확인한다.
     """
-    session = AsyncMock()
+    session = _session()
     # begin_nested 는 실물에서 sync 호출 → async CM (session_double 주석 참조)
     wire_savepoint(session)
     session.execute = AsyncMock(return_value=_mock_db_result())
@@ -162,6 +170,9 @@ async def _mock_get_db_session(request: Request):
 
     session.commit = AsyncMock(side_effect=_close)
     session.rollback = AsyncMock(side_effect=_close)
+    # session.info 는 실물에서 평범한 dict — AsyncMock 에 두면 커밋 후 발행 대기열
+    # (drain_pending_redis) pop 이 코루틴을 돌려준다.
+    session.info = {}
 
     setattr(request.state, SESSION_STATE_ATTR, session)
     yield session

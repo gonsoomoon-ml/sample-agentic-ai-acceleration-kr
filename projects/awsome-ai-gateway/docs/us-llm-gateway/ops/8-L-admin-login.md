@@ -299,5 +299,6 @@ JIT 형(링크 없이 federated 사용자 생성)이면 groups 가 IdP 클레임
 ## 알아둘 점
 
 - **세션 1시간** — admin 쿠키는 Cognito id_token 이라 1시간 뒤 만료되고 로그인 화면으로 돌아간다. 수명은 [8-Z](8-Z-token-ttl.md) 머리말의 Cognito 안내(terraform).
-- **로그아웃은 admin 쿠키만 지운다** — Cognito 쪽 로그인 세션은 별개다. 다른 계정으로 바꿀 때는 시크릿 창으로.
+- **로그아웃은 IdP 세션까지 끊는다** — admin 쿠키를 지우고 Cognito 의 `/logout` 으로 보내 hosted-UI 세션도 닫은 뒤 `https://<admin-ui host>/` 로 돌아온다. 이 URL 은 앱 클라이언트의 **Allowed sign-out URLs**(`cognito_logout_urls`, callback 목록과는 별개)에 등록돼 있어야 한다 — `19-admin-login.sh callback` 이 두 목록을 함께 tfvars 에 넣는다. **등록이 없으면** 로컬 쿠키만 지워진 채 Cognito 400 오류 화면에 도착한다(조용한 폴백이 아니라 실패다 — 재적용이 필요하면 `callback` 단계를 다시). `logout_uri` 오리진은 `OIDC_REDIRECT_URI` 에서 파생되므로 CloudFront·ALB 뒤에서도 등록된 오리진과 일치한다. Cognito 가 아닌 IdP 는 `OIDC_LOGOUT_URL` 을 명시해야 이 경로가 동작한다.
+  - **배포 순서 주의** — 이 동작이 포함된 UI 가 sign-out URL 등록(`19-admin-login.sh callback` + terraform apply)보다 먼저 나가면 그 기간 모든 로그아웃이 Cognito 400 에 도착한다. 등록 전 기간에는 admin-ui 환경의 `OIDC_LOGOUT_URL=off` 로 IdP 로그아웃을 끌 수 있다(로컬 쿠키만 지워지고 `/` 로 돌아간다) — 등록 후 값을 지우면 자동 파생 경로가 다시 켜진다.
 - **관리자 권한은 그룹이 정한다** — `ClaudeAdmin` 에서 빼면 그 사람의 다음 토큰(최대 1시간 뒤)부터 관리자가 아니다.
