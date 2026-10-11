@@ -159,7 +159,7 @@ python3 check-safeguards-passthrough.py "$ANTHROPIC_BASE_URL"
 결과: 패치 미적용 (이전 동작)
 ```
 
-`1.0.84-safeguards` 가 이미 배포된 곳은 1~3 이 PASS, 4·5 가 FAIL 이고 결과가 `서버 판정은 적용됨, 2026-10-09 beta 2개는 미적용` 이다. 이 경우도 3절부터 그대로 진행한다.
+`1.0.84-safeguards` 가 이미 배포된 곳은 1~3 이 PASS, 4·5 가 FAIL 이고 결과가 `서버 판정은 적용됨, 2026-10-09 beta 2개는 미적용` 이다. 이 경우도 3절부터 따로 하지 않고 US-18(8-D)로 올린다.
 
 ## 3. 이미지 태그 올리기
 

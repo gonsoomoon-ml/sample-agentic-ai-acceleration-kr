@@ -56,7 +56,7 @@
 |---|---|---|---|
 | [**US-19**](ops/8-D-upstream-sync.md#us-19-로-따라-할-때-달라지는-것) 2026/10 | **Haiku 5.5 추가** — 빠르고 싼 최신 Haiku(입력 단가가 Haiku 4.5 의 1/10) | 권장 · 신규 포함 | [8-D](ops/8-D-upstream-sync.md#us-19-로-따라-할-때-달라지는-것) 를 「US-19」 차이대로 · 약 1시간 |
 | [**US-18**](ops/8-D-upstream-sync.md#us-18-로-따라-할-때-달라지는-것) 2026/10 | **예산·비용·권한 결함 수정** — 예산 알림 · 팀 예산 권한 · 비용 기록(Sonnet 5.5 캐시 단가) 등 7건 | 필수 · 신규 포함 | [8-D](ops/8-D-upstream-sync.md#us-18-로-따라-할-때-달라지는-것) 를 「US-18」 차이대로 · 약 1시간 |
-| [**US-17**](ops/8-A-automode-server.md) 2026/10 | Claude Code **Auto mode 의 안전 판정을 Bedrock 이** — 따로 보내던 판정 요청과 과금 안내가 사라짐 | 권장 · Auto mode 를 쓰면 · 신규 포함 | US-18 을 적용하면 함께 적용됨 · 확인은 [8-A](ops/8-A-automode-server.md) |
+| [**US-17**](ops/8-A-automode-server.md) 2026/10 | Claude Code **Auto mode 의 안전 판정을 Bedrock 이** — 따로 보내던 판정 요청과 과금 안내가 사라짐 | US-18 에 포함 · 신규 포함 | **따로 하지 않는다** — US-18 을 하면 들어옴 · 확인만 [8-A](ops/8-A-automode-server.md) |
 | [**US-16**](ops/8-M-models.md) 2026/10 | **Sonnet 5.5 를 기본 모델로** — 이전 세대(Opus 5 · Sonnet 5 · Opus 4.8)는 목록에서 내림 | 권장 · 신규 포함 | [8-M](ops/8-M-models.md) 의 「0」~「C」 순서대로 |
 | [**US-15**](ops/8-Z-token-ttl.md) 2026/10 | 게이트웨이 열쇠(VK) **수명 1시간 → 24시간** — 열쇠 재발급이 하루 한 번으로 | 선택 · 신규 설치도 따로 | [8-Z](ops/8-Z-token-ttl.md) · 약 10분 · 추론 무중단 |
 
