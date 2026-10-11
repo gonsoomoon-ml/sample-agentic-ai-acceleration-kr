@@ -247,6 +247,19 @@ bash 16-usage-recent.sh
 단가(1K 토큰당 입력 `0.00011` · 출력 `0.00055` · 캐시 쓰기 `0.0001375`(1시간 캐시면 `0.00022`) ·
 캐시 읽기 `0.000011`)와 같다 — Haiku 4.5 단가로 잡혔다면 10배가 된다.
 
+▶ 실행 · 사용자 PC — Cowork 모델 목록에 Haiku 5.5 더하기 (🔴 관리자 PowerShell — 정책이 HKLM 이면 관리자 권한이 필요하다)
+```powershell
+$m = "claude-sonnet-5-5,claude-opus-5-5,claude-haiku-5-5,claude-haiku-4-5-20251001"
+gateway-cli-cowork setup --model claude-sonnet-5-5 --available-models $m
+gateway-cli-cowork verify
+```
+기대: 앱이 자동으로 재시작되고 모델 선택기에 Haiku 5.5 가 보인다. 골라서 "hi" 를 보내면 답이 온다.
+- Cowork 는 PC 에 저장된 목록만 보여 준다. 서버에 등록돼도 이 단계 전에는 선택기에 안 보인다.
+- Mac 은 `.mobileconfig` 의 `inferenceModels` 에 `<string>claude-haiku-5-5</string>` 한 줄을 더해
+  다시 설치한다(같은 프로파일이 교체된다).
+- 답이 안 오면 Cowork 앱 안의 Claude Code 가 Haiku 5.5 를 모르는 버전일 수 있다 — 앱을 새
+  버전으로 올린다.
+
 **▶ US-18 — 예산·분석 화면 확인**
 
 ▶ 실행 · 관리 화면
