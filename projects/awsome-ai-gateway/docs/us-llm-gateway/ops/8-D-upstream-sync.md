@@ -321,13 +321,6 @@ bash 14-postdeploy-check.sh
 ```
 기대: `2. Numbers` 의 `web_search_24h` 가 1 이상.
 
-▶ 실행 · 배포 EC2 — 다음날(24시간 뒤)
-```bash
-cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
-bash 14-postdeploy-check.sh --compare snapshots/pre.numbers
-```
-기대: `OK no failures`. 오류 비율·비용이 급변하지 않는다.
-
 | 확인 | 어떻게 | 기대 |
 |---|---|---|
 | 스키마 | 14 `alembic_version` | repo 의 최신 마이그레이션 번호 |
@@ -337,7 +330,6 @@ bash 14-postdeploy-check.sh --compare snapshots/pre.numbers
 | thinking | 위 사용자 PC 의 첫 번째 명령(Claude Code 는 thinking 을 켠 채 보낸다) | 답이 옴(400 아님) |
 | readiness | 14 §4 `/health/ready` | 200 `HEALTHY` |
 | 예산 | 14 U/B 비율 | 경고 없음(≤ 1.05) |
-| 24h | 위 「다음날」 블록 | 오류 비율·비용 급변 없음 |
 
 ## 롤백
 
@@ -506,6 +498,6 @@ bash 14-postdeploy-check.sh
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 14-postdeploy-check.sh --compare snapshots/pre.numbers
 ```
-기대: `OK no failures`. 오류 비율·비용이 급변하지 않는다.
+기대: `OK no failures`. 예산·비용 증가분이 서로 비슷하다(오류는 실행 시점 최근 1시간만 보인다).
 
 롤백은 §롤백에서 `dev`→`prod`(스냅샷 `llm-gateway-prod-pre-sync-…`, 백업 `snapshots/<ts>-values-prod.yaml.bak`).
