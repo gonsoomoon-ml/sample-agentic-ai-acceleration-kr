@@ -34,8 +34,8 @@
 - **(8)** — **할 일 있음**: (8) 의 「▶ US-19 — Haiku 5.5 등록」(새 모델). 그다음 공통 `08` 이
   100K 초과 구간 단가까지 넣습니다.
 - **(9)** — **확인 추가**: (9) 의 「▶ US-19」.
-- **되돌리기** — `helm rollback` 만으로 됩니다(넓힌 단가 열은 옛 이미지와도 맞습니다). Haiku 5.5
-  를 등록했다면 관리 화면에서 INACTIVE 로(옛 gateway-proxy 는 Haiku 5.5 에 400).
+- **되돌리기** — 「롤백」의 「▶ US-19」. 코드는 `helm rollback` 만으로 됩니다(넓힌 단가 열은 옛
+  이미지와도 맞습니다).
 
 ### US-18 로 따라 할 때 달라지는 것
 
@@ -191,8 +191,10 @@ bash 02-add-opus5-model.sh --apply
 **US-18 — 할 일 없음.** 아래 `08` 의 차이 표에 `claude-sonnet-5-5` 캐시 읽기 `0.000220 →
 0.000110` 한 줄이면 정상.
 
-**US-10 — `08` 뒤에** 관리 화면에서 새로 ACTIVE 로 보이는 시드 alias(`global.anthropic.claude-opus-5`
-· `…-sonnet-5` · `gpt-5.6-*` · `llama-3-70b`)를 INACTIVE 로.
+**▶ US-10 — `08` 뒤에 시드 alias 비활성화**
+
+▶ 실행 · 관리 화면 — **모델 관리** 에서 새로 ACTIVE 로 보이는 시드 alias(`global.anthropic.claude-opus-5`
+· `…-sonnet-5` · `gpt-5.6-*` · `llama-3-70b`)마다 **비활성화** 를 누른다.
 
 ### 단가 맞춤 — 모든 업데이트
 
@@ -206,17 +208,37 @@ bash 08-set-model-pricing.sh --apply
 `nothing to change`. 위에서 새 모델을 등록했으면 그 모델이 CHANGE 로 나온다 — US-19 는
 `claude-haiku-5-5` 의 `long: none → prompt > 100000 tokens: …`. 왜 배포 **뒤**인가: 마이그레이션이 단가 행을 건드릴 수 있어서([US-11](../updates.md)). 단가 표 = `update-scripts/pricing.tsv` 가 정본이다 — 청구 단가가 다르면 `--apply` 전에 이 파일부터 고친다(2단계). 단가만 따로 다룬 문서 = [8-R](8-R-pricing.md).
 
-(9) 의 `14` 가 ACTIVE 로 남은 시드 alias 를 알려 준다 — 있으면 관리 화면에서 INACTIVE 로 둔다.
+(9) 의 `14` 가 ACTIVE 로 남은 시드 alias 를 알려 준다 — 있으면 관리 화면 › **모델 관리** › 그 별칭의 **비활성화**.
 
 ## (9) 사후 점검 — 14 + 종단 1건, 그리고 24h
 
 ### 업데이트별 확인 — 따라 하는 업데이트 것만 (아래 공통 점검과 함께)
 
-**▶ US-19** — `bash status.sh` 의 US-19 가 OK(구간 단가 포함) · 등록 5분 뒤 Claude Code 로
-`claude --model claude-haiku-5-5 -p "hi"` 가 답함(thinking 400 이면 gateway-proxy 가 옛 이미지).
+**▶ US-19 — Haiku 5.5 확인**
 
-**▶ US-18** — 예산 알림 기준(50 저장 → 6분 뒤에도 50) · 분석 화면(30초 안에 두 번 열어도
-정상, 앱 필터를 바꾸면 숫자가 바뀜).
+▶ 실행 · 배포 EC2
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash status.sh
+```
+기대: `US-19 Haiku 5.5` 줄이 OK — `claude-haiku-5-5 ACTIVE · us.anthropic.claude-haiku-5-5 ·
+단가 = pricing.tsv (100K 초과 구간 포함)`. 아래 공통 점검의 `04-verify.sh` 1건도 `config.env` 의
+모델(이제 Haiku 5.5)로 호출된다.
+
+▶ 실행 · 사용자 PC (게이트웨이에 연결된 Claude Code) — (8) 등록 5분 뒤
+```bash
+claude update
+claude --version
+claude --model claude-haiku-5-5 -p "hi"
+```
+기대: 답이 온다. `400` 에 `thinking.type.enabled` 가 보이면 gateway-proxy 가 옛 이미지다 —
+(5)·(6)·(7) 을 확인한다.
+
+**▶ US-18 — 예산·분석 화면 확인**
+
+▶ 실행 · 관리 화면
+1. **예산 관리** → 알림 기준을 50 으로 저장 → 6분 뒤 다시 열어도 50 이다.
+2. **분석** 화면을 30초 안에 두 번 연다 → 깨지지 않고, 앱 필터를 바꾸면 숫자가 바뀐다.
 
 ### 공통 점검 — 모든 업데이트
 
@@ -259,13 +281,21 @@ bash 04-verify.sh --base-url $GW --vk $GATEWAY_KEY
 기대: `HTTP 200` + 「C」 표에 새 행(비용 = 입력·출력 토큰 × Standard 단가 — 예: 491/10 토큰이면
 0.002976).
 
+▶ 실행 · 사용자 PC (게이트웨이에 연결된 Claude Code) — thinking · web search
+```bash
+claude -p "hi"
+claude -p "오늘 AWS 뉴스를 웹에서 찾아 한 줄로"
+```
+기대: 둘 다 답이 온다(400 아님). 그다음 EC2 에서 `bash 14-postdeploy-check.sh` 의
+`web_search_24h` 가 1 이상.
+
 | 확인 | 어떻게 | 기대 |
 |---|---|---|
 | 스키마 | 14 `alembic_version` | repo 의 최신 마이그레이션 번호 |
 | 단가 | 14 price 행 · 호출 1건 뒤 `usage_logs.cost_usd` 검산 | pricing.tsv 와 일치 |
 | 라우팅 | 14 `claude-… -> us.anthropic.…` | `us.` 그대로(Global 로 안 바뀜) |
-| web search | Claude Code 로 검색 필요한 질문 1건 → 14 의 W(24h) | `web_search_count` ≥ 1 |
-| thinking | `thinking:{type:enabled}` 요청 1건 | 200(400 아님) |
+| web search | 위 사용자 PC 의 두 번째 명령 → `14` 의 `web_search_24h` | ≥ 1 |
+| thinking | 위 사용자 PC 의 첫 번째 명령(Claude Code 는 thinking 을 켠 채 보낸다) | 답이 옴(400 아님) |
 | readiness | 14 §4 `/health/ready` | 200 `HEALTHY` |
 | 예산 | 14 U/B 비율 | 경고 없음(≤ 1.05) |
 | 24h | 다음날 `14 --compare` 다시 | 오류 비율·비용 급변 없음 |
@@ -273,8 +303,28 @@ bash 04-verify.sh --base-url $GW --vk $GATEWAY_KEY
 ## 롤백
 
 - **코드+DB 전부** — (3) 스냅샷 복원(새 클러스터로 생기므로 RDS Proxy 대상 교체가 따른다, 1h+) **+** `helm rollback`([8-U 4단계](8-U-update.md#4단계--안-되면-되돌린다)). 코드만 되돌려도 되는지는 (0) 블록의 「되돌리기」를 먼저 본다 — 옛 이미지가 새 스키마를 못 읽는 업데이트(예: US-10)는 스냅샷 복원과 함께 해야 한다.
-- **단가만** — `snapshots/<ts>-08-pricing-rollback.sql` 을 psql 파드로.
-- **values 태그만** — `snapshots/<ts>-values-dev.yaml.bak` 복원 후 `install-eks.sh dev`.
+- **단가만** — [8-R](8-R-pricing.md) 의 「⑦ 되돌리기」 대로 — 표를 이전 값으로 되돌리고 `08 --apply`.
+  이전 값은 `snapshots/<ts>-08-pricing-rollback.sql` 안에 있다.
+- **values 태그만** — (5) 가 남긴 백업을 복원하고 다시 배포한다.
+
+▶ 실행 · 배포 EC2 — values 태그만 되돌리기 (`<ts>` 는 (5) 출력의 backup 경로)
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+cp snapshots/<ts>-values-dev.yaml.bak \
+   ~/awsome-ai-gateway/deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
+cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
+```
+
+**▶ US-19 — Haiku 5.5 내리기** (코드는 `helm rollback` 만으로 된다 — 넓힌 단가 열은 옛 이미지와도
+맞는다. 옛 gateway-proxy 는 Haiku 5.5 에 400 이므로 helm rollback 전에 내린다)
+
+▶ 실행 · 배포 EC2
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 99-rollback.sh --model
+```
+기대: 실행할 문장에 `alias='claude-haiku-5-5'` → `yes` → `INACTIVE`(삭제하지 않는다). 관리 화면 ›
+**모델 관리** › **비활성화** 로 해도 같다.
 
 ## (10) prod — prod 계정의 배포 EC2 에서, dev (9) 를 하루 지켜본 뒤
 
@@ -378,10 +428,19 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 14-postdeploy-check.sh --compare snapshots/pre.numbers
 bash 07-client-values.sh
 ```
-▶ 실행 · Client VPN 에 연결된 PC — VK 받기. prod admin-api 는 internal 이라 prod EC2 에서는
-로그인할 수 없습니다. PC 셸에 07 출력에서 그 OS 의 4줄을 붙여 넣고 `gateway-cli login --redirect-port 8090`
-→ `api-key-helper` 의 `vk-…` 를 복사합니다(같은 PC 라 터널은 필요 없습니다). 그다음 prod EC2 에서
-`read -rs GATEWAY_KEY && export GATEWAY_KEY` 를 실행해 붙여 넣습니다(화면에 안 보입니다).
+▶ 실행 · Client VPN 에 연결된 PC — VK 받기 (prod admin-api 는 internal 이라 prod EC2 에서는 로그인할
+수 없습니다. 같은 PC 라 터널은 필요 없습니다). 먼저 07 출력에서 이 PC 의 OS 에 맞는 4줄을 셸에
+붙여 넣습니다.
+```bash
+gateway-cli login --redirect-port 8090
+api-key-helper
+```
+기대: `Login successful` → `api-key-helper` 출력의 `vk-…` 줄을 복사합니다.
+
+▶ 실행 · prod EC2 — 위 `vk-…` 를 붙여 넣는다(화면에 안 보입니다)
+```bash
+read -rs GATEWAY_KEY && export GATEWAY_KEY
+```
 
 ▶ 실행 · prod EC2 — 종단 1건
 ```bash
