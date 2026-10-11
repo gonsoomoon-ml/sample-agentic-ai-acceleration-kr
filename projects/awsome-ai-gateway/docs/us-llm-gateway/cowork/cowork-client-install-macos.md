@@ -245,6 +245,7 @@ cat > ~/Downloads/us-llm-gateway-cowork.mobileconfig <<EOF
       <array>
         <string>claude-sonnet-5-5</string>
         <string>claude-opus-5-5</string>
+        <string>claude-haiku-5-5</string>
         <string>claude-haiku-4-5-20251001</string>
       </array>
     </dict>

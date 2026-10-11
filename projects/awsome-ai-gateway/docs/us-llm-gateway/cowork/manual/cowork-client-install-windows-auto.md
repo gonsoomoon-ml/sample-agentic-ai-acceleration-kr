@@ -52,7 +52,7 @@ Part B  최종 사용자  받아서 설치하고 쓴다  Readiness → 설치 �
 | CloudFront    | `<CF_DIST_ID>` → `https://xxx.cloudfront.net` (origin = gateway ALB)      |
 | gateway ALB   | `<GATEWAY_ALB_DNS>`             |
 | admin-api ALB | `<ADMIN_API_ALB_DNS>`             |
-| 모델 alias      | `claude-sonnet-5-5` · `claude-opus-5-5` · `claude-haiku-4-5-20251001` |
+| 모델 alias      | `claude-sonnet-5-5` · `claude-opus-5-5` · `claude-haiku-5-5` · `claude-haiku-4-5-20251001` |
 
 
 `packaging/site-config.json` — 이 파일 하나가 exe 에 값을 박아 넣는다. `.gitignore` **대상이라
@@ -68,7 +68,7 @@ Part B  최종 사용자  받아서 설치하고 쓴다  Readiness → 설치 �
   "caBundle": "",
 
   "coworkGatewayHttpsUrl": "https://xxx.cloudfront.net",
-  "coworkModels": "claude-sonnet-5-5,claude-opus-5-5,claude-haiku-4-5-20251001",
+  "coworkModels": "claude-sonnet-5-5,claude-opus-5-5,claude-haiku-5-5,claude-haiku-4-5-20251001",
 
   "orgUuid": "",
   "expectedCaSha256": ""
@@ -293,7 +293,7 @@ inferenceGatewayBaseUrl      = https://xxx.cloudfront.net
 inferenceGatewayAuthScheme   = bearer
 inferenceCredentialKind      = helper-script
 inferenceCredentialHelper    = C:\GatewayCLI-Cowork\api-key-helper.exe
-inferenceModels              = ["claude-sonnet-5-5","claude-opus-5-5","claude-haiku-4-5-20251001"]
+inferenceModels              = ["claude-sonnet-5-5","claude-opus-5-5","claude-haiku-5-5","claude-haiku-4-5-20251001"]
 ```
 
 > `inferenceModels` 는 **JSON 배열을 통째로 담은** `REG_SZ` **문자열**이다(`REG_MULTI_SZ` 아님).

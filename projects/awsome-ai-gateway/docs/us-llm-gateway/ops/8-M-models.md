@@ -74,7 +74,7 @@ EC2 에 들어갈 수 없으면 관리 화면 **모델** 에서 ACTIVE 목록이
 - **기본 모델** — `claude-sonnet-5-5`
 - **폴백 규칙** — `claude-opus-5-5 → claude-sonnet-5-5` 하나
 - **내린 모델** — Opus 5 · Sonnet 5 · Opus 4.8 (`US-16`). INACTIVE 라 과거 사용량·비용 기록은 남는다
-- **클라이언트 최소 버전** — Opus 5.5 는 Claude Code 2.1.280 이상 · Sonnet 5.5 는 2.1.288 에서 확인(그보다 낮은 버전은 미확인)
+- **클라이언트 최소 버전** — Opus 5.5 는 Claude Code 2.1.280 이상 · Sonnet 5.5 는 2.1.288 에서 확인(그보다 낮은 버전은 미확인) · Haiku 5.5 는 2.1.296 에서 확인(2.1.287 은 모델 목록에 없어 경고)
 
 ### 모델별 값
 
@@ -259,7 +259,7 @@ claude --model claude-sonnet-5-5 -p "hi"
 ▶ **실행** · 사용자 PC — 🔴 관리자 PowerShell (정책이 HKLM 이면 관리자 권한이 필요하다)
 
 ```powershell
-$m = "claude-sonnet-5-5,claude-opus-5-5,claude-haiku-4-5-20251001"
+$m = "claude-sonnet-5-5,claude-opus-5-5,claude-haiku-5-5,claude-haiku-4-5-20251001"
 gateway-cli-cowork setup --model claude-sonnet-5-5 --available-models $m
 ```
 

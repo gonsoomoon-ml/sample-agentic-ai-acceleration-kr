@@ -574,7 +574,7 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx" `
 
 ```powershell
 $BASE   = "<from operator - the https:// URL>"
-$MODELS = '["claude-sonnet-5-5","claude-opus-5-5","claude-haiku-4-5-20251001"]'
+$MODELS = '["claude-sonnet-5-5","claude-opus-5-5","claude-haiku-5-5","claude-haiku-4-5-20251001"]'
 $BASE
 ```
 
