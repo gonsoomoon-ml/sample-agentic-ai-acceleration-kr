@@ -238,6 +238,15 @@ claude --model claude-haiku-5-5 -p "hi"
 - Claude Code 가 Haiku 5.5 를 모르는 버전이면 「isn't described by this version's model catalog」
   경고가 함께 나온다(2.1.287 은 모름 · 2.1.293 은 앎).
 
+▶ 실행 · 배포 EC2 — 방금 호출이 Haiku 5.5 단가로 기록됐는지
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 16-usage-recent.sh
+```
+기대: 맨 위 `claude-code` 행의 `model` 이 `claude-haiku-5-5`. `cost_usd` 는 토큰 수 × Haiku 5.5
+단가(1K 토큰당 입력 `0.00011` · 출력 `0.00055` · 캐시 쓰기 `0.0001375`(1시간 캐시면 `0.00022`) ·
+캐시 읽기 `0.000011`)와 같다 — Haiku 4.5 단가로 잡혔다면 10배가 된다.
+
 **▶ US-18 — 예산·분석 화면 확인**
 
 ▶ 실행 · 관리 화면
