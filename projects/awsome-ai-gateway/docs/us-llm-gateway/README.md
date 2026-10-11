@@ -3,19 +3,20 @@
 **한국어** · [English](README.en.md)
 
 **사내 Claude Code · Cowork 를 Amazon Bedrock 으로 연결하는 LLM 게이트웨이** — 설치(최초 1회)와 이후 업데이트를 한자리에서.
-국내판과 다른 점: 해외 리전 · Bedrock 직결(Mantle 아님) · 공개 https 입구 · 영문 UI. 업데이트 ID `US-NN` 의 "US" 는 첫 배포 리전(us-west-2)에서 온 **트랙 이름**이라 리전을 바꿔도 번호는 이어진다.
+
+**직원 PC**(Claude Code · Cowork) → **게이트웨이**(인증 · 예산 · 비용 기록) → **Amazon Bedrock** · 구조는 [architecture.md](architecture.md) 「전체 그림」
+
+[원본](../../README.md)(서울 배포 기준)과 다른 점: 해외 리전 · 모든 요청을 한 계정의 Bedrock 으로 바로 보냄(원본은 앱마다 다른 계정·백엔드로 나누고 일부는 Bedrock Mantle) · 공개 https 입구 · 영문 UI. 업데이트 ID `US-NN` 의 "US" 는 첫 배포 리전(us-west-2)에서 온 **트랙 이름**이라 리전을 바꿔도 번호는 이어진다.
 
 **지금 하려는 것**
-- **처음 설치한다** — POC: [install-overview.md](install-overview.md)(범위·흐름 10분) → [install-guide.md](install-guide.md)(§1~§6-0 실행) · 운영(별도 계정 prod): [ops/8-P-prod.md](ops/8-P-prod.md) 순서로 [install-guide.md](install-guide.md) §1~§6 을 prod 계정에서 — 어느 쪽인지는 [1. 신규 설치 범위](#1-신규-설치-범위--무엇을-쓰느냐--poc-인가-운영인가)에서 먼저
-- **이미 설치했다 — 업데이트 상태를 보겠다** — 배포 EC2 에서 `bash status.sh` → 아래 [2. 최신 업데이트](#2-최신-업데이트) 표에서 미적용 항목만 · `status.sh` 는 모든 `US-NN` 을 한 줄씩 보여 주고, 판정하지 않는 항목(`US-08`·`09`·`10`·`11`·`14`)은 `--` 줄에 확인할 곳을 적는다 · `US-10`·`US-11` 은 `bash 14-postdeploy-check.sh`(DB 스키마 번호 · 단가 일치)로 확인
-- **직원 PC 만 설정한다** — [client-install.md](client-install.md)(Claude Code) · [cowork/…windows.md](cowork/manual/cowork-client-install-windows.md) · [cowork/…macos.md](cowork/cowork-client-install-macos.md) · [cowork/installer/…e2e-windows.md](cowork/installer/cowork-installer-admin-e2e-windows.md)(Windows 설치기, US-09)
+- **처음 설치한다** — POC 인지 운영인지 [1. 신규 설치 범위](#1-신규-설치-범위--무엇을-쓰느냐--poc-인가-운영인가)에서 먼저 고른다 → POC: [install-overview.md](install-overview.md)(범위·흐름 10분) → [install-guide.md](install-guide.md) · 운영: [ops/8-P-prod.md](ops/8-P-prod.md)
+- **이미 설치했다 — 업데이트 상태를 보겠다** — 배포 EC2 에서 [3. 적용하기](#3-적용하기-배포-ec2-에서) 순서대로: 저장소 최신화 → `status.sh` → 미적용 항목만 [2. 최신 업데이트](#2-최신-업데이트) 표의 문서로
+- **직원 PC 만 설정한다** — Claude Code: [client-install.md](client-install.md)(수동) · Windows 설치 파일 [US-14](claude-code/installer/cc-installer-admin-e2e-windows.md) · Cowork: [cowork/README.md](cowork/README.md)(설치 파일 · 수동, OS 별 문서 목록)
 
 **이 배포**
 - 🔴 **코드** — fork 의 **`us/deploy-fixes`** 브랜치: https://github.com/gonsoomoon-ml/sample-agentic-ai-acceleration-kr/tree/us/deploy-fixes/projects/awsome-ai-gateway (원본 [aws-samples](https://github.com/aws-samples/sample-agentic-ai-acceleration-kr) 에 아직 없는 배포·벤더 픽스 포함, `forked from aws-samples/…` 배너가 정상). upstream 위로 **리베이스**되어 해시가 바뀌므로 버전은 **`US-NN`** 으로 센다
-- **리전** — `us-west-2`(인프라) · 추론은 **US Geo**(`us.anthropic.*`, us-east-1/2·us-west-2 분산) · 리전 변경/US 밖 설치는 [install-overview §0](install-overview.md#0-이번-배포의-범위-확정)
-- **추론 백엔드** — `bedrock-runtime` + US Geo 추론 프로파일 (Mantle 아님)
-- **클라이언트 · 모델** — Claude Code(Mac·Windows·Linux) · Cowork · **Opus 5.5 · Sonnet 5.5 · Haiku 5.5 · Haiku 4.5** — 전부 `US-01` 에 포함, 운영(`US-08`)도 포함
-- **접속(입구)** — POC: http ALB + IP 허용목록(방식 A), 도메인이 있으면 https(`US-06`) · 운영(`US-08`): https 도메인 + admin ALB 2개 internal(S2S VPN)
+- **리전 · 추론** — 인프라 `us-west-2` · 추론은 `bedrock-runtime` 의 **US Geo** 프로파일(`us.anthropic.*`, us-east-1/2·us-west-2 분산) · 리전 변경/US 밖 설치는 [install-overview §0](install-overview.md#0-이번-배포의-범위-확정)
+- **클라이언트 · 모델** — Claude Code(Mac·Windows·Linux) · Cowork · **Opus 5.5 · Sonnet 5.5 · Haiku 5.5 · Haiku 4.5** — POC·운영 모두 같다
 
 ---
 
@@ -23,44 +24,52 @@
 
 **POC 와 운영은 옵션 차이가 아니라 다른 스택이다** — 운영은 dev 를 고치는 게 아니라 **별도 계정에 `environment=prod` 로 새로** 세운다(`US-08`).
 
+**① POC 와 운영 — 무엇이 다른가**
+
 | | POC (dev) | 운영 (prod) |
 |---|---|---|
 | 계정 · 사이징 | 한 계정 · `environment=dev` (Aurora 1 · Valkey 1 · NAT 1) | **별도 계정** · `environment=prod` (Aurora ×2 · Valkey 3 shard × 3 · NAT ×2) |
 | 입구 | http ALB + IP 허용목록(방식 A) | https 도메인(`US-06`) + admin ALB 2개 internal(`US-07`, S2S VPN 전제) |
-| 절차 | `US-01` — [install-guide.md](install-guide.md) §1~§6 | **`US-08`** — `US-01` 과 같은 설치를 prod 계정에서 [ops/8-P-prod.md](ops/8-P-prod.md) 를 따라 한다. 8-P 는 어느 단계에서 prod 설정(https · admin internal · VPN)을 더 넣는지 알려준다 (dev 는 그대로 둔다) |
+| 절차 | `US-01` — [install-guide.md](install-guide.md) §1~§6 | **`US-08`** — 같은 설치를 prod 계정에서. [ops/8-P-prod.md](ops/8-P-prod.md) 가 prod 설정(https · admin internal · VPN)을 넣을 단계를 알려준다 |
+
+**② 쓰는 앱에 따라 — 무엇을 설치하나**
 
 | 사용 구성 | POC (dev) | 운영 (prod) |
 |---|---|---|
-| Claude Code 만 (**Opus 5.5 · Sonnet 5.5 · Haiku 5.5 · Haiku 4.5**) | `US-01` | `US-08`(`US-01` 과 같은 설치를 prod 계정에서 8-P 대로 — https·admin internal·VPN 포함) |
-| Claude Code + **Cowork** | `US-01` + https 입구 하나(도메인 있으면 `US-06`, 없으면 `US-02` 의 `03` CloudFront) | `US-08`(같음 · https 포함이라 입구 선택 없음) |
+| Claude Code 만 | `US-01` | `US-08` |
+| Claude Code + **Cowork** | `US-01` + https 입구 하나(도메인 있으면 `US-06`, 없으면 `US-02` 의 CloudFront) | `US-08`(https 포함이라 입구 선택 없음) |
 
 **신규 설치에서 각 `US-NN` 은** — 자세한 설명은 [install-overview.md §1](install-overview.md#1-신규-설치와-us-nn)
 
-- **이미 포함 (따로 안 함)**: `US-03`·`04`·`05`·`10`·`11`·`13`·`16`·`17`·`18`
-- **설치 뒤 따로**: `US-12`(관리 화면 Cognito 로그인) — 운영(`US-08`)은 사실상 필수
+- **대부분 포함** — 아래에 없는 `US-NN` 은 설치 절차에 이미 들어 있다. 따로 적용하지 않는다
+- **설치 뒤 따로**: `US-12`(관리 화면 Cognito 로그인 — 운영 `US-08` 은 사실상 필수) · `US-15`(VK 수명 24시간, 선택)
 - **둘 중 하나 고르기**: 직원 PC 를 수동 설치 ↔ 설치 파일(`US-14` Claude Code · `US-09` Cowork)
-- **POC 에서 선택**: `US-06`(https) · `US-07`(admin internal) · `US-02` 는 기존 배포 전용
+- **POC 에서 선택**: `US-06`(https) · `US-07`(admin internal) · 도메인 없이 Cowork 를 쓰면 `US-02` 의 CloudFront 만
 
 ---
 
 ## 2. 최신 업데이트
 
-**최근 5개만** — 전체 이력(US-01~)과 항목별 이유·함정은 [updates.md](updates.md). `US-NN` 은 리베이스에 영향받지 않는 고정 ID. **적용 전 [3. 적용하기](#3-적용하기-배포-ec2-에서)로 현재 상태부터.**
+**최근 5개만** — 전체 이력(US-01~)과 항목별 이유·함정은 [updates.md](updates.md). **적용 전 [3. 적용하기](#3-적용하기-배포-ec2-에서)로 현재 상태부터.**
 
 | ID (문서) | 무엇 | 등급 · 처음 설치한다면 | 이미 설치했다면 — 적용 방법 |
 |---|---|---|---|
-| [**US-19**](ops/8-D-upstream-sync.md#us-19-로-따라-할-때-달라지는-것) 2026/10 | **Haiku 5.5 추가** — 빠르고 싼 최신 Haiku 를 모델 목록에 넣는다(입력 단가가 Haiku 4.5 의 1/10). 프롬프트가 10만 토큰을 넘는 요청은 5배로 청구되므로 그 요금까지 기록하고, Haiku 5.5 호출이 400 으로 실패할 수 있던 게이트웨이 결함을 고친다. Haiku 4.5 는 Claude Code 의 배경 작업용으로 남는다 | 권장 · **신규 설치는 코드·§4-2 에 포함**(이미 설치한 곳만 이 절차) | [8-D](ops/8-D-upstream-sync.md#us-19-로-따라-할-때-달라지는-것) 를 「US-19」 차이대로 — 저장소 최신화 → DB 스냅샷 → 이미지 4개 새로 → `install-eks.sh`(단가 소수 8자리) → Haiku 5.5 등록(`02` → `08`) → `status.sh` (약 1시간) |
-| [**US-18**](ops/8-D-upstream-sync.md#us-18-로-따라-할-때-달라지는-것) 2026/10 | **예산·비용·권한 결함 수정** — 운영자가 바꾼 예산 알림 기준이 5분 뒤 기본값으로 되돌아가던 것 · 팀 예산만 쓰면 알림이 오지 않던 것 · 알림 메일의 사용액 빈칸 · 팀 리더가 다른 팀의 예산을 볼 수 있던 것 · 팀 리더의 예산 화면에 「팀 예산 정보를 불러올 수 없습니다」가 뜨던 것 · Sonnet 5.5 캐시 읽기 단가 인하(10/7)가 반영되지 않아 비용이 크게 기록되던 것 · 분석 화면을 다시 열면 깨지거나 앱 필터가 먹지 않던 것 | 필수 · 신규 설치는 코드·단가에 포함 | [8-D](ops/8-D-upstream-sync.md#us-18-로-따라-할-때-달라지는-것) 를 「US-18」 차이대로 — 저장소 최신화 → DB 스냅샷 → 이미지 5개 새로 → `install-eks.sh`(DB 변경 3개) → 단가 `08` → `status.sh` (약 1시간) · **단가만 급하면 `08` 먼저(5분)** |
-| [**US-17**](ops/8-A-automode-server.md) 2026/10 | Claude Code **Auto mode 의 안전 판정을 Bedrock 이 하도록** — 지금은 게이트웨이가 판정 요청 표시를 버려서, Claude Code 가 판정을 위한 요청을 따로 보내고(비용) 과금 안내를 띄운다. 필요한 표시만 골라 Bedrock 으로 넘기면 따로 보내던 요청과 안내가 사라지고, 최신 Claude Code 에서 세션 첫 요청이 한 번 실패하던 것도 사라진다 | 권장 · Auto mode 를 쓰면 · 신규 설치는 코드에 포함 | **US-18 에 포함** — [8-D](ops/8-D-upstream-sync.md#us-18-로-따라-할-때-달라지는-것) 를 「US-18」 차이대로 하면 함께 적용된다 · 확인은 [8-A](ops/8-A-automode-server.md) 의 확인 스크립트 |
-| [**US-16**](ops/8-M-models.md) 2026/10 | **Sonnet 5.5 를 기본 모델로** — Sonnet 5 의 다음 모델(단가 같음)을 등록하고, 직원 PC 의 기본 모델을 Sonnet 5.5 로 바꾼 뒤 이전 세대(Opus 5 · Sonnet 5 · Opus 4.8)를 목록에서 내린다. 남는 모델 = Opus 5.5 · Sonnet 5.5 · Haiku 4.5 | 권장 · **신규 설치는 §4-2 에 포함**(이미 설치한 곳만 이 절차) | [8-M](ops/8-M-models.md) 의 「0」 → 「A」 → 「B」 → 「C」 순서대로 — 등록(스크립트 또는 관리 화면) → 첫 호출 확인 → 직원 PC 기본 모델·폴백 규칙 전환 → 이전 세대 비활성화 → `status.sh` 로 확인 |
-| [**US-15**](ops/8-Z-token-ttl.md) 2026/10 | 게이트웨이 열쇠(VK) **수명 1시간 → 24시간** — 직원 PC 의 helper 가 매시간 관리 API 에서 열쇠를 다시 받던 것을 하루 한 번으로. 재발급 순간의 지연과 관리 API 부하가 줄고, 로그인 주기(7일)·모델·예산은 그대로 | 선택 · 보안 정책이 짧은 수명을 요구하면 1시간 유지 · 신규 설치는 values 한 줄이라 설치 때 함께 | [8-Z](ops/8-Z-token-ttl.md) 순서대로 — values `vkTtlHours: 24` 한 줄 → `install-eks.sh` → 관리 API 파드만 재시작(추론 무중단, 약 10분) |
-그 이전(`US-01` 최초 설치)과 항목별 이유·함정 → [updates.md](updates.md)
+| [**US-19**](ops/8-D-upstream-sync.md#us-19-로-따라-할-때-달라지는-것) 2026/10 | **Haiku 5.5 추가** — 빠르고 싼 최신 Haiku(입력 단가가 Haiku 4.5 의 1/10) | 권장 · 신규 포함 | [8-D](ops/8-D-upstream-sync.md#us-19-로-따라-할-때-달라지는-것) 를 「US-19」 차이대로 · 약 1시간 |
+| [**US-18**](ops/8-D-upstream-sync.md#us-18-로-따라-할-때-달라지는-것) 2026/10 | **예산·비용·권한 결함 수정** — 예산 알림 · 팀 예산 권한 · 비용 기록(Sonnet 5.5 캐시 단가) 등 7건 | 필수 · 신규 포함 | [8-D](ops/8-D-upstream-sync.md#us-18-로-따라-할-때-달라지는-것) 를 「US-18」 차이대로 · 약 1시간 |
+| [**US-17**](ops/8-A-automode-server.md) 2026/10 | Claude Code **Auto mode 의 안전 판정을 Bedrock 이** — 따로 보내던 판정 요청과 과금 안내가 사라짐 | 권장 · Auto mode 를 쓰면 · 신규 포함 | US-18 을 적용하면 함께 적용됨 · 확인은 [8-A](ops/8-A-automode-server.md) |
+| [**US-16**](ops/8-M-models.md) 2026/10 | **Sonnet 5.5 를 기본 모델로** — 이전 세대(Opus 5 · Sonnet 5 · Opus 4.8)는 목록에서 내림 | 권장 · 신규 포함 | [8-M](ops/8-M-models.md) 의 「0」~「C」 순서대로 |
+| [**US-15**](ops/8-Z-token-ttl.md) 2026/10 | 게이트웨이 열쇠(VK) **수명 1시간 → 24시간** — 열쇠 재발급이 하루 한 번으로 | 선택 · 신규 설치도 따로 | [8-Z](ops/8-Z-token-ttl.md) · 약 10분 · 추론 무중단 |
 
 ---
 
 ## 3. 적용하기 (배포 EC2 에서)
 
-**① 저장소 최신화** — 리베이스 브랜치라 `git pull` 이 아니라 아래. `values-*.yaml` 은 이 EC2 유일본이라 백업·복원이 핵심(`values restored OK` 확인). `git remote -v` 의 origin 이 `gonsoomoon-ml/…` 이어야 한다(aws-samples 면 `set-url`). prod 스택(`US-08`)은 **prod 계정의 배포 EC2** 에서 `V=…/values-eks-fargate-prod.yaml` 로 같은 절차 — `status.sh` 는 US-08~11·14 를 판정하지 않고 `--` 줄로 확인할 곳을 알려 준다(US-08 은 별도 스택, US-09·14 는 PC 쪽, US-10·11 은 `14-postdeploy-check.sh` 가 판정).
+**① 저장소 최신화** — 리베이스 브랜치라 `git pull` 대신 아래 명령.
+- `git remote -v` 의 origin 이 `gonsoomoon-ml/…` 이어야 한다(aws-samples 면 `set-url`)
+- `values-*.yaml` 은 이 EC2 유일본이라 백업·복원이 핵심 — `values restored OK` 를 확인
+- prod(`US-08`)는 **prod 계정의 배포 EC2** 에서 `V=…/values-eks-fargate-prod.yaml` 로 같은 절차
+
+▶ **실행** · 배포 EC2
 
 ```bash
 cd ~/awsome-ai-gateway && git remote -v
@@ -72,11 +81,13 @@ cmp -s $V ~/values.bak && echo "values restored OK" || echo "RESTORE FAILED"
 
 **② 상태 점검** — 라이브 시스템(DB 행·엔드포인트·이미지·ALB)을 조회해 판정, 구성 변경 없음, 1~2분(일회용 psql 파드). `US-01` 부터 모든 항목이 한 줄씩 나온다 — `OK` 적용 · `!!`/`XX` 일부·미적용 · `--` 선택이거나 다른 곳에서 확인(판정하지 않는 항목은 어디서 보는지 적어 준다). 근거 원문은 `--verbose`.
 
+▶ **실행** · 배포 EC2
+
 ```bash
 cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts && bash status.sh
 ```
 
-**③ 미적용 항목만** 위 §2 표의 문서로. 상세 절차·함정·롤백은 [ops/8-U-update.md](ops/8-U-update.md). **`US-10`·`US-11`**(upstream 대량 동기화 — 코드·스키마·단가 일괄)은 [ops/8-D-upstream-sync.md](ops/8-D-upstream-sync.md) 한 절차로 함께 적용한다 — prod 는 같은 문서 (10).
+**③ 미적용 항목만** 위 §2 표의 문서로. 「적용 방법」이 **8-D** 인 업데이트(코드·DB·단가가 함께 바뀌는 것)는 모두 [ops/8-D-upstream-sync.md](ops/8-D-upstream-sync.md) 한 절차다 — 맨 앞 (0) 에서 내 업데이트의 차이만 읽고, (1) 부터는 같다. prod 는 같은 문서 (10). 서비스 하나만 바뀌는 업데이트와 롤백 일반은 [ops/8-U-update.md](ops/8-U-update.md).
 
 ---
 
