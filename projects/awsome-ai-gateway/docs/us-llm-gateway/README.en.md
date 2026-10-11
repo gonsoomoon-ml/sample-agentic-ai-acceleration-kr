@@ -32,14 +32,14 @@ How it differs from the [original](../../README.en.md) (built for Seoul): a regi
 |---|---|---|
 | Account · sizing | one account · `environment=dev` (Aurora ×1 · Valkey ×1 · NAT ×1) | **separate account** · `environment=prod` (Aurora ×2 · Valkey 3 shards × 3 · NAT ×2) |
 | Entry point | http ALB + IP allow-list (mode A) | https domain (`US-06`) + both admin ALBs internal (`US-07`, requires a site-to-site VPN) |
-| Procedure | `US-01` — [install-guide.md](install-guide.md) §1–§6 | **`US-08`** — the same install in the prod account. [ops/8-P-prod.md](ops/8-P-prod.md) tells you at which steps to add the prod settings (https · admin internal · VPN) |
+| Procedure | `US-01` — [install-guide.md](install-guide.md) §1–§6 | **`US-08` only** — [install-guide.md](install-guide.md) §1–§6 in the prod account, in the order of [ops/8-P-prod.md](ops/8-P-prod.md) |
 
 **② By the apps you use — what to install**
 
 | Your setup | POC (dev) | Production (prod) |
 |---|---|---|
-| Claude Code only | `US-01` | `US-08` |
-| Claude Code + **Cowork** | `US-01` + one https entry (`US-06` with a domain, otherwise the CloudFront part of `US-02`) | `US-08` (https included, so no entry choice) |
+| Claude Code only | `US-01` only | `US-08` only |
+| Claude Code + **Cowork** | `US-01` + one https entry (`US-06` with a domain, otherwise the CloudFront part of `US-02`) | `US-08` only (https included, so no extra entry) |
 
 **How each `US-NN` is handled in a new install** — details in [install-overview.md §1](install-overview.md#1-신규-설치와-us-nn) (Korean)
 

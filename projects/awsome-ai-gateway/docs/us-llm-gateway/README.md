@@ -28,16 +28,16 @@
 
 | | POC (dev) | 운영 (prod) |
 |---|---|---|
-| 계정 · 사이징 | 한 계정 · `environment=dev` (Aurora 1 · Valkey 1 · NAT 1) | **별도 계정** · `environment=prod` (Aurora ×2 · Valkey 3 shard × 3 · NAT ×2) |
+| 계&#8288;정 · 사&#8288;이&#8288;징 | 한 계정 · `environment=dev` (Aurora 1 · Valkey 1 · NAT 1) | **별도 계정** · `environment=prod` (Aurora ×2 · Valkey 3 shard × 3 · NAT ×2) |
 | 입구 | http ALB + IP 허용목록(방식 A) | https 도메인(`US-06`) + admin ALB 2개 internal(`US-07`, S2S VPN 전제) |
-| 절차 | `US-01` — [install-guide.md](install-guide.md) §1~§6 | **`US-08`** — 같은 설치를 prod 계정에서. [ops/8-P-prod.md](ops/8-P-prod.md) 가 prod 설정(https · admin internal · VPN)을 넣을 단계를 알려준다 |
+| 절차 | `US-01` — [install-guide.md](install-guide.md) §1~§6 | **`US-08` 만** — [ops/8-P-prod.md](ops/8-P-prod.md) 순서로 [install-guide.md](install-guide.md) §1~§6 을 prod 계정에서 |
 
 **② 쓰는 앱에 따라 — 무엇을 설치하나**
 
 | 사용 구성 | POC (dev) | 운영 (prod) |
 |---|---|---|
-| Claude Code 만 | `US-01` | `US-08` |
-| Claude Code + **Cowork** | `US-01` + https 입구 하나(도메인 있으면 `US-06`, 없으면 `US-02` 의 CloudFront) | `US-08`(https 포함이라 입구 선택 없음) |
+| Claude Code 만 | `US-01` 만 | `US-08` 만 |
+| Claude Code + **Cowork** | `US-01` + https 입구 하나(도메인 있으면 `US-06`, 없으면 `US-02` 의 CloudFront) | `US-08` 만(https 포함이라 입구 추가 없음) |
 
 **신규 설치에서 각 `US-NN` 은** — 자세한 설명은 [install-overview.md §1](install-overview.md#1-신규-설치와-us-nn)
 
