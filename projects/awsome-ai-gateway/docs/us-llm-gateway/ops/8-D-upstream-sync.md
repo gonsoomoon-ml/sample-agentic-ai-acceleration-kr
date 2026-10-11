@@ -225,7 +225,7 @@ bash status.sh
 단가 = pricing.tsv (100K 초과 구간 포함)`. 아래 공통 점검의 `04-verify.sh` 1건도 `config.env` 의
 모델(이제 Haiku 5.5)로 호출된다.
 
-▶ 실행 · 사용자 PC (게이트웨이에 연결된 Claude Code) — (8) 등록 5분 뒤
+▶ 실행 · 사용자 PC — 게이트웨이에 연결된 Claude Code (Windows PowerShell · Mac 터미널 같음) — (8) 등록 5분 뒤
 ```bash
 claude update
 claude --version
@@ -233,6 +233,10 @@ claude --model claude-haiku-5-5 -p "hi"
 ```
 기대: 답이 온다. `400` 에 `thinking.type.enabled` 가 보이면 gateway-proxy 가 옛 이미지다 —
 (5)·(6)·(7) 을 확인한다.
+- **배포 EC2 에서 치지 않는다** — 배포 EC2 의 Claude Code 는 게이트웨이가 아니라 Bedrock 에 직접
+  붙어(`CLAUDE_CODE_USE_BEDROCK=1`) `400 The provided model identifier is invalid` 가 난다.
+- Claude Code 가 Haiku 5.5 를 모르는 버전이면 「isn't described by this version's model catalog」
+  경고가 함께 나온다(2.1.287 은 모름 · 2.1.293 은 앎).
 
 **▶ US-18 — 예산·분석 화면 확인**
 
