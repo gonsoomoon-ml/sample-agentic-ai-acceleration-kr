@@ -10,7 +10,7 @@
 (0) 이번 업데이트에서 다른 점(읽기만)
 → (1) 저장소 최신화 → (2) 사전 점검·설정 적용 → (3) DB 스냅샷
 → (4) terraform plan(확인만) → (5) 태그 올림(13) → (6) 바뀐 이미지만 빌드
-→ (7) install-eks.sh(migration+롤아웃) → (8) 단가(08)·업데이트별 추가 작업
+→ (7) install-eks.sh(migration+롤아웃) → (8) 업데이트별 작업·단가(08)
 → (9) 사후 점검(14)·24h 관찰
 ```
 
@@ -18,10 +18,11 @@
 
 📋 용어: **마이그레이션** = DB 스키마를 한 단계씩 바꾸는 번호 붙은 스크립트(`db/versions/0034_….py` 식). 이번 업데이트에 새 번호가 있으면 `install-eks.sh` 안에서 순서대로 돈다(몇 개인지는 (0)).
 
-## (0) 이번 업데이트에서 다른 점 — 읽기만
+## (0) 이번 업데이트에서 다른 점 — 먼저 확인
 
-따라 하는 업데이트의 블록만 읽습니다. (1) 부터는 어느 업데이트든 같고, 여기 적힌 것만
-다릅니다. prod((10))도 같습니다.
+여기에는 명령이 없습니다. 따라 하는 업데이트의 블록을 읽고, **할 일 있음** 항목은 그 단계의
+해당 업데이트 이름표(예: (8) 의 「▶ US-19」) 아래에서 명령을 칩니다. (1) 부터는 어느 업데이트든
+같고, prod((10))도 같습니다.
 
 ### US-19 로 따라 할 때 달라지는 것
 
@@ -30,11 +31,9 @@
   migration Job 이 먼저 실행하는 init SQL 이 넓힙니다. US-18 을 아직 안 했다면 US-18 부터.
 - **(2)** — `14` 에 `XX` 가 없고, `!!` 에 `claude-haiku-5-5: no open price row` 한 줄이 더
   나오면 정상입니다(아직 등록 전).
-- **(8)** — `08` 앞에 Haiku 5.5 를 등록합니다. [8-M 「A1-1」](8-M-models.md#a1-1-스크립트--배포-ec2)
-  대로 `config.env` 를 Haiku 5.5 블록으로 바꾸고 `02 --apply` → `08 --alias claude-haiku-5-5 --apply`.
-  그 뒤 본문의 `08` 은 `nothing to change` 면 정상입니다.
-- **(9)** — `bash status.sh` 의 US-19 가 OK(구간 단가 포함) · `claude --model claude-haiku-5-5
-  -p "hi"` 가 답합니다. thinking 400 이면 gateway-proxy 가 옛 이미지입니다.
+- **(8)** — **할 일 있음**: (8) 의 「▶ US-19 — Haiku 5.5 등록」(새 모델). 그다음 공통 `08` 이
+  100K 초과 구간 단가까지 넣습니다.
+- **(9)** — **확인 추가**: (9) 의 「▶ US-19」.
 - **되돌리기** — `helm rollback` 만으로 됩니다(넓힌 단가 열은 옛 이미지와도 맞습니다). Haiku 5.5
   를 등록했다면 관리 화면에서 INACTIVE 로(옛 gateway-proxy 는 Haiku 5.5 에 400).
 
@@ -43,9 +42,9 @@
 - **바뀌는 것** — 이미지 5개(migration · gateway-proxy · admin-api · admin-ui ·
   cost-recorder-worker) · DB 열 추가 3개(0037·0038·0039) · Sonnet 5.5 캐시 읽기 단가 1개.
 - **(2)** — `14` 의 `XX` 2개(스키마 `0036` · Sonnet 5.5 단가)면 정상입니다.
-- **(8)** — 차이 표에 `claude-sonnet-5-5` 캐시 읽기 `0.000220 → 0.000110` 한 줄이면 정상입니다.
-- **(9)** — 예산 알림 기준(50 저장 → 6분 뒤에도 50) · 분석 화면(30초 안에 두 번 열어도 정상,
-  앱 필터를 바꾸면 숫자가 바뀜).
+- **(8)** — 할 일 없음. `08` 의 차이 표에 `claude-sonnet-5-5` 캐시 읽기 `0.000220 → 0.000110`
+  한 줄이면 정상입니다.
+- **(9)** — **확인 추가**: (9) 의 「▶ US-18」.
 
 ### US-10 로 따라 할 때 달라지는 것
 
@@ -57,9 +56,8 @@
 - **(7)** — migration 과 롤아웃 사이 수 분간 옛 파드가 모델 목록 조회에 실패할 수 있습니다
   (0032 가 옛 코드가 모르는 provider 값을 심음) — 그 창에서 rollback 하지 않습니다. Job 이
   0034 에서 죽었으면 (2) 의 alias 대소문자 중복입니다.
-- **(8)** — 마이그레이션(0027·0030)이 모델·단가 시드를 넣으므로 `08` 은 꼭 배포 뒤입니다. 새로
-  ACTIVE 로 보이는 시드 alias(`global.anthropic.claude-opus-5`·`…-sonnet-5`·`gpt-5.6-*`·
-  `llama-3-70b`)는 관리 화면에서 INACTIVE 로 둡니다.
+- **(8)** — **할 일 있음**: (8) 의 「US-10 — `08` 뒤에」. 마이그레이션(0027·0030)이 모델·단가
+  시드를 넣으므로 `08` 은 꼭 배포 뒤입니다.
 - **되돌리기** — 코드만 되돌리면 옛 이미지가 0032 가 심은 행을 못 읽어 모델 목록이 깨집니다 —
   스냅샷 복원과 함께 합니다.
 
@@ -171,9 +169,32 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 - 순서는 **migration 먼저, 롤아웃 나중**(pre-upgrade hook). 그 사이 수 분간 옛 파드가 새 스키마와 어긋날 수 있다 — **그 창에서 rollback 하지 않는다**. 새 파드 Ready 로 끝난다.
 - Job 실패: `kubectl -n llm-gateway logs job/llm-gateway-migration-<rev>`(`helm history` 최신 rev).
 
-## (8) 단가 · 업데이트별 추가 작업 — 5분 + 캐시 5분
+## (8) 업데이트별 작업 · 단가 — 5분 + 캐시 5분
 
-(0) 블록에 **(8) 항목이 있으면 `08` 앞에 먼저** 한다(예: US-19 의 Haiku 5.5 등록).
+### 업데이트별 작업 — 따라 하는 업데이트 것만, `08` 보다 먼저
+
+**▶ US-19 — Haiku 5.5 등록 (새 모델)**
+
+▶ 실행
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+cp config.env ~/config.env.bak-us19
+sed -n '/^# Claude Haiku 5.5/,/CACHE_READ/s/^#   //p' config.env.example >> config.env
+echo 'MODEL_PRICE_ASOF="2026-10-11"' >> config.env
+bash 02-add-opus5-model.sh
+bash 02-add-opus5-model.sh --apply
+```
+기대: 미리보기에 `claude-haiku-5-5` · `us.anthropic.claude-haiku-5-5` · 단가 `0.000110 /
+0.000550 / 0.0001375 / 0.000220 / 0.000011` → `--apply` 뒤 등록 완료. 100K 초과 구간 단가는
+아래 `08` 이 넣는다.
+
+**US-18 — 할 일 없음.** 아래 `08` 의 차이 표에 `claude-sonnet-5-5` 캐시 읽기 `0.000220 →
+0.000110` 한 줄이면 정상.
+
+**US-10 — `08` 뒤에** 관리 화면에서 새로 ACTIVE 로 보이는 시드 alias(`global.anthropic.claude-opus-5`
+· `…-sonnet-5` · `gpt-5.6-*` · `llama-3-70b`)를 INACTIVE 로.
+
+### 단가 맞춤 — 모든 업데이트
 
 ▶ 실행
 ```bash
@@ -181,11 +202,23 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 08-set-model-pricing.sh
 bash 08-set-model-pricing.sh --apply
 ```
-기대: 차이 표(바뀌는 alias 만) → `--apply` 후 검증 행이 표와 일치. 바뀌는 것이 없으면 `nothing to change`. 왜 배포 **뒤**인가: 마이그레이션이 단가 행을 건드릴 수 있어서([US-11](../updates.md)). 단가 표 = `update-scripts/pricing.tsv` 가 정본이다 — 청구 단가가 다르면 `--apply` 전에 이 파일부터 고친다(2단계). 단가만 따로 다룬 문서 = [8-R](8-R-pricing.md).
+기대: 차이 표(바뀌는 alias 만) → `--apply` 후 검증 행이 표와 일치. 바뀌는 것이 없으면
+`nothing to change`. 위에서 새 모델을 등록했으면 그 모델이 CHANGE 로 나온다 — US-19 는
+`claude-haiku-5-5` 의 `long: none → prompt > 100000 tokens: …`. 왜 배포 **뒤**인가: 마이그레이션이 단가 행을 건드릴 수 있어서([US-11](../updates.md)). 단가 표 = `update-scripts/pricing.tsv` 가 정본이다 — 청구 단가가 다르면 `--apply` 전에 이 파일부터 고친다(2단계). 단가만 따로 다룬 문서 = [8-R](8-R-pricing.md).
 
 (9) 의 `14` 가 ACTIVE 로 남은 시드 alias 를 알려 준다 — 있으면 관리 화면에서 INACTIVE 로 둔다.
 
 ## (9) 사후 점검 — 14 + 종단 1건, 그리고 24h
+
+### 업데이트별 확인 — 따라 하는 업데이트 것만 (아래 공통 점검과 함께)
+
+**▶ US-19** — `bash status.sh` 의 US-19 가 OK(구간 단가 포함) · 등록 5분 뒤 Claude Code 로
+`claude --model claude-haiku-5-5 -p "hi"` 가 답함(thinking 400 이면 gateway-proxy 가 옛 이미지).
+
+**▶ US-18** — 예산 알림 기준(50 저장 → 6분 뒤에도 50) · 분석 화면(30초 안에 두 번 열어도
+정상, 앱 필터를 바꾸면 숫자가 바뀜).
+
+### 공통 점검 — 모든 업데이트
 
 ▶ 실행 · EC2 — 자동 점검과 접속값
 ```bash
@@ -328,7 +361,7 @@ terraform output -json >/dev/null && echo "output OK"
 cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh prod
 ```
 
-**(10-8) 단가 · 업데이트별 추가 작업**
+**(10-8) 업데이트별 작업 · 단가** — (8) 과 같다. 먼저 (8) 의 「업데이트별 작업」 중 따라 하는 업데이트 것을 하고(명령 같음), 그다음 아래 `08`.
 
 ▶ 실행
 ```bash
@@ -336,9 +369,8 @@ cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
 bash 08-set-model-pricing.sh
 bash 08-set-model-pricing.sh --apply
 ```
-(0) 블록에 (8) 항목이 있으면 `08` 앞에 먼저(8단계와 같음).
 
-**(10-9) 사후 점검** — 순서·기대·기능별 확인 표는 (9) 와 같습니다.
+**(10-9) 사후 점검** — 순서·기대·기능별 확인 표는 (9) 와 같습니다. (9) 의 「업데이트별 확인」도 함께 합니다.
 
 ▶ 실행 · prod EC2 — 자동 점검과 접속값
 ```bash
