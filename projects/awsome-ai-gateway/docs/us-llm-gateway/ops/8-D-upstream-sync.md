@@ -312,8 +312,21 @@ bash 04-verify.sh --base-url $GW --vk $GATEWAY_KEY
 claude -p "hi"
 claude -p "오늘 AWS 뉴스를 웹에서 찾아 한 줄로"
 ```
-기대: 둘 다 답이 온다(400 아님). 그다음 EC2 에서 `bash 14-postdeploy-check.sh` 의
-`web_search_24h` 가 1 이상.
+기대: 둘 다 답이 온다(400 아님).
+
+▶ 실행 · 배포 EC2 — 웹 검색이 기록됐는지
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 14-postdeploy-check.sh
+```
+기대: `2. Numbers` 의 `web_search_24h` 가 1 이상.
+
+▶ 실행 · 배포 EC2 — 다음날(24시간 뒤)
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 14-postdeploy-check.sh --compare snapshots/pre.numbers
+```
+기대: `OK no failures`. 오류 비율·비용이 급변하지 않는다.
 
 | 확인 | 어떻게 | 기대 |
 |---|---|---|
@@ -324,7 +337,7 @@ claude -p "오늘 AWS 뉴스를 웹에서 찾아 한 줄로"
 | thinking | 위 사용자 PC 의 첫 번째 명령(Claude Code 는 thinking 을 켠 채 보낸다) | 답이 옴(400 아님) |
 | readiness | 14 §4 `/health/ready` | 200 `HEALTHY` |
 | 예산 | 14 U/B 비율 | 경고 없음(≤ 1.05) |
-| 24h | 다음날 `14 --compare` 다시 | 오류 비율·비용 급변 없음 |
+| 24h | 위 「다음날」 블록 | 오류 비율·비용 급변 없음 |
 
 ## 롤백
 
@@ -473,5 +486,26 @@ read -rs GATEWAY_KEY && export GATEWAY_KEY
 GW=https://$(kubectl -n llm-gateway get ingress llm-gateway-gateway -o jsonpath='{.spec.rules[0].host}')
 bash 04-verify.sh --base-url $GW --vk $GATEWAY_KEY
 ```
+
+▶ 실행 · 사용자 PC (prod 게이트웨이에 연결된 Claude Code) — thinking · web search
+```bash
+claude -p "hi"
+claude -p "오늘 AWS 뉴스를 웹에서 찾아 한 줄로"
+```
+기대: 둘 다 답이 온다(400 아님).
+
+▶ 실행 · prod EC2 — 웹 검색이 기록됐는지
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 14-postdeploy-check.sh
+```
+기대: `2. Numbers` 의 `web_search_24h` 가 1 이상.
+
+▶ 실행 · prod EC2 — 다음날(24시간 뒤)
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 14-postdeploy-check.sh --compare snapshots/pre.numbers
+```
+기대: `OK no failures`. 오류 비율·비용이 급변하지 않는다.
 
 롤백은 §롤백에서 `dev`→`prod`(스냅샷 `llm-gateway-prod-pre-sync-…`, 백업 `snapshots/<ts>-values-prod.yaml.bak`).
