@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # status.sh — which updates this gateway has applied
 #
-# WHAT: probe the live system and report US-02 … US-07, US-12, US-13, US-15, US-16 and US-18 as
+# WHAT: probe the live system and report US-02 … US-07, US-12, US-13, US-15, US-16 and US-18 … US-20 as
 #       applied, partially applied, or not applied, and print the next command
 #       for each. Every other US-NN gets a `--` line that says where it is
 #       checked instead (another account, the employee PC, 14-postdeploy-check.sh),
@@ -709,6 +709,69 @@ probe_us19() {
   fi
 }
 
+# ── US-20 — admin console improvements and fixes (recommended) ─────────────
+# No schema change to read, so the evidence is the running images: on this
+# branch the tag's patch number (1.0.N-<suffix>) only grows, and these are the
+# first builds carrying US-20 for each service. The one thing outside the
+# images: logout now ends the Cognito session, which only works when the
+# admin-ui origin is an Allowed sign-out URL on the app client — checked only
+# where the Cognito login (US-12) is live. OIDC_LOGOUT_URL set means the
+# operator chose the endpoint (or "off"), so the derived URL is not judged.
+probe_us20() {
+  local svc img tag old="" ui api cid redir lo issuer pool los lo_url
+  local -A min=([gateway-proxy]=88 [admin-api]=72 [admin-ui]=103)
+  for svc in gateway-proxy admin-api admin-ui; do
+    img=$(kubectl get deploy "${HELM_RELEASE}-$svc" -n "$NS" \
+          -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null) || img=""
+    tag=${img##*:}
+    if [[ ! "$tag" =~ ^1\.0\.([0-9]+)(-|$) ]]; then
+      row warn "US-20" "관리 화면 개선·결함 수정 — 판정 불가"
+      detail "$svc 이미지 태그를 읽지 못했습니다 (${img:-kubectl get deploy 실패})"
+      return
+    fi
+    [ "${BASH_REMATCH[1]}" -lt "${min[$svc]}" ] && old+=" $svc:$tag"
+  done
+  if [ -n "$old" ]; then
+    row warn "US-20" "관리 화면 개선·결함 수정 — 미적용 (권장)"
+    detail "옛 이미지:$old — ops/8-D-upstream-sync.md 「US-20 로 따라 할 때」"
+    TODO+=("(수동) docs/us-llm-gateway/ops/8-D-upstream-sync.md — US-20 (로그아웃 주소 등록 + 이미지 4개)")
+    return
+  fi
+  ui=$(kubectl get deploy "${HELM_RELEASE}-admin-ui" -n "$NS" -o json 2>/dev/null)
+  api=$(kubectl get deploy "${HELM_RELEASE}-admin-api" -n "$NS" -o json 2>/dev/null)
+  envval() { jq -r --arg k "$2" '[.spec.template.spec.containers[0].env[]? | select(.name == $k) | .value] | last // ""' <<<"$1"; }
+  cid=$(envval "$ui" OIDC_CLIENT_ID); redir=$(envval "$ui" OIDC_REDIRECT_URI); lo=$(envval "$ui" OIDC_LOGOUT_URL)
+  issuer=$(envval "$api" OIDC_ISSUER_URL); pool=${issuer##*/}
+  if [ -z "$cid" ]; then
+    row ok "US-20" "관리 화면 개선·결함 수정"
+    detail "관리 화면 Cognito 로그인(US-12)을 쓰지 않아 로그아웃 주소는 확인하지 않습니다"
+    return
+  fi
+  if [ -n "$lo" ]; then
+    row ok "US-20" "관리 화면 개선·결함 수정"
+    detail "로그아웃 = OIDC_LOGOUT_URL 값($lo)대로 — 이 스크립트는 판정하지 않습니다"
+    return
+  fi
+  [[ "$redir" =~ ^(https?://[^/]+) ]] && lo_url="${BASH_REMATCH[1]}/"
+  # A failed read is "cannot tell", never "not registered".
+  if [ -z "${lo_url:-}" ] || [ -z "$pool" ] \
+     || ! los=$(aws cognito-idp describe-user-pool-client --user-pool-id "$pool" --client-id "$cid" \
+                --query 'UserPoolClient.LogoutURLs' --output json 2>/dev/null) \
+     || ! los=$(jq -r '.[]?' <<<"$los" 2>/dev/null); then
+    row warn "US-20" "관리 화면 개선·결함 수정 — 로그아웃 주소 판정 불가"
+    detail "Cognito 앱 클라이언트 $cid 의 sign-out URL 을 읽지 못했습니다 (pool=${pool:-?}, redirect=${redir:-?})"
+    return
+  fi
+  if [[ $'\n'"$los"$'\n' == *$'\n'"$lo_url"$'\n'* ]]; then
+    row ok "US-20" "관리 화면 개선·결함 수정"
+    detail "이미지 3개 US-20 이상 · 로그아웃 주소 $lo_url 등록됨"
+  else
+    row bad "US-20" "관리 화면 개선·결함 수정 — 로그아웃 주소 미등록 (로그아웃이 Cognito 오류에서 멈춤)"
+    detail "admin-ui 가 $lo_url 로 돌아오게 하는데 Cognito 앱 클라이언트 $cid 의 sign-out URL 에 없습니다"
+    TODO+=("bash 19-admin-login.sh callback --apply   # 그다음 terraform plan/apply")
+  fi
+}
+
 # ── Items this script does not judge — listed so nothing reads as "applied" by
 #    omission. Each line says where the real check is.
 info_us08() {
@@ -755,6 +818,7 @@ probe_us16
 probe_us17
 probe_us18
 probe_us19
+probe_us20
 probe_notif_ses
 
 echo

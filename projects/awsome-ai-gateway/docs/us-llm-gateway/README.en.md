@@ -44,7 +44,7 @@ How it differs from the [original](../../README.en.md) (built for Seoul): a regi
 **How each `US-NN` is handled in a new install** — details in [install-overview.md §1](install-overview.md#1-신규-설치와-us-nn) (Korean)
 
 - **Mostly included** — any `US-NN` not listed below is already in the install steps; nothing to apply
-- **Done separately after installation**: `US-12` (admin screen Cognito sign-in — effectively required for production `US-08`) · `US-15` (24-hour VK lifetime, optional)
+- **Done separately after installation**: `US-12` (admin screen Cognito sign-in — effectively required for production `US-08`) · `US-15` (24-hour VK lifetime, optional) · the 2 optional features of `US-20` (body logging · alert email)
 - **Pick one of two**: set up employee PCs by hand ↔ installer file (`US-14` Claude Code · `US-09` Cowork)
 - **Optional for a POC**: `US-06` (https) · `US-07` (admin internal) · for Cowork without a domain, only the CloudFront part of `US-02`
 
@@ -56,11 +56,11 @@ How it differs from the [original](../../README.en.md) (built for Seoul): a regi
 
 | ID (doc) | What | Grade · installing new | Already installed — how to apply |
 |---|---|---|---|
+| [**US-20**](ops/8-D-upstream-sync.md#us-20-로-따라-할-때-달라지는-것) 2026/10 | **Admin console improvements and fixes** — logout · usage trend chart · budget summary · team-leader rights, plus 2 optional features (body logging · alert email) | Recommended · included in new installs (optional features separately) | [8-D](ops/8-D-upstream-sync.md#us-20-로-따라-할-때-달라지는-것) with the "US-20" differences · about 1 hour |
 | [**US-19**](ops/8-D-upstream-sync.md#us-19-로-따라-할-때-달라지는-것) 2026/10 | **Add Haiku 5.5** — the latest fast, low-cost Haiku (input price 1/10 of Haiku 4.5) | Recommended · included in new installs | [8-D](ops/8-D-upstream-sync.md#us-19-로-따라-할-때-달라지는-것) with the "US-19" differences · about 1 hour |
 | [**US-18**](ops/8-D-upstream-sync.md#us-18-로-따라-할-때-달라지는-것) 2026/10 | **Budget, cost and permission fixes** — 7 fixes incl. budget alerts, team-budget access, cost records (Sonnet 5.5 cache price) | Required · included in new installs | [8-D](ops/8-D-upstream-sync.md#us-18-로-따라-할-때-달라지는-것) with the "US-18" differences · about 1 hour |
 | [**US-17**](ops/8-A-automode-server.md) 2026/10 | **Bedrock makes Claude Code's Auto-mode safety calls** — the separate check request and billing notice go away | Part of US-18 · included in new installs | **Nothing separate** — comes with US-18 · check only with [8-A](ops/8-A-automode-server.md) |
 | [**US-16**](ops/8-M-models.md) 2026/10 | **Make Sonnet 5.5 the default model** — the previous generation (Opus 5 · Sonnet 5 · Opus 4.8) leaves the list | Recommended · included in new installs | [8-M](ops/8-M-models.md) steps "0" → "C" |
-| [**US-15**](ops/8-Z-token-ttl.md) 2026/10 | Gateway key (VK) **lifetime 1 hour → 24 hours** — key re-issue drops to once a day | Optional · new installs also set it separately | [8-Z](ops/8-Z-token-ttl.md) · about 10 min · no inference downtime |
 
 ---
 

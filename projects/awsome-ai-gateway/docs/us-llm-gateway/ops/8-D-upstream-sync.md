@@ -24,6 +24,23 @@
 해당 업데이트 이름표(예: (8) 의 「▶ US-19」) 아래에서 명령을 칩니다. (1) 부터는 어느 업데이트든
 같고, prod((10))도 같습니다.
 
+### US-20 로 따라 할 때 달라지는 것
+
+- **바뀌는 것** — 이미지 4개(gateway-proxy · admin-api · admin-ui · notification-worker,
+  scheduler 는 admin-api 와 같은 이미지) · 관리 화면 Cognito 앱 클라이언트의 로그아웃 주소 1개.
+  DB 변경은 없습니다(마이그레이션 `0039` 그대로). US-19 를 아직 안 했다면 US-19 부터.
+- **(2)** — `14` 에 `XX` 가 없으면 정상입니다.
+- **(4)** — **할 일 있음**(관리 화면 Cognito 로그인(US-12)을 쓰는 곳만): (4) 의 「▶ US-20」.
+  (7) 에서 새 admin-ui 가 뜨기 전에 끝내야 로그아웃이 Cognito 오류에서 멈추지 않습니다.
+- **(5)** — `<- change` 4개(gateway-proxy · admin-api · admin-ui · notification-worker)면 정상입니다.
+- **(8)** — 할 일 없음. `08` 은 `nothing to change`.
+- **(9)** — **확인 추가**: (9) 의 「▶ US-20」.
+- **선택 기능 2개** — 배포만으로는 켜지지 않습니다. 요청·응답 본문을 S3 에 남기는 본문 로깅은
+  [8-V](8-V-body-logging.md), 알림 메일을 실제로 보내려면 [8-W](8-W-notifications.md). 이 배포를
+  마친 뒤 필요할 때 따로 합니다.
+- **되돌리기** — 코드는 `helm rollback` 만으로 됩니다(DB 변경 없음). 등록한 로그아웃 주소는
+  남겨 둬도 옛 버전에 영향이 없습니다.
+
 ### US-19 로 따라 할 때 달라지는 것
 
 - **바뀌는 것** — 이미지 4개(migration · gateway-proxy · admin-api · admin-ui) · 단가 열 소수
@@ -111,6 +128,21 @@ aws rds describe-db-cluster-snapshots --db-cluster-snapshot-identifier $SNAP \
 기대: `"creating"` → wait 가 조용히 끝남(수 분) → 마지막 줄 `llm-gateway-dev-pre-sync-<날짜>  available`. 이 이름을 §롤백에서 쓴다.
 
 ## (4) terraform — 인프라 변경 확인 (필요할 때만 apply)
+
+**▶ US-20 — 로그아웃 주소 등록 (plan 보다 먼저 · 관리 화면 Cognito 로그인(US-12)을 쓰는 곳만)**
+
+▶ 실행
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 19-admin-login.sh callback
+bash 19-admin-login.sh callback --apply
+```
+기대: 미리보기에 추가되는 것이 `cognito_logout_urls` 목록 하나입니다(직원 로그인용
+`http://localhost:8090`·`8091`·`8092` 의 `/logout` 3개 + `https://<관리 화면 주소>/`). 콜백은
+US-12 때 등록돼 다시 나오지 않습니다. `--apply` 에서 `yes` → `terraform.tfvars updated`. 출력 끝의
+`then: bash 19-admin-login.sh login` 은 하지 않습니다(로그인 설정은 US-12 그대로). 이어서 아래
+plan 을 칩니다 — `exit=2` 에 `module.cognito.aws_cognito_user_pool_client.cli will be updated
+in-place` 1건이면 apply 합니다. 이미 등록돼 있으면 `already registered — nothing to do`.
 
 ▶ 실행
 ```bash
@@ -213,6 +245,24 @@ bash 08-set-model-pricing.sh --apply
 ## (9) 사후 점검 — 14 + 종단 1건, 그리고 24h
 
 ### 업데이트별 확인 — 따라 하는 업데이트 것만 (아래 공통 점검과 함께)
+
+**▶ US-20 — 로그아웃 · 새 화면 확인**
+
+▶ 실행 · 배포 EC2
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash status.sh
+```
+기대: `US-20` 줄이 OK — `이미지 3개 US-20 이상 · 로그아웃 주소 … 등록됨`. `SES` 줄이 `--`
+(미사용, provider=mock)인 것은 정상입니다 — 알림 메일은 선택 기능입니다([8-W](8-W-notifications.md)).
+
+▶ 실행 · 관리 화면 (브라우저)
+1. **로그아웃(Logout)** → Cognito 로그인 화면이 뜹니다(전에는 다시 들어가면 바로 열렸습니다).
+   Cognito 오류 화면이면 로그아웃 주소가 등록되지 않은 것입니다 — (4) 의 「▶ US-20」.
+2. 다시 로그인 → **Rate Limits** 에서 사용자나 팀 하나를 고르면 **사용량 트렌드(Usage trend)**
+   차트가 한도 기준선과 함께 보입니다(기록이 없으면 「기간 내 사용 기록이 없습니다」).
+3. **예산 관리(Budget Management)** 요약에서 예산을 따로 정하지 않은 사용자도 이번 달
+   사용액이 보입니다(전에는 $0.00).
 
 **▶ US-19 — Haiku 5.5 확인**
 
@@ -361,7 +411,7 @@ bash 99-rollback.sh --model
 
 dev 와 같은 순서다. 다른 것은 셋뿐 — values 파일 이름, 스냅샷·terraform 디렉터리의 `prod`, 스크립트 인자 `prod`. `config.env` 는 prod EC2 의 것(`DEPLOY_ENV="prod"`)을 쓴다.
 
-**(0) 의 업데이트 블록은 prod 에도 그대로 적용한다** — 블록의 (2)·(8)·(9) 항목은 (10-2)·(10-8)·(10-9) 에서 본다.
+**(0) 의 업데이트 블록은 prod 에도 그대로 적용한다** — 블록의 (2)·(4)·(8)·(9) 항목은 (10-2)·(10-4)·(10-8)·(10-9) 에서 본다.
 
 **(10-1) 저장소 최신화**
 
@@ -411,7 +461,7 @@ terraform init
 terraform plan -no-color -detailed-exitcode > ~/plan.txt 2>&1; echo "exit=$?"
 grep -E '# .* (will be|must be)|^Plan:|No changes|Error' ~/plan.txt
 ```
-판정·apply·멈출 때는 (4) 와 같습니다.
+plan 전에 (4) 의 업데이트별 작업(예: 「▶ US-20」)을 같은 명령으로 하고, 판정·apply·멈출 때는 (4) 와 같습니다.
 
 **(10-5) 태그 올림**
 
