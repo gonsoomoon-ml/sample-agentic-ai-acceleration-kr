@@ -31,8 +31,8 @@
 
 ### US-20 로 따라 할 때 달라지는 것
 
-- **칠 블록** — (1)·(2)·(3) → (4) 「▶ US-20」 → 「공통」 → (5)·(6)·(7) → (8) 「공통」 만 →
-  (9) 「▶ US-20」 → 「공통」.
+- **칠 블록** — (1)·(2)·(3) → (4) 「공통 — init」 → 「▶ US-20」 → 「공통 — plan」 →
+  (5)·(6)·(7) → (8) 「공통」 만 → (9) 「▶ US-20」 → 「공통」.
 - **바뀌는 것** — 이미지 4개(gateway-proxy · admin-api · admin-ui · notification-worker,
   scheduler 는 admin-api 와 같은 이미지) · 관리 화면 Cognito 앱 클라이언트의 로그아웃 주소 1개.
   DB 변경은 없습니다(마이그레이션 `0039` 그대로). US-19 를 아직 안 했다면 US-19 부터.
@@ -92,7 +92,7 @@
   스냅샷 복원과 함께 합니다.
 
 📋 참고(문서 담당자용) — 새 업데이트를 넣을 때: (0) 맨 위에 블록을 넣고, 할 일이 있는 단계에는
-`### ▶ US-NN — …` 블록을 그 단계의 「공통」 앞에 넣은 뒤 그 단계의 **적용** 줄에 번호를 더합니다.
+`### ▶ US-NN — …` 블록을 그 단계의 「공통」 앞에((4) 는 「공통 — init」 과 「공통 — plan」 사이) 넣은 뒤 그 단계의 **적용** 줄에 번호를 더합니다.
 할 일이 없는 단계는 손대지 않습니다.
 
 ## (1) 저장소 최신화 — [README §3 의 「저장소 최신화」](../README.md#3-적용하기-배포-ec2-에서)와 같음
@@ -154,6 +154,17 @@ aws rds describe-db-cluster-snapshots --db-cluster-snapshot-identifier $SNAP \
 
 **적용: 공통 + US-20**
 
+### 공통 — init (모든 US · 맨 먼저)
+
+▶ 실행
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
+terraform init
+```
+기대: `Terraform has been successfully initialized!`. 인프라는 바꾸지 않습니다. (1) 의
+`git reset --hard` 가 `.terraform.lock.hcl` 을 커밋본으로 되돌려 두어, init 전에는 아래 `19` 처럼
+`terraform output` 을 읽는 스크립트가 `ABORTED: terraform output failed` 로 멈춥니다.
+
 ### ▶ US-20 — 로그아웃 주소 등록 (plan 보다 먼저 · 관리 화면 Cognito 로그인(US-12)을 쓰는 곳만)
 
 ▶ 실행
@@ -174,7 +185,6 @@ updated in-place` 1건이면 apply 합니다. 이미 등록돼 있으면 `alread
 ▶ 실행
 ```bash
 cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
-terraform init
 terraform plan -no-color -detailed-exitcode > ~/plan.txt 2>&1; echo "exit=$?"
 grep -E '# .* (will be|must be)|^Plan:|No changes|Error' ~/plan.txt
 ```
@@ -497,14 +507,20 @@ aws rds describe-db-cluster-snapshots --db-cluster-snapshot-identifier $SNAP \
 
 **(10-4) terraform — 인프라 변경 확인**
 
-▶ 실행
+▶ 실행 — init (맨 먼저)
 ```bash
 cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-prod
 terraform init
+```
+그다음 (4) 의 「▶ US-NN」 블록(예: 「▶ US-20」)을 같은 명령으로 하고, 이어서 plan 합니다.
+
+▶ 실행 — plan
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-prod
 terraform plan -no-color -detailed-exitcode > ~/plan.txt 2>&1; echo "exit=$?"
 grep -E '# .* (will be|must be)|^Plan:|No changes|Error' ~/plan.txt
 ```
-plan 전에 (4) 의 「▶ US-NN」 블록(예: 「▶ US-20」)을 같은 명령으로 하고, 판정·apply·멈출 때는 (4) 와 같습니다.
+판정·apply·멈출 때는 (4) 와 같습니다.
 
 **(10-5) 태그 올림**
 
