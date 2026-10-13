@@ -3,8 +3,12 @@
 > ← [operations.md](../operations.md) §8 목차로 · 이 절 = **§8-D** · 소요 ~1.5h(빌드 15분 · helm+migration 10분 · 대기 포함) · **트래픽 적은 시간**에
 >
 > **한 줄**: 코드·DB·단가 업데이트를 배포 EC2 에서 **위에서 아래로 명령만 치는** 순서.
-> 업데이트마다 다른 점은 (0) 에만 있고, (1) 부터는 어느 업데이트든 같다. 이유·함정·상세는 링크.
+> 업데이트마다 다른 점은 (0) 에서 먼저 읽고, 명령은 각 단계에서 친다. 이유·함정·상세는 링크.
 > 서비스 하나 고친 일상 업데이트는 [8-U](8-U-update.md).
+>
+> **읽는 법**: 이름표 없는 블록과 「공통」 소제목 아래는 어느 업데이트든 칩니다. 「▶ US-NN」 은
+> 따라 하는 업데이트 것만 칩니다. 최신 업데이트만 펼쳐 두었고, 지난 업데이트는 같은 단계 안에
+> 접어 두었습니다(그 업데이트를 아직 안 했을 때만 펼칩니다).
 
 ```
 (0) 이번 업데이트에서 다른 점(읽기만)
@@ -20,12 +24,14 @@
 
 ## (0) 이번 업데이트에서 다른 점 — 먼저 확인
 
-여기에는 명령이 없습니다. 따라 하는 업데이트의 블록을 읽고, **할 일 있음** 항목은 그 단계의
-해당 업데이트 이름표(예: (8) 의 「▶ US-19」) 아래에서 명령을 칩니다. (1) 부터는 어느 업데이트든
-같고, prod((10))도 같습니다.
+여기에는 명령이 없습니다. 따라 하는 업데이트의 블록 하나만 읽습니다. 첫 줄 **칠 블록** 이 (1) 부터
+(9) 까지 어느 블록을 치는지 보여 주고, **할 일 있음** 항목은 그 단계의 「▶ US-NN」 아래에서
+칩니다. prod((10))도 같습니다. 지난 업데이트는 제목 아래에 접어 두었습니다.
 
 ### US-20 로 따라 할 때 달라지는 것
 
+- **칠 블록** — (1)·(2)·(3) → (4) 「▶ US-20」 + 공통 → (5)·(6)·(7) → (8) 「단가 맞춤」 만 →
+  (9) 「▶ US-20」 + 「공통 점검」.
 - **바뀌는 것** — 이미지 4개(gateway-proxy · admin-api · admin-ui · notification-worker,
   scheduler 는 admin-api 와 같은 이미지) · 관리 화면 Cognito 앱 클라이언트의 로그아웃 주소 1개.
   DB 변경은 없습니다(마이그레이션 `0039` 그대로). US-19 를 아직 안 했다면 US-19 부터.
@@ -43,6 +49,11 @@
 
 ### US-19 로 따라 할 때 달라지는 것
 
+<details>
+<summary>펼치기 — US-19 를 아직 안 했을 때만</summary>
+
+- **칠 블록** — (1)·(2)·(3) → (4) 공통 → (5)·(6)·(7) → (8) 「▶ US-19」 → 「단가 맞춤」 →
+  (9) 「▶ US-19」 + 「공통 점검」.
 - **바뀌는 것** — 이미지 4개(migration · gateway-proxy · admin-api · admin-ui) · 단가 열 소수
   자릿수(6 → 8) · Haiku 5.5 등록. 마이그레이션 번호는 늘지 않습니다(`0039` 그대로) — 단가 열은
   migration Job 이 먼저 실행하는 init SQL 이 넓힙니다. US-18 을 아직 안 했다면 US-18 부터.
@@ -54,8 +65,15 @@
 - **되돌리기** — 「롤백」의 「▶ US-19」. 코드는 `helm rollback` 만으로 됩니다(넓힌 단가 열은 옛
   이미지와도 맞습니다).
 
+</details>
+
 ### US-18 로 따라 할 때 달라지는 것
 
+<details>
+<summary>펼치기 — US-18 를 아직 안 했을 때만</summary>
+
+- **칠 블록** — (1)·(2)·(3) → (4) 공통 → (5)·(6)·(7) → (8) 「단가 맞춤」 만 →
+  (9) 「▶ US-18」 + 「공통 점검」.
 - **바뀌는 것** — 이미지 5개(migration · gateway-proxy · admin-api · admin-ui ·
   cost-recorder-worker) · DB 열 추가 3개(0037·0038·0039) · Sonnet 5.5 캐시 읽기 단가 1개.
 - **(2)** — `14` 의 `XX` 2개(스키마 `0036` · Sonnet 5.5 단가)면 정상입니다.
@@ -63,8 +81,15 @@
   한 줄이면 정상입니다.
 - **(9)** — **확인 추가**: (9) 의 「▶ US-18」.
 
+</details>
+
 ### US-10 로 따라 할 때 달라지는 것
 
+<details>
+<summary>펼치기 — US-10 를 아직 안 했을 때만</summary>
+
+- **칠 블록** — (1)·(2)·(3) → (4) 공통 → (5)·(6)·(7) → (8) 「단가 맞춤」 → 「▶ US-10」 →
+  (9) 「공통 점검」.
 - **바뀌는 것** — 이미지 6개 · DB 마이그레이션 11개(0026~0036) · 단가.
 - **(1)** — 이번 upstream 이 추가한 값(스트리밍 타임아웃·감사 로그 env)은 chart 기본값으로
   충분합니다. DB 마스터 비밀번호 참조 2줄은 (2) 의 `15` 가 확인·삽입합니다.
@@ -77,6 +102,12 @@
   시드를 넣으므로 `08` 은 꼭 배포 뒤입니다.
 - **되돌리기** — 코드만 되돌리면 옛 이미지가 0032 가 심은 행을 못 읽어 모델 목록이 깨집니다 —
   스냅샷 복원과 함께 합니다.
+
+</details>
+
+📋 참고(문서 담당자용) — 새 업데이트를 넣을 때: 새 블록을 (0) 맨 위와 각 단계의 「업데이트별」 맨 위에
+펼쳐 넣고, 직전 업데이트의 블록은 접습니다((0) 은 제목을 남기고 본문만, 단계는 「지난 업데이트」
+접힘 맨 위로). 새 업데이트가 그 단계에서 할 일이 없으면 「US-NN — 할 일 없음」 한 줄을 둡니다.
 
 ## (1) 저장소 최신화 — [README §3 의 「저장소 최신화」](../README.md#3-적용하기-배포-ec2-에서)와 같음
 
@@ -129,7 +160,9 @@ aws rds describe-db-cluster-snapshots --db-cluster-snapshot-identifier $SNAP \
 
 ## (4) terraform — 인프라 변경 확인 (필요할 때만 apply)
 
-**▶ US-20 — 로그아웃 주소 등록 (plan 보다 먼저 · 관리 화면 Cognito 로그인(US-12)을 쓰는 곳만)**
+### 업데이트별 작업 — 따라 하는 업데이트 것만, plan 보다 먼저
+
+**▶ US-20 — 로그아웃 주소 등록** · 관리 화면 Cognito 로그인(US-12)을 쓰는 곳만
 
 ▶ 실행
 ```bash
@@ -141,8 +174,10 @@ bash 19-admin-login.sh callback --apply
 `http://localhost:8090`·`8091`·`8092` 의 `/logout` 3개 + `https://<관리 화면 주소>/`). 콜백은
 US-12 때 등록돼 다시 나오지 않습니다. `--apply` 에서 `yes` → `terraform.tfvars updated`. 출력 끝의
 `then: bash 19-admin-login.sh login` 은 하지 않습니다(로그인 설정은 US-12 그대로). 이어서 아래
-plan 을 칩니다 — `exit=2` 에 `module.cognito.aws_cognito_user_pool_client.cli will be updated
-in-place` 1건이면 apply 합니다. 이미 등록돼 있으면 `already registered — nothing to do`.
+「공통」의 plan 을 칩니다 — `exit=2` 에 `module.cognito.aws_cognito_user_pool_client.cli will be
+updated in-place` 1건이면 apply 합니다. 이미 등록돼 있으면 `already registered — nothing to do`.
+
+### 공통 — 모든 업데이트
 
 ▶ 실행
 ```bash
@@ -205,6 +240,11 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 
 ### 업데이트별 작업 — 따라 하는 업데이트 것만, `08` 보다 먼저
 
+**US-20 — 할 일 없음.** 아래 「단가 맞춤」으로 넘어갑니다.
+
+<details>
+<summary>지난 업데이트 — US-19 · US-18 · US-10 (그 업데이트를 따라 할 때만 펼칩니다)</summary>
+
 **▶ US-19 — Haiku 5.5 등록 (새 모델)**
 
 ▶ 실행
@@ -227,6 +267,8 @@ bash 02-add-opus5-model.sh --apply
 
 ▶ 실행 · 관리 화면 — **모델 관리** 에서 새로 ACTIVE 로 보이는 시드 alias(`global.anthropic.claude-opus-5`
 · `…-sonnet-5` · `gpt-5.6-*` · `llama-3-70b`)마다 **비활성화** 를 누른다.
+
+</details>
 
 ### 단가 맞춤 — 모든 업데이트
 
@@ -263,6 +305,9 @@ bash status.sh
    차트가 한도 기준선과 함께 보입니다(기록이 없으면 「기간 내 사용 기록이 없습니다」).
 3. **예산 관리(Budget Management)** 요약에서 예산을 따로 정하지 않은 사용자도 이번 달
    사용액이 보입니다(전에는 $0.00).
+
+<details>
+<summary>지난 업데이트 — US-19 · US-18 (그 업데이트를 따라 할 때만 펼칩니다)</summary>
 
 **▶ US-19 — Haiku 5.5 확인**
 
@@ -315,6 +360,8 @@ gateway-cli-cowork verify
 ▶ 실행 · 관리 화면
 1. **예산 관리** → 알림 기준을 50 으로 저장 → 6분 뒤 다시 열어도 50 이다.
 2. **분석** 화면을 30초 안에 두 번 연다 → 깨지지 않고, 앱 필터를 바꾸면 숫자가 바뀐다.
+
+</details>
 
 ### 공통 점검 — 모든 업데이트
 
@@ -383,6 +430,29 @@ bash 14-postdeploy-check.sh
 
 ## 롤백
 
+### 업데이트별 — 따라 한 업데이트 것만, 아래 공통보다 먼저
+
+**US-20 — 할 일 없음.** 코드는 아래 `helm rollback` 만으로 됩니다(DB 변경 없음). 등록한 로그아웃
+주소는 남겨 둡니다.
+
+<details>
+<summary>지난 업데이트 — US-19 (그 업데이트를 따라 할 때만 펼칩니다)</summary>
+
+**▶ US-19 — Haiku 5.5 내리기** (코드는 `helm rollback` 만으로 된다 — 넓힌 단가 열은 옛 이미지와도
+맞는다. 옛 gateway-proxy 는 Haiku 5.5 에 400 이므로 helm rollback 전에 내린다)
+
+▶ 실행 · 배포 EC2
+```bash
+cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
+bash 99-rollback.sh --model
+```
+기대: 실행할 문장에 `alias='claude-haiku-5-5'` → `yes` → `INACTIVE`(삭제하지 않는다). 관리 화면 ›
+**모델 관리** › **비활성화** 로 해도 같다.
+
+</details>
+
+### 공통 — 모든 업데이트
+
 - **코드+DB 전부** — (3) 스냅샷 복원(새 클러스터로 생기므로 RDS Proxy 대상 교체가 따른다, 1h+) **+** `helm rollback`([8-U 4단계](8-U-update.md#4단계--안-되면-되돌린다)). 코드만 되돌려도 되는지는 (0) 블록의 「되돌리기」를 먼저 본다 — 옛 이미지가 새 스키마를 못 읽는 업데이트(예: US-10)는 스냅샷 복원과 함께 해야 한다.
 - **단가만** — [8-R](8-R-pricing.md) 의 「⑦ 되돌리기」 대로 — 표를 이전 값으로 되돌리고 `08 --apply`.
   이전 값은 `snapshots/<ts>-08-pricing-rollback.sql` 안에 있다.
@@ -395,17 +465,6 @@ cp snapshots/<ts>-values-dev.yaml.bak \
    ~/awsome-ai-gateway/deployment/charts/llm-gateway/values-eks-fargate-dev.yaml
 cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 ```
-
-**▶ US-19 — Haiku 5.5 내리기** (코드는 `helm rollback` 만으로 된다 — 넓힌 단가 열은 옛 이미지와도
-맞는다. 옛 gateway-proxy 는 Haiku 5.5 에 400 이므로 helm rollback 전에 내린다)
-
-▶ 실행 · 배포 EC2
-```bash
-cd ~/awsome-ai-gateway/docs/us-llm-gateway/update-scripts
-bash 99-rollback.sh --model
-```
-기대: 실행할 문장에 `alias='claude-haiku-5-5'` → `yes` → `INACTIVE`(삭제하지 않는다). 관리 화면 ›
-**모델 관리** › **비활성화** 로 해도 같다.
 
 ## (10) prod — prod 계정의 배포 EC2 에서, dev (9) 를 하루 지켜본 뒤
 
