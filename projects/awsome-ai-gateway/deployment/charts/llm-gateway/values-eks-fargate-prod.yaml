@@ -206,7 +206,7 @@ gatewayProxy:
     # 1.0.81-connretry: 비스트리밍 Bedrock 호출(invoke·converse·count_tokens)에도 연결 수준 오류 1회 재시도 — 풀의 죽은 연결(장시간 idle 뒤 조용히 끊긴 것)을 집으면 "Connection was closed…" 로 실패하는데 bedrock_max_attempts=1 이라 그대로 502 로 나갔다(2026-09-19 13:07Z, 2.5시간 idle 뒤). 스트리밍은 9/16 부터 재시도가 있었다. 재시도 전에 유휴 풀 연결을 비워 같은 실패를 피한다. Bedrock 이 실제로 응답한 오류(400/429/5xx)는 재시도하지 않는다(이중 과금 없음).
     # 1.0.84-safeguards: Claude Code Auto mode 서버 분류기 지원(US-17) — anthropic-beta 중 dangerous-tool-use(+본문 safeguards)·per-turn-control 만 Bedrock 본문 anthropic_beta 로 넘기고 나머지는 버린다(모르는 beta 하나로 요청 전체가 400). 웹 검색 루프는 마지막 턴의 message_delta.delta 를 복사해 판정(safeguard_results)을 유지한다. 별도 분류기 요청·과금 안내와 Claude Code 2.1.289 의 세션 첫 요청 400 이 사라진다. 끄기 = BEDROCK_FORWARD_BETAS 빈 값(재빌드 불필요).
     # 1.0.85-betas: 계정 기능 플래그가 켜진 Claude Code 2.1.29x 가 더 보내는 beta 2개도 넘긴다 — inline-tools(system 메시지의 tool_addition·tool_removal, 대화 중간 도구 추가)·thinking-display-updates(thinking.display "updates"). 버리면 대화마다 첫 요청이 400 이었다(2026-10-08 US dev, Claude Code 가 기능을 빼고 재시도). advisor 를 tools 에서 지울 때 그 도구를 가리키는 tool_addition·tool_removal 블록도 지운다(남기면 beta 를 넘겨도 400). 이 둘만 끄기 = BEDROCK_FORWARD_BETAS 를 "dangerous-tool-use-2026-09-03:safeguards,per-turn-control-2026-07-01" 로(재빌드 불필요).
-    tag: "1.0.87-us19"
+    tag: "1.0.88-us20"
   serviceAccount:
     annotations:
       # CHANGE_ME (terraform output): IRSA role ARN. terraform output -raw gateway_proxy_role_arn
@@ -292,7 +292,7 @@ adminApi:
     #   예전엔 admin_jwt_configs 의 정적 키로만 검증해, 시드 자리표시 키뿐인 설치에서
     #   로그인 후 모든 API 가 500(JWKError). 정적 키가 깨져 있어도 이제 401.
     #   ⚠️ scheduler.image.tag 를 같은 값으로 유지.
-    tag: "1.0.71-us19"
+    tag: "1.0.72-us20"
   serviceAccount:
     annotations:
       # CHANGE_ME (terraform output): IRSA role ARN. terraform output -raw admin_api_role_arn
@@ -377,7 +377,7 @@ adminUi:
     # 1.0.100-mwredirect: 미들웨어 로그인 리다이렉트가 상대 Location 이라 Next 14.2 어댑터에서
     #   Invalid URL → 미인증·만료 요청이 오는 모든 페이지 500 (upstream b51fab0 를 처음 빌드한 결과).
     #   요청 Host + x-forwarded-proto 로 절대 URL 을 만들도록 수정.
-    tag: "1.0.102-us19"
+    tag: "1.0.103-us20"
   resources:
     requests:
       cpu: "300m"
@@ -406,7 +406,7 @@ scheduler:
     # 1.0.68-invlogaudit: adminApi 와 동일 이미지. 이 값만 뒤처지면 스케줄러의 SQLAlchemy
     # provider enum 미러가 4라벨로 남아 0032 가 심은 BEDROCK_RUNTIME_OPENAI 행을 읽는 순간
     # LookupError 로 모델 카탈로그 조회 전체가 깨진다(조용히 실패하지 않고 크게 죽는다).
-    tag: "1.0.71-us19"
+    tag: "1.0.72-us20"
   resources:
     requests:
       cpu: "250m"
