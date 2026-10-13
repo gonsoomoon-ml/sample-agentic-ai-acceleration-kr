@@ -191,14 +191,21 @@ grep -E '# .* (will be|must be)|^Plan:|No changes|Error' ~/plan.txt
 `exit=` 값으로 판정합니다.
 - `0` — 변경 없음. apply 하지 않고 (5) 로 넘어갑니다.
 - `1` — plan 오류. `Error` 줄을 보고 멈춥니다(출력이 비면 terraform 폴더 밖에서 친 것입니다).
-- `2` — 변경 있음. 아래 「멈출 때」에 해당하지 않으면 `terraform apply`(`yes` 입력)로 적용하고,
-  위 plan 두 줄을 다시 쳐서 `exit=0` 을 확인합니다.
+- `2` — 변경 있음. 아래 「멈출 때」에 해당하지 않으면 그 아래 「▶ 실행 — apply」 로 적용합니다.
 
 멈출 때(apply 하지 않습니다):
 - 이유를 모르는 destroy·replace
 - EKS 버전·애드온 변경 — tfvars 의 버전 고정을 확인합니다([8-E](8-E-eks-upgrade.md)).
 - `external-secrets` 줄 — fork 의 ESO OFF 설정이 덮인 것입니다. `modules/external-secrets/main.tf`
   의 3줄을 복원한 뒤 다시 plan 합니다(켜면 cert-controller 가 0/1 로 멈춥니다).
+
+▶ 실행 — apply (`exit=2` 이고 「멈출 때」에 해당하지 않을 때만)
+```bash
+terraform apply
+terraform plan -no-color -detailed-exitcode > ~/plan.txt 2>&1; echo "exit=$?"
+```
+기대: apply 확인 화면의 `Plan:` 줄이 위 plan 과 같으면 `yes` → `Apply complete!` ·
+다시 친 plan 은 `exit=0`.
 
 ## (5) 이미지 태그 올림 — 새 코드는 새 태그로
 
