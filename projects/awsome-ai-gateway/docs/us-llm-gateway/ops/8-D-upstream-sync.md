@@ -9,6 +9,8 @@
 > **읽는 법**: 단계 제목 바로 아래 **적용** 줄이 그 단계가 어느 업데이트에 해당하는지 보여 줍니다.
 > 「공통」 블록은 어느 업데이트든 칩니다. 「▶ US-NN」 블록은 따라 하는 업데이트 것만 칩니다 —
 > 적용 줄에 그 번호가 없으면 그 단계에는 업데이트별 할 일이 없습니다.
+> 적용 줄에 「공통」이 없는 단계는 적힌 업데이트만 칩니다 — 다른 업데이트는 그 단계를 통째로
+> 건너뜁니다.
 
 ```
 (0) 이번 업데이트에서 다른 점(읽기만)
@@ -32,7 +34,7 @@
 ### US-20 로 따라 할 때 달라지는 것
 
 - **칠 블록** — (1)·(2)·(3) → (4) 「공통 — init」 → 「▶ US-20」 → 「공통 — plan」 →
-  (5)·(6)·(7) → (8) 「공통」 만 → (9) 「▶ US-20」 → 「공통」.
+  (5)·(6)·(7) → (8) 건너뜀 → (9) 「▶ US-20」 → 「공통」.
 - **바뀌는 것** — 이미지 4개(gateway-proxy · admin-api · admin-ui · notification-worker,
   scheduler 는 admin-api 와 같은 이미지) · 관리 화면 Cognito 앱 클라이언트의 로그아웃 주소 1개.
   DB 변경은 없습니다(마이그레이션 `0039` 그대로). US-19 를 아직 안 했다면 US-19 부터.
@@ -40,7 +42,7 @@
 - **(4)** — **할 일 있음**(관리 화면 Cognito 로그인(US-12)을 쓰는 곳만): (4) 의 「▶ US-20」.
   (7) 에서 새 admin-ui 가 뜨기 전에 끝내야 로그아웃이 Cognito 오류에서 멈추지 않습니다.
 - **(5)** — `<- change` 4개(gateway-proxy · admin-api · admin-ui · notification-worker)면 정상입니다.
-- **(8)** — 할 일 없음. `08` 은 `nothing to change`.
+- **(8)** — 건너뜁니다(모델·단가 변경 없음).
 - **(9)** — **확인 추가**: (9) 의 「▶ US-20」.
 - **선택 기능 2개** — 배포만으로는 켜지지 않습니다. 요청·응답 본문을 S3 에 남기는 본문 로깅은
   [8-V](8-V-body-logging.md), 알림 메일을 실제로 보내려면 [8-W](8-W-notifications.md). 이 배포를
@@ -50,7 +52,7 @@
 
 ### US-19 로 따라 할 때 달라지는 것
 
-- **칠 블록** — (1)·(2)·(3) → (4) 「공통」 → (5)·(6)·(7) → (8) 「▶ US-19」 → 「공통」 →
+- **칠 블록** — (1)·(2)·(3) → (4) 「공통」 → (5)·(6)·(7) → (8) 「▶ US-19」 → 「단가 맞춤」 →
   (9) 「▶ US-19」 → 「공통」.
 - **바뀌는 것** — 이미지 4개(migration · gateway-proxy · admin-api · admin-ui) · 단가 열 소수
   자릿수(6 → 8) · Haiku 5.5 등록. 마이그레이션 번호는 늘지 않습니다(`0039` 그대로) — 단가 열은
@@ -65,7 +67,7 @@
 
 ### US-18 로 따라 할 때 달라지는 것
 
-- **칠 블록** — (1)·(2)·(3) → (4) 「공통」 → (5)·(6)·(7) → (8) 「공통」 만 →
+- **칠 블록** — (1)·(2)·(3) → (4) 「공통」 → (5)·(6)·(7) → (8) 「단가 맞춤」 만 →
   (9) 「▶ US-18」 → 「공통」.
 - **바뀌는 것** — 이미지 5개(migration · gateway-proxy · admin-api · admin-ui ·
   cost-recorder-worker) · DB 열 추가 3개(0037·0038·0039) · Sonnet 5.5 캐시 읽기 단가 1개.
@@ -76,7 +78,7 @@
 
 ### US-10 로 따라 할 때 달라지는 것
 
-- **칠 블록** — (1)·(2)·(3) → (4) 「공통」 → (5)·(6)·(7) → (8) 「공통」 → 「▶ US-10」 →
+- **칠 블록** — (1)·(2)·(3) → (4) 「공통」 → (5)·(6)·(7) → (8) 「단가 맞춤」 → 「▶ US-10」 →
   (9) 「공통」.
 - **바뀌는 것** — 이미지 6개 · DB 마이그레이션 11개(0026~0036) · 단가.
 - **(1)** — 이번 upstream 이 추가한 값(스트리밍 타임아웃·감사 로그 env)은 chart 기본값으로
@@ -93,7 +95,8 @@
 
 📋 참고(문서 담당자용) — 새 업데이트를 넣을 때: (0) 맨 위에 블록을 넣고, 할 일이 있는 단계에는
 `### ▶ US-NN — …` 블록을 그 단계의 「공통」 앞에((4) 는 「공통 — init」 과 「공통 — plan」 사이) 넣은 뒤 그 단계의 **적용** 줄에 번호를 더합니다.
-할 일이 없는 단계는 손대지 않습니다.
+할 일이 없는 단계는 손대지 않습니다. 모델·단가를 바꾸는 업데이트는 (8) 의 적용 줄과 「단가 맞춤」
+제목에 번호를 더합니다.
 
 ## (1) 저장소 최신화 — [README §3 의 「저장소 최신화」](../README.md#3-적용하기-배포-ec2-에서)와 같음
 
@@ -201,6 +204,7 @@ grep -E '# .* (will be|must be)|^Plan:|No changes|Error' ~/plan.txt
 
 ▶ 실행 — apply (`exit=2` 이고 「멈출 때」에 해당하지 않을 때만)
 ```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-dev
 terraform apply
 terraform plan -no-color -detailed-exitcode > ~/plan.txt 2>&1; echo "exit=$?"
 ```
@@ -253,7 +257,8 @@ cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh dev
 
 ## (8) 업데이트별 작업 · 단가 — 5분 + 캐시 5분
 
-**적용: 공통 + US-10 · US-18 · US-19**
+**적용: US-10 · US-18 · US-19** — 모델·단가가 바뀌는 업데이트만. 그 밖의 업데이트(예: US-20)는
+이 단계를 건너뜁니다. 단가는 (9) 의 `14` 가 다시 확인합니다.
 
 ### ▶ US-19 — Haiku 5.5 등록 (새 모델 · `08` 보다 먼저)
 
@@ -270,7 +275,7 @@ bash 02-add-opus5-model.sh --apply
 0.000550 / 0.0001375 / 0.000220 / 0.000011` → `--apply` 뒤 등록 완료. 100K 초과 구간 단가는
 아래 `08` 이 넣는다.
 
-### US-18 — 할 일 없음 (아래 「공통」 `08` 의 기대만)
+### US-18 — 할 일 없음 (아래 「단가 맞춤」 `08` 의 기대만)
 
 `08` 의 차이 표에 `claude-sonnet-5-5` 캐시 읽기 `0.000220 →
 0.000110` 한 줄이면 정상.
@@ -280,7 +285,7 @@ bash 02-add-opus5-model.sh --apply
 ▶ 실행 · 관리 화면 — **모델 관리** 에서 새로 ACTIVE 로 보이는 시드 alias(`global.anthropic.claude-opus-5`
 · `…-sonnet-5` · `gpt-5.6-*` · `llama-3-70b`)마다 **비활성화** 를 누른다.
 
-### 공통 — 단가 맞춤 (모든 US)
+### 단가 맞춤 — `08` (US-10 · US-18 · US-19)
 
 ▶ 실행
 ```bash
@@ -527,7 +532,14 @@ cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-prod
 terraform plan -no-color -detailed-exitcode > ~/plan.txt 2>&1; echo "exit=$?"
 grep -E '# .* (will be|must be)|^Plan:|No changes|Error' ~/plan.txt
 ```
-판정·apply·멈출 때는 (4) 와 같습니다.
+판정·멈출 때는 (4) 와 같습니다.
+
+▶ 실행 — apply (`exit=2` 이고 「멈출 때」에 해당하지 않을 때만)
+```bash
+cd ~/awsome-ai-gateway/deployment/terraform/environments/llm-gateway-prod
+terraform apply
+terraform plan -no-color -detailed-exitcode > ~/plan.txt 2>&1; echo "exit=$?"
+```
 
 **(10-5) 태그 올림**
 
@@ -558,7 +570,7 @@ terraform output -json >/dev/null && echo "output OK"
 cd ~/awsome-ai-gateway && ./deployment/scripts/install-eks.sh prod
 ```
 
-**(10-8) 업데이트별 작업 · 단가** — (8) 과 같다. 먼저 (8) 의 「▶ US-NN」 블록 중 따라 하는 업데이트 것을 하고(명령 같음), 그다음 아래 `08`.
+**(10-8) 업데이트별 작업 · 단가** — (8) 과 같다. 먼저 (8) 의 「▶ US-NN」 블록 중 따라 하는 업데이트 것을 하고(명령 같음), 그다음 아래 `08`. (8) 을 건너뛰는 업데이트(예: US-20)는 (10-8) 도 건너뜁니다.
 
 ▶ 실행
 ```bash
